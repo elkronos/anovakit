@@ -1,383 +1,373 @@
-###############################################################################
-# anova_bin (Logistic "One-Way ANOVA") - Modular & Robust
-###############################################################################
-
-#' One-Way "ANOVA" for a Binary Response via Logistic Regression (Modular, Robust)
+#' Analysis of Deviance for a Binary Response
 #'
-#' Fits a logistic regression for a binary response and provides:
-#' - Type I deviance ANOVA (sequential) or Type II/III via car::Anova()
-#' - Optional robust (HC) SEs via sandwich + lmtest
-#' - Odds ratios with Wald CIs (uses robust SEs if requested)
-#' - Proportions table and stacked bar plot
+#' Fits a logistic regression for a binary response across one or more grouping
+#' variables and reports an analysis of deviance table, odds ratios with
+#' confidence intervals, estimated marginal probabilities, and pairwise
+#' comparisons on the odds-ratio scale.
 #'
-#' @param data data.frame with variables.
-#' @param response_var character(1) name of binary response.
-#' @param group_var character() grouping variable(s).
-#' @param success_level optional; which response level is the modeled “success”. If NULL,
-#'   uses the second factor level (glm default).
-#' @param group_ref optional named list of reference levels for grouping factors,
-#'   e.g. list(g1="A", g2="X").
-#' @param na.rm logical; drop rows with NA in required columns (default TRUE).
-#' @param print_plot logical; print the proportions plot (default TRUE).
-#' @param include_intercept logical; include intercept row in OR table (default FALSE).
-#' @param robust logical; use robust (HC) covariance for coef tests/OR CIs (default FALSE).
-#' @param robust_type character; HC type for sandwich::vcovHC (e.g. "HC0","HC1","HC2","HC3").
-#' @param anova_type "I","II","III" for Type I (deviance) or Type II/III via car::Anova (default "I").
-#' @param anova_test when anova_type is "II"/"III": "LR" or "Wald" (default "LR").
-#' @param ... passed to stats::glm()
+#' @details
+#' \strong{Interactions.} By default the model is additive. Set
+#' \code{interaction = TRUE} for the full factorial, or to a whole number for
+#' the highest order of interaction to include. An additive model cannot detect
+#' an interaction between grouping variables, so if you have more than one
+#' grouping variable this is a decision worth making deliberately.
 #'
-#' @return list with:
-#'   - deviance_anova (for Type I) or car_anova (for Type II/III)
-#'   - lr_comparison (null vs full LR)
-#'   - coef_tests (coeftest table, robust if requested)
-#'   - effect_size (ORs + Wald CIs, robust if requested)
-#'   - model_stats (AIC, BIC, logLik, McFadden R2, flags)
-#'   - prop_table, count_plot, fitted_model
+#' \strong{Type III sums of squares.} When \code{type = "III"} the model is
+#' \emph{fitted} under sum-to-zero contrasts, which is what makes Type III
+#' tests meaningful. Setting the global contrast option after fitting has no
+#' effect on an existing model.
+#'
+#' \strong{Separation.} Complete and quasi-complete separation are detected and
+#' reported in \code{$notes}. Under separation, Wald odds ratios and their
+#' intervals are meaningless even though \code{glm()} reports convergence, so
+#' \code{ci_method = "profile"} is the default.
+#'
+#' @param data A data frame, or anything inheriting from one, such as a
+#'   \code{data.table} or a tibble.
+#' @param response Character. Name of the binary response column. May be a
+#'   factor with two observed levels, a logical, or a numeric 0/1 vector.
+#' @param groups Character vector. One or more grouping columns.
+#' @param success Optional. The response level to model as the "success". By
+#'   default the second level of the factor, which is what \code{glm()} uses.
+#' @param reference Optional named list of reference levels for the grouping
+#'   factors, for example \code{list(site = "north")}.
+#' @param interaction \code{FALSE} (additive, the default), \code{TRUE} (full
+#'   factorial), or a whole number giving the highest interaction order.
+#' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
+#' @param test_statistic Character. \code{"LR"} (default) or \code{"Wald"},
+#'   passed to \code{\link[car]{Anova}}.
+#' @param conf_level Numeric in (0, 1). Level for every interval returned.
+#'   Default \code{0.95}.
+#' @param ci_method Character. \code{"profile"} (default) for
+#'   profile-likelihood intervals, or \code{"wald"}.
+#' @param vcov_type Character. \code{"model"} (default) or an HC type
+#'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
+#'   the \pkg{sandwich} package.
+#' @param adjust Character. Multiplicity adjustment for the pairwise
+#'   comparisons, passed to \code{\link[emmeans]{contrast}}. Default
+#'   \code{"tukey"}.
+#' @param posthoc Logical. Compute pairwise comparisons. There are
+#'   \code{choose(k, 2)} of them, so this is worth turning off when the number
+#'   of cells is large; \code{$notes} records that they were skipped. Default
+#'   \code{TRUE}.
+#' @param plots Logical. Build \pkg{ggplot2} objects. They are returned in
+#'   \code{$plots}, never drawn. Default \code{TRUE}.
+#' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
+#'   Default \code{FALSE}.
+#' @param weights Optional character. Name of a numeric column of prior
+#'   weights. Given as a column name rather than a vector so that it is
+#'   subsetted with the data: a vector supplied by the caller is evaluated
+#'   against the original frame and silently misaligns as soon as one row is
+#'   dropped for missing values.
+#'
+#' @return An \code{\link{anovatoolbox_fit}} object with \code{$model_stats}
+#'   (AIC, BIC, the log-likelihood, McFadden's pseudo R squared, the level
+#'   treated as a success, and \code{lr_vs_null}, the model-versus-null
+#'   likelihood ratio test), and \code{$assumptions} holding
+#'   \code{dispersion} and \code{proportions} (the observed proportion in each
+#'   cell). \code{$effect_sizes} holds the odds ratios, \code{$emmeans} the
+#'   estimated marginal probabilities and \code{$posthoc} the pairwise odds
+#'   ratios.
+#'
+#' @seealso \code{\link{anova_count}} for counts, \code{\link{anova_glm}} for
+#'   other families.
+#'
+#' @examples
+#' set.seed(1)
+#' n <- 300
+#' d <- data.frame(g = factor(sample(c("a", "b", "c"), n, replace = TRUE)))
+#' d$y <- rbinom(n, 1, c(a = 0.2, b = 0.5, c = 0.8)[as.character(d$g)])
+#' fit <- anova_bin(d, "y", "g")
+#' fit
+#' fit$effect_sizes
+#'
+#' # Two factors, with their interaction
+#' d$site <- factor(sample(c("north", "south"), n, replace = TRUE))
+#' anova_bin(d, "y", c("g", "site"), interaction = TRUE, plots = FALSE)$anova
+#'
 #' @export
-#' @import dplyr ggplot2
-#' @importFrom stats glm binomial anova logLik qnorm reformulate AIC BIC
-#' @importFrom sandwich vcovHC
-#' @importFrom lmtest coeftest
-#' @importFrom car Anova
-#' @importFrom rlang sym syms
-#' @importFrom scales percent
-#' @importFrom magrittr %>%
-anova_bin <- function(data,
-                      response_var,
-                      group_var,
-                      success_level = NULL,
-                      group_ref = NULL,
-                      na.rm = TRUE,
-                      print_plot = TRUE,
-                      include_intercept = FALSE,
-                      robust = FALSE,
-                      robust_type = "HC0",
-                      anova_type = c("I","II","III"),
-                      anova_test = c("LR","Wald"),
-                      ...) {
-  
-  if (!exists("%>%")) `%>%` <- magrittr::`%>%`
-  anova_type <- match.arg(anova_type)
-  anova_test <- match.arg(anova_test)
-  
-  # 1) Validate & prepare ------------------------------------------------------
-  .assert_inputs(data, response_var, group_var)
-  required_vars <- c(response_var, group_var)
-  if (isTRUE(na.rm)) data <- .drop_na_required(data, required_vars)
-  
-  resp_out <- .prep_response(data, response_var, success_level)
-  data <- resp_out$data
-  success_level <- resp_out$success_level
-  
-  data <- .prep_groups(data, group_var, group_ref)
-  
-  # 2) Fit model ---------------------------------------------------------------
-  model <- .fit_glm(data, response_var, group_var, ...)
-  
-  # 3) ANOVA tables ------------------------------------------------------------
-  deviance_anova <- NULL
-  car_anova <- NULL
-  if (anova_type == "I") {
-    deviance_anova <- stats::anova(model, test = "Chisq")
-  } else {
-    type_int <- switch(anova_type, "II" = 2, "III" = 3)
-    car_anova <- car::Anova(model, type = type_int, test.statistic = anova_test)
+anova_bin <- function(data, response, groups,
+                      success = NULL,
+                      reference = NULL,
+                      interaction = FALSE,
+                      type = c("II", "III"),
+                      test_statistic = c("LR", "Wald"),
+                      conf_level = 0.95,
+                      ci_method = c("profile", "wald"),
+                      vcov_type = "model",
+                      adjust = "tukey",
+                      posthoc = TRUE,
+                      plots = TRUE,
+                      weights = NULL,
+                      verbose = FALSE) {
+  cl <- match.call()
+  type <- match.arg(type)
+  test_statistic <- match.arg(test_statistic)
+  ci_method <- match.arg(ci_method)
+  .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
+  .check_adjust(adjust, .adjust_choices(), "adjust")
+  data <- .as_df(data)
+  .check_name(response, "response")
+  .check_names(groups, "groups")
+  .check_columns(data, response, "Response column")
+  .check_columns(data, groups, "Grouping column(s)")
+  .check_conf_level(conf_level)
+  .check_interaction(interaction, length(groups))
+  .check_flag(posthoc, "posthoc")
+  .check_flag(plots, "plots")
+  .check_flag(verbose, "verbose")
+
+  .say(verbose, "Preparing data.")
+  .check_weights_column(data, weights, response, groups)
+  prep <- .prepare_frame(data, c(response, groups, weights), factors = groups,
+                         keep_all = FALSE)
+  d <- prep$data
+  notes <- prep$notes
+  .check_groups(d, groups, min_levels = 2L, min_n = 1L)
+
+  wts <- .resolve_weights(d, weights)
+  resp <- .prep_binary(d[[response]], response, success)
+  d[[response]] <- resp$values
+  success <- resp$success
+  notes <- c(notes, resp$notes, sprintf(
+    "Modelling P(%s = %s); the other level is the baseline.", response, success))
+
+  if (!is.null(reference)) {
+    d <- .set_references(d, groups, reference)
   }
-  
-  # 4) Null vs Full LR comparison ---------------------------------------------
-  lr_cmp <- .lr_null_vs_full(model, data, response_var)
-  
-  # 5) Coefs (robust optional) + Effect sizes ---------------------------------
-  vc <- .vcov_for(model, robust = robust, robust_type = robust_type)
-  coef_tab <- .coef_tests(model, vc)
-  effect_size <- .effect_sizes(coef_tab, include_intercept = include_intercept,
-                               conf_level = 0.95, exponentiate = TRUE)
-  
-  # 6) Model stats -------------------------------------------------------------
-  ll_full <- as.numeric(stats::logLik(model))
-  null_model <- stats::glm(stats::reformulate("1", response_var), data = data, family = stats::binomial())
-  ll_null <- as.numeric(stats::logLik(null_model))
-  pseudo_r2 <- 1 - (ll_full / ll_null)
-  
+
+  ## Fit ---------------------------------------------------------------------
+  terms_rhs <- .group_terms(groups, interaction)
+  fml <- stats::reformulate(terms_rhs, response = .bq(response))
+  .say(verbose, "Fitting %s", paste(deparse(fml), collapse = " "))
+  fitted <- .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, d, stats::binomial(), wts),
+    type = type))
+  model <- fitted$value
+  if (inherits(model, "error")) {
+    .stopf("The logistic regression could not be fitted: %s",
+           conditionMessage(model))
+  }
+  # Non-integer prior weights make glm() warn about "non-integer #successes".
+  # That is worth knowing and it is not an error, so it goes to $notes rather
+  # than to the console.
+  notes <- c(notes, .said_note(fitted$said, "stats::glm()"))
+  if (!isTRUE(model$converged)) {
+    notes <- c(notes, "The logistic regression did not converge; every result below is unreliable.")
+  }
+  notes <- c(notes, .check_model_size(model))
+  notes <- c(notes, .check_separation(model))
+
+  ## Analysis of deviance ----------------------------------------------------
+  av <- .car_anova(model, type = type, test_statistic = test_statistic)
+  notes <- c(notes, av$note)
+
+  ## Null model, fitted once, used for both the LR test and pseudo R squared --
+  null_model <- stats::glm(stats::reformulate("1", response = .bq(response)),
+                           data = d, family = stats::binomial())
+  ll_full <- stats::logLik(model); ll_null <- stats::logLik(null_model)
+  lr_stat <- as.numeric(2 * (ll_full - ll_null))
+  lr_df   <- attr(ll_full, "df") - attr(ll_null, "df")
   model_stats <- list(
-    AIC           = stats::AIC(model),
-    BIC           = stats::BIC(model),
-    logLik        = ll_full,
-    pseudo_r2     = as.numeric(pseudo_r2),
-    success_level = success_level,
-    robust        = robust,
-    robust_type   = if (robust) robust_type else NULL
+    AIC = stats::AIC(model), BIC = stats::BIC(model),
+    logLik = as.numeric(ll_full),
+    mcfadden_r2 = as.numeric(1 - ll_full / ll_null),
+    success_level = success,
+    lr_vs_null = data.frame(
+      statistic = lr_stat, df = lr_df,
+      p_value = stats::pchisq(lr_stat, df = lr_df, lower.tail = FALSE),
+      stringsAsFactors = FALSE)
   )
-  
-  # 7) Proportions & Plot ------------------------------------------------------
-  prop_table <- .prop_table(data, response_var, group_var)
-  count_plot <- .plot_props(prop_table, response_var, group_var, success_level)
-  if (isTRUE(print_plot)) print(count_plot)
-  
-  # 8) Return ------------------------------------------------------------------
-  list(
-    deviance_anova = deviance_anova,
-    car_anova      = car_anova,
-    lr_comparison  = lr_cmp,
-    coef_tests     = coef_tab,
-    effect_size    = effect_size,
-    model_stats    = model_stats,
-    prop_table     = prop_table,
-    count_plot     = count_plot,
-    fitted_model   = model
-  )
-}
 
-###############################################################################
-# Helpers
-###############################################################################
-
-.assert_inputs <- function(data, response_var, group_var) {
-  if (!is.data.frame(data)) stop("`data` must be a data.frame.")
-  if (!is.character(response_var) || length(response_var) != 1)
-    stop("`response_var` must be a single character string.")
-  if (missing(group_var)) stop("Please provide at least one grouping variable in `group_var`.")
-  if (!is.character(group_var)) stop("`group_var` must be a character vector (or scalar).")
-  if (!(response_var %in% names(data)))
-    stop(sprintf("Response variable '%s' not found in `data`.", response_var))
-  missing_groups <- setdiff(group_var, names(data))
-  if (length(missing_groups) > 0)
-    stop(paste("Grouping variable(s) not in `data`:", paste(missing_groups, collapse = ", ")))
-}
-
-.drop_na_required <- function(data, required_vars) {
-  n_before <- nrow(data)
-  keep <- stats::complete.cases(data[, required_vars, drop = FALSE])
-  data2 <- data[keep, , drop = FALSE]
-  n_after <- nrow(data2)
-  if (n_after < n_before) {
-    message(sprintf("Removed %d rows with missing values in required columns.", n_before - n_after))
+  ## Odds ratios -------------------------------------------------------------
+  rv <- .robust_vcov(model, vcov_type)
+  notes <- c(notes, rv$note)
+  if (!is.null(rv$matrix) && ci_method == "profile") {
+    ci_method <- "wald"
+    notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
   }
-  data2
+  eff <- .odds_ratios(model, conf_level = conf_level, ci_method = ci_method,
+                      vcov_matrix = rv$matrix)
+  notes <- c(notes, eff$note)
+
+  ## Marginal probabilities and pairwise odds ratios -------------------------
+  emm <- .emmeans_grid(model, groups, type = "response",
+                       vcov_matrix = rv$matrix)
+  notes <- c(notes, emm$note)
+  emm_tab <- .emmeans_table(emm$grid, conf_level, protect = groups)
+  notes <- c(notes, emm_tab$note)
+  ph <- if (posthoc) {
+    .emmeans_pairs(emm$grid, adjust = adjust, conf_level = conf_level,
+                   ratios = TRUE)
+  } else list(table = NULL,
+              note = .no_posthoc_note(NROW(emm_tab$table),
+                                      extra = "$effect_sizes still reports the odds ratios from the model."))
+  notes <- c(notes, ph$note)
+
+  ## Proportions and plot ----------------------------------------------------
+  added <- .add_cell(d, groups)
+  prop_tab <- .proportion_table(added$data, response, added$cell)
+  plot_list <- list()
+  if (plots) {
+    .say(verbose, "Building plots.")
+    plot_list$proportions <- .plot_proportions(
+      prop_tab, added$cell, response, success,
+      xlab = paste(groups, collapse = " : "))
+    if (!is.null(emm_tab$table)) {
+      plot_list$emmeans <- .plot_emmeans(
+        emm_tab$table, groups, estimate = "estimate",
+        lower = "conf_low", upper = "conf_high", conf_level = conf_level,
+        title = sprintf("Estimated probability of %s = %s", response, success),
+        ylab = "Probability")
+    }
+  }
+
+  .new_fit(
+    method       = "Analysis of deviance for a binary response (logistic regression)",
+    call         = cl,
+    model        = model,
+    anova        = av$table,
+    effect_sizes = eff$table,
+    emmeans      = emm_tab$table,
+    emmeans_object = emm$grid,
+    posthoc      = ph$table,
+    assumptions  = list(dispersion = .dispersion(model),
+                        proportions = prop_tab),
+    plots        = plot_list,
+    data_used    = d,
+    n_removed    = prep$n_removed,
+    conf_level   = conf_level,
+    notes        = notes,
+    extra        = list(model_stats = model_stats)
+  )
 }
 
-.prep_response <- function(data, response_var, success_level) {
-  resp <- data[[response_var]]
-  if (!is.factor(resp)) {
-    if (is.logical(resp)) {
-      resp <- factor(resp, levels = c(FALSE, TRUE))
-    } else if (is.numeric(resp) && all(na.omit(unique(resp)) %in% c(0,1))) {
-      resp <- factor(resp, levels = c(0,1))
+#' Coerce and validate a binary response
+#'
+#' A numeric vector containing only zeros still produces a two-level factor when
+#' the levels are supplied, which is how an all-one-outcome column can slip
+#' through unnoticed. Levels are therefore counted after dropping empty ones.
+#' @noRd
+.prep_binary <- function(x, name, success = NULL) {
+  notes <- character(0)
+  if (is.logical(x)) {
+    x <- factor(x, levels = c(FALSE, TRUE), labels = c("FALSE", "TRUE"))
+  } else if (is.numeric(x)) {
+    vals <- sort(unique(x[!is.na(x)]))
+    if (!all(vals %in% c(0, 1))) {
+      .stopf("Response `%s` is numeric but contains values other than 0 and 1: %s.",
+             name, paste(utils::head(vals, 5L), collapse = ", "))
+    }
+    x <- factor(x, levels = c(0, 1))
+  } else if (!is.factor(x)) {
+    x <- factor(x)
+  }
+  observed <- levels(droplevels(x))
+  if (length(observed) != 2L) {
+    .stopf("Response `%s` must take exactly two distinct values; %d observed (%s).",
+           name, length(observed),
+           if (length(observed) == 0L) "none" else paste(observed, collapse = ", "))
+  }
+  x <- droplevels(x)
+  if (!is.null(success)) {
+    success <- as.character(success)
+    if (!success %in% observed) {
+      .stopf("`success` = \"%s\" is not one of the observed levels of `%s`: %s.",
+             success, name, paste(observed, collapse = ", "))
+    }
+    x <- stats::relevel(x, ref = setdiff(observed, success))
+  }
+  list(values = x, success = levels(x)[2L], notes = notes)
+}
+
+#' Apply user-supplied reference levels to grouping factors
+#' @noRd
+.set_references <- function(d, groups, reference) {
+  if (!is.list(reference) || is.null(names(reference))) {
+    .stopf("`reference` must be a named list, for example list(%s = \"...\").",
+           groups[1L])
+  }
+  unknown <- setdiff(names(reference), groups)
+  if (length(unknown) > 0L) {
+    .stopf("`reference` names must be grouping variables; %s %s not.",
+           paste(sprintf("`%s`", unknown), collapse = ", "),
+           if (length(unknown) == 1L) "is" else "are")
+  }
+  for (g in names(reference)) {
+    ref <- as.character(reference[[g]])
+    if (!ref %in% levels(d[[g]])) {
+      .stopf("Reference level \"%s\" not found in `%s`. Levels: %s.",
+             ref, g, paste(levels(d[[g]]), collapse = ", "))
+    }
+    if (is.ordered(d[[g]])) {
+      lv <- levels(d[[g]])
+      d[[g]] <- factor(as.character(d[[g]]), levels = c(ref, setdiff(lv, ref)),
+                       ordered = TRUE)
     } else {
-      resp <- factor(resp)
+      d[[g]] <- stats::relevel(d[[g]], ref = ref)
     }
   }
-  lvls <- levels(resp)
-  if (length(lvls) != 2) {
-    stop(sprintf("The response '%s' must be binary (2 levels). Found %d levels: %s",
-                 response_var, length(lvls), paste(lvls, collapse = ", ")))
-  }
-  if (!is.null(success_level)) {
-    if (!(success_level %in% lvls)) {
-      stop(sprintf("`success_level` ('%s') not found in response levels: %s",
-                   success_level, paste(lvls, collapse = ", ")))
+  d
+}
+
+#' Odds ratios with profile-likelihood or Wald intervals
+#' @noRd
+.odds_ratios <- function(model, conf_level = 0.95, ci_method = "profile",
+                         vcov_matrix = NULL) {
+  ct <- .coef_table(model, vcov_matrix)
+  notes <- character(0)
+  if (ci_method == "profile") {
+    ci <- tryCatch(
+      suppressWarnings(suppressMessages(
+        stats::confint(model, level = conf_level))),
+      error = function(e) e)
+    if (inherits(ci, "error")) {
+      notes <- c(notes, sprintf(
+        "Profile-likelihood intervals failed, Wald intervals were used instead: %s",
+        conditionMessage(ci)))
+      ci <- NULL
+    } else {
+      ci <- as.matrix(ci)
+      if (ncol(ci) != 2L) ci <- matrix(ci, ncol = 2L,
+                                       dimnames = list(ct$term, NULL))
     }
-    other <- setdiff(lvls, success_level)
-    resp <- factor(resp, levels = c(other, success_level))
   } else {
-    success_level <- levels(resp)[2]
+    ci <- NULL
   }
-  data[[response_var]] <- resp
-  list(data = data, success_level = success_level)
-}
-
-.prep_groups <- function(data, group_var, group_ref) {
-  for (g in group_var) {
-    if (!is.factor(data[[g]])) data[[g]] <- factor(data[[g]])
-    if (!is.null(group_ref) && !is.null(group_ref[[g]])) {
-      ref <- group_ref[[g]]
-      if (!(ref %in% levels(data[[g]]))) {
-        stop(sprintf("Reference level '%s' not found in '%s'. Levels: %s",
-                     ref, g, paste(levels(data[[g]]), collapse = ", ")))
-      }
-      data[[g]] <- stats::relevel(data[[g]], ref = ref)
-    }
+  if (is.null(ci)) {
+    z <- .coef_crit(model, conf_level)
+    ci <- cbind(ct$estimate - z * ct$se, ct$estimate + z * ct$se)
+    rownames(ci) <- ct$term
+    method_used <- "wald"
+  } else {
+    method_used <- "profile"
   }
-  data
-}
-
-.fit_glm <- function(data, response_var, group_var, ...) {
-  form <- stats::reformulate(termlabels = group_var, response = response_var)
-  mod <- stats::glm(form, data = data, family = stats::binomial(), ...)
-  if (!isTRUE(mod$converged)) warning("The logistic regression model did not converge.")
-  mod
-}
-
-.lr_null_vs_full <- function(model, data, response_var) {
-  null_form <- stats::reformulate(termlabels = "1", response = response_var)
-  null_model <- stats::glm(null_form, data = data, family = stats::binomial())
-  ll_full <- as.numeric(stats::logLik(model))
-  ll_null <- as.numeric(stats::logLik(null_model))
-  df_full <- attr(stats::logLik(model), "df")
-  df_null <- attr(stats::logLik(null_model), "df")
-  lr_stat <- 2 * (ll_full - ll_null)
-  lr_df <- df_full - df_null
-  lr_p <- stats::pchisq(lr_stat, df = lr_df, lower.tail = FALSE)
-  list(
-    models = data.frame(
-      Model = c("Null", "Full"),
-      logLik = c(ll_null, ll_full),
-      df = c(df_null, df_full)
-    ),
-    test = data.frame(
-      Test = "Likelihood ratio (Full vs Null)",
-      Chisq = lr_stat,
-      Df = lr_df,
-      `Pr(>Chisq)` = lr_p,
-      check.names = FALSE
-    )
-  )
-}
-
-.vcov_for <- function(model, robust, robust_type) {
-  if (robust) sandwich::vcovHC(model, type = robust_type) else stats::vcov(model)
-}
-
-# FIXED: resilient to odd shapes/labels from lmtest::coeftest()
-.coef_tests <- function(model, vc) {
-  ct <- lmtest::coeftest(model, vcov. = vc)
-  ct_mat <- as.matrix(ct)
-  
-  term <- rownames(ct_mat)
-  if (is.null(term)) term <- paste0("param_", seq_len(nrow(ct_mat)))
-  
-  cn_raw  <- colnames(ct_mat)
-  cn_norm <- tolower(gsub("[^a-zA-Z0-9]+", "", cn_raw))
-  
-  get_col <- function(target) {
-    opts <- switch(target,
-                   estimate = c("estimate","coef","coefficients"),
-                   stderr   = c("stderr","stderror","se"),
-                   stat     = c("zvalue","tvalue","z","t"),
-                   pvalue   = c("prgtzltz","pvalue","p","prgt|z|","prgt|t|")
-    )
-    idx <- match(opts, cn_norm, nomatch = 0L)
-    idx <- idx[idx > 0L]
-    if (length(idx) > 0L) idx[1L] else NA_integer_
-  }
-  
-  i_est <- get_col("estimate")
-  i_se  <- get_col("stderr")
-  i_st  <- get_col("stat")
-  i_p   <- get_col("pvalue")
-  
-  if (any(is.na(c(i_est, i_se, i_st, i_p))) && ncol(ct_mat) >= 4) {
-    if (is.na(i_est)) i_est <- 1L
-    if (is.na(i_se))  i_se  <- 2L
-    if (is.na(i_st))  i_st  <- 3L
-    if (is.na(i_p))   i_p   <- 4L
-  }
-  
-  safe_get <- function(j) {
-    if (is.na(j) || j < 1L || j > ncol(ct_mat)) rep(NA_real_, nrow(ct_mat)) else ct_mat[, j]
-  }
-  
+  idx <- match(ct$term, rownames(ci))
   out <- data.frame(
-    term      = term,
-    estimate  = as.numeric(safe_get(i_est)),
-    std_error = as.numeric(safe_get(i_se)),
-    z_value   = as.numeric(safe_get(i_st)),
-    p_value   = as.numeric(safe_get(i_p)),
-    row.names = NULL,
-    check.names = FALSE
+    term       = ct$term,
+    odds_ratio = exp(ct$estimate),
+    conf_low   = exp(ci[idx, 1L]),
+    conf_high  = exp(ci[idx, 2L]),
+    se_log_or  = ct$se,
+    statistic  = ct$statistic,
+    p_value    = ct$p_value,
+    ci_method  = method_used,
+    stringsAsFactors = FALSE, row.names = NULL
   )
-  
-  num_cols <- c("estimate","std_error","z_value","p_value")
-  for (nc in num_cols) out[[nc]] <- suppressWarnings(as.numeric(out[[nc]]))
-  
+  out <- out[out$term != "(Intercept)", , drop = FALSE]
+  row.names(out) <- NULL
+  list(table = out, note = notes)
+}
+
+#' Observed proportions of each response level within each cell
+#' @noRd
+.proportion_table <- function(d, response, cell) {
+  tab <- table(d[[cell]], d[[response]])
+  totals <- rowSums(tab)
+  out <- as.data.frame(tab, stringsAsFactors = FALSE)
+  names(out) <- c(cell, response, "n")
+  out$group_total <- as.integer(totals[out[[cell]]])
+  out$proportion <- ifelse(out$group_total > 0L, out$n / out$group_total, NA_real_)
+  out[[cell]] <- factor(out[[cell]], levels = levels(d[[cell]]))
   out
-}
-
-.effect_sizes <- function(coef_tab, include_intercept, conf_level = 0.95, exponentiate = TRUE) {
-  z <- stats::qnorm(1 - (1 - conf_level)/2)
-  est <- coef_tab$estimate
-  se  <- coef_tab$std_error
-  lo  <- est - z * se
-  hi  <- est + z * se
-  
-  if (exponentiate) {
-    est <- exp(est); lo <- exp(lo); hi <- exp(hi)
-    out <- data.frame(
-      term = coef_tab$term,
-      odds_ratio = est,
-      conf.low   = lo,
-      conf.high  = hi,
-      p_value    = coef_tab$p_value,
-      row.names = NULL
-    )
-  } else {
-    out <- data.frame(
-      term = coef_tab$term,
-      estimate = est,
-      conf.low = lo,
-      conf.high = hi,
-      p_value  = coef_tab$p_value,
-      row.names = NULL
-    )
-  }
-  if (!include_intercept) out <- out[out$term != "(Intercept)", , drop = FALSE]
-  out
-}
-
-.prop_table <- function(data, response_var, group_var) {
-  counts <- data %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(c(group_var, response_var)))) %>%
-    dplyr::summarise(count = dplyr::n(), .groups = "drop")
-  
-  totals <- counts %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(group_var))) %>%
-    dplyr::summarise(group_total = sum(count), .groups = "drop")
-  
-  counts %>%
-    dplyr::left_join(totals, by = group_var) %>%
-    dplyr::mutate(prop = count / group_total)
-}
-
-.plot_props <- function(prop_table, response_var, group_var, success_level) {
-  if (length(group_var) == 1) {
-    x_var <- rlang::sym(group_var)
-    plot_data <- prop_table
-    x_label <- group_var
-  } else {
-    combined_name <- "group_combined"
-    plot_data <- prop_table %>%
-      dplyr::mutate(!!rlang::sym(combined_name) := interaction(!!!rlang::syms(group_var), sep = " : "))
-    x_var <- rlang::sym(combined_name)
-    x_label <- "Combined Group"
-  }
-  plot_data[[response_var]] <- as.factor(plot_data[[response_var]])
-  
-  ggplot2::ggplot(
-    plot_data,
-    ggplot2::aes(x = !!x_var, y = prop, fill = !!rlang::sym(response_var))
-  ) +
-    ggplot2::geom_bar(stat = "identity") +
-    ggplot2::geom_text(
-      ggplot2::aes(label = scales::percent(prop)),
-      position = ggplot2::position_stack(vjust = 0.5),
-      size = 4
-    ) +
-    ggplot2::labs(
-      x = x_label,
-      y = "Proportion",
-      fill = response_var,
-      title = sprintf("Proportion of '%s' levels by %s (success: %s)",
-                      response_var, x_label, success_level)
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      axis.text.x  = ggplot2::element_text(angle = 45, hjust = 1),
-      plot.title   = ggplot2::element_text(hjust = 0.5, size = 16, face = "bold"),
-      axis.title.x = ggplot2::element_text(size = 14, face = "bold"),
-      axis.title.y = ggplot2::element_text(size = 14, face = "bold"),
-      legend.title = ggplot2::element_blank(),
-      legend.text  = ggplot2::element_text(size = 12),
-      legend.position = "bottom"
-    ) +
-    ggplot2::scale_y_continuous(labels = scales::percent, limits = c(0, 1))
 }
