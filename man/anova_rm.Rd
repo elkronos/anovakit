@@ -67,7 +67,7 @@ Default \code{FALSE}.}
 example \code{fun_aggregate} or \code{observed}.}
 }
 \value{
-An \code{\link{anovatoolbox_fit}} object, with
+An \code{\link{anovakit_fit}} object, with
   \code{$subjects_dropped} listing any subjects removed for incomplete
   within-subject cells, \code{$sphericity} holding Mauchly's test and the
   epsilon corrections, \code{$residuals} the within-cell residuals the

@@ -68,7 +68,7 @@ of cells is large; \code{$notes} records that they were skipped. Default
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovatoolbox_fit}} object, with five extra components:
+An \code{\link{anovakit_fit}} object, with five extra components:
   \code{$slopes_test} (the homogeneity-of-slopes comparison, also in
   \code{$assumptions$slopes}), \code{$simple_slopes} (per-group covariate
   slopes from \code{\link[emmeans]{emtrends}}, \code{NULL} when the additive

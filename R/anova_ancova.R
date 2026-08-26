@@ -62,7 +62,7 @@
 #' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
 #'   Default \code{FALSE}.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object, with five extra components:
+#' @return An \code{\link{anovakit_fit}} object, with five extra components:
 #'   \code{$slopes_test} (the homogeneity-of-slopes comparison, also in
 #'   \code{$assumptions$slopes}), \code{$simple_slopes} (per-group covariate
 #'   slopes from \code{\link[emmeans]{emtrends}}, \code{NULL} when the additive

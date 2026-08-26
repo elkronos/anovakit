@@ -1,4 +1,4 @@
 library(testthat)
-library(ANOVAtoolbox)
+library(anovakit)
 
-test_check("ANOVAtoolbox")
+test_check("anovakit")

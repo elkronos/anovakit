@@ -67,7 +67,7 @@
 #'   against the original frame and silently misaligns as soon as one row is
 #'   dropped for missing values.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object, with \code{$model_type}
+#' @return An \code{\link{anovakit_fit}} object, with \code{$model_type}
 #'   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
 #'   of the \emph{Poisson} fit (the statistic the model choice was made on) and
 #'   \code{$model_dispersion} that of the model actually returned.

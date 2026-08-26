@@ -1,13 +1,15 @@
-# ANOVAtoolbox 0.1.0
+# anovakit 0.1.0
 
-First release.
+First release. The package was previously distributed as loose scripts under the
+name ANOVAtoolbox; it is now an installable package called anovakit, and the
+repository has been renamed to match.
 
 Eight analysis-of-variance workflows behind one argument convention and one
 return class: `anova_welch()`, `anova_kw()`, `anova_ancova()`, `anova_rm()`,
 `anova_manova()`, `anova_bin()`, `anova_count()` and `anova_glm()`. Each
 validates its input, checks the assumptions that matter for its method, reports
 effect sizes, computes estimated marginal means and pairwise comparisons, and
-returns `ggplot2` objects rather than drawing them. See `vignette("ANOVAtoolbox")`
+returns `ggplot2` objects rather than drawing them. See `vignette("anovakit")`
 for a tour and the README for the design decisions behind it.
 
 The package supersedes a collection of loose scripts distributed from the same
@@ -23,7 +25,7 @@ the response, previously `dv` or `response_var`, is `response`.
 exported under generic names — `validate_vars()`, `check_normality()`,
 `compute_emm()`, `calculate_effect_sizes()` and others — are now internal.
 
-Every function returns an `anovatoolbox_fit` object with `print()`, `summary()`
+Every function returns an `anovakit_fit` object with `print()`, `summary()`
 and `plot()` methods, in place of eight differently shaped lists.
 
 ## Results that changed

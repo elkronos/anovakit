@@ -59,7 +59,7 @@
 #'   against the original frame and silently misaligns as soon as one row is
 #'   dropped for missing values.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object, with \code{$family} (the
+#' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
 #'   and residual deviances, and the residual degrees of freedom).
 #'   \code{$assumptions} holds \code{coefficients} -- the coefficient table,

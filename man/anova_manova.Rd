@@ -64,7 +64,7 @@ Default \code{TRUE}.}
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovatoolbox_fit}} object with extra components
+An \code{\link{anovakit_fit}} object with extra components
   \code{$univariate} (a named list of per-response fits, each holding that
   response's own \code{$model}, \code{$anova}, \code{$effect_sizes},
   \code{$emmeans}, \code{$emmeans_object} and \code{$posthoc}),

@@ -120,7 +120,7 @@ fx_multivariate <- function(n = 120, seed = 110) {
 
 #' Every component the shared class promises
 expect_fit_shape <- function(fit) {
-  testthat::expect_s3_class(fit, "anovatoolbox_fit")
+  testthat::expect_s3_class(fit, "anovakit_fit")
   for (nm in c("method", "call", "anova", "assumptions", "plots",
                "data_used", "n_removed", "conf_level", "notes")) {
     testthat::expect_true(nm %in% names(fit),

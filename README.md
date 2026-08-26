@@ -1,7 +1,7 @@
-# ANOVAtoolbox
+# anovakit
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/elkronos/ANOVAtoolbox/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/elkronos/ANOVAtoolbox/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/elkronos/anovakit/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/elkronos/anovakit/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 Eight analysis-of-variance workflows that share one argument convention, one
@@ -18,7 +18,7 @@ than drawing them.
 
 ```r
 # install.packages("remotes")
-remotes::install_github("elkronos/ANOVAtoolbox")
+remotes::install_github("elkronos/anovakit")
 ```
 
 ## Which function
@@ -41,7 +41,7 @@ Everything after that is shared.
 ## A first example
 
 ```r
-library(ANOVAtoolbox)
+library(anovakit)
 
 set.seed(123)
 d <- data.frame(
@@ -75,7 +75,7 @@ plot(fit, "means")
 
 ## What every result contains
 
-All eight functions return an object of class `anovatoolbox_fit` — a plain
+All eight functions return an object of class `anovakit_fit` — a plain
 list, so `$` works as usual, with `print()`, `summary()` and `plot()` methods.
 
 | Component | What is in it |
@@ -225,14 +225,14 @@ does, with the same name and the same meaning.
 ## Getting help
 
 ```r
-vignette("ANOVAtoolbox")      # the whole package on one dataset
+vignette("anovakit")      # the whole package on one dataset
 ?anova_welch                  # any function
-?anovatoolbox_fit             # what the returned object holds
-citation("ANOVAtoolbox")
+?anovakit_fit             # what the returned object holds
+citation("anovakit")
 ```
 
 Bug reports and feature requests:
-<https://github.com/elkronos/ANOVAtoolbox/issues>.
+<https://github.com/elkronos/anovakit/issues>.
 
 ## Dependencies
 
