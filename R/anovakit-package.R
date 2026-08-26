@@ -1,4 +1,4 @@
-#' ANOVAtoolbox: Analysis of Variance Workflows
+#' anovakit: Analysis of Variance Workflows
 #'
 #' A consistent set of wrappers around the analysis of variance designs that
 #' applied work most often needs. Every function takes \code{data} first and
@@ -6,7 +6,7 @@
 #' \code{groups}, \code{\link{anova_manova}} takes \code{responses} (plural),
 #' and \code{\link{anova_rm}} takes \code{response} with \code{subject},
 #' \code{within} and \code{between}. All eight validate their input the same
-#' way and return the same S3 class, \code{\link{anovatoolbox_fit}}.
+#' way and return the same S3 class, \code{\link{anovakit_fit}}.
 #'
 #' @section Choosing a function:
 #' \describe{
@@ -65,7 +65,7 @@
 #' additionally accept \code{"tukey"} (their default), \code{"sidak"},
 #' \code{"scheffe"} and \code{"dunnettx"}.
 #'
-#' @seealso \code{\link{anovatoolbox_fit}} for the returned object.
+#' @seealso \code{\link{anovakit_fit}} for the returned object.
 #' @keywords internal
 "_PACKAGE"
 

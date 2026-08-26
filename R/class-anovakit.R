@@ -1,9 +1,9 @@
 # The shared return class ----------------------------------------------------
 
-#' The object returned by every ANOVAtoolbox function
+#' The object returned by every anovakit function
 #'
 #' All eight analysis functions return an object of class
-#' \code{anovatoolbox_fit}. It is a plain list, so \code{$} extraction works as
+#' \code{anovakit_fit}. It is a plain list, so \code{$} extraction works as
 #' usual, with \code{print}, \code{summary} and \code{plot} methods for
 #' convenience.
 #'
@@ -74,12 +74,12 @@
 #' \code{\link{anova_bin}} and \code{\link{anova_glm}} add
 #' \code{$model_stats}. Each is documented on the function that produces it.
 #'
-#' @name anovatoolbox_fit
-#' @seealso \code{\link{print.anovatoolbox_fit}},
-#'   \code{\link{summary.anovatoolbox_fit}}, \code{\link{plot.anovatoolbox_fit}}
+#' @name anovakit_fit
+#' @seealso \code{\link{print.anovakit_fit}},
+#'   \code{\link{summary.anovakit_fit}}, \code{\link{plot.anovakit_fit}}
 NULL
 
-#' Build an anovatoolbox_fit object
+#' Build an anovakit_fit object
 #' @noRd
 .new_fit <- function(method, call, model = NULL, anova = NULL,
                      effect_sizes = NULL, emmeans = NULL, emmeans_object = NULL,
@@ -105,17 +105,17 @@ NULL
     ),
     extra
   )
-  class(out) <- "anovatoolbox_fit"
+  class(out) <- "anovakit_fit"
   out
 }
 
-#' Print an ANOVAtoolbox result
+#' Print an anovakit result
 #'
 #' Shows the method, the sample size, the omnibus table and any notes. Use
-#' \code{\link{summary.anovatoolbox_fit}} for effect sizes, assumption checks
+#' \code{\link{summary.anovakit_fit}} for effect sizes, assumption checks
 #' and post-hoc comparisons.
 #'
-#' @param x An \code{\link{anovatoolbox_fit}} object.
+#' @param x An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
 #'   \code{4}. Unlike most printing in R this is not capped by
 #'   \code{getOption("digits")}.
@@ -127,7 +127,7 @@ NULL
 #' fit <- anova_welch(d, "y", "g", plots = FALSE)
 #' print(fit)
 #' @export
-print.anovatoolbox_fit <- function(x, digits = 4L, ...) {
+print.anovakit_fit <- function(x, digits = 4L, ...) {
   cat(x$method, "\n")
   cat(strrep("-", nchar(x$method)), "\n", sep = "")
   if (!is.null(x$call)) {
@@ -155,12 +155,12 @@ print.anovatoolbox_fit <- function(x, digits = 4L, ...) {
   invisible(x)
 }
 
-#' Summarise an ANOVAtoolbox result
+#' Summarise an anovakit result
 #'
 #' Everything \code{print} shows, plus assumption checks, effect sizes,
 #' estimated marginal means and post-hoc comparisons.
 #'
-#' @param object An \code{\link{anovatoolbox_fit}} object.
+#' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
 #'   \code{4}.
 #' @param ... Ignored.
@@ -170,7 +170,7 @@ print.anovatoolbox_fit <- function(x, digits = 4L, ...) {
 #' d <- data.frame(g = rep(c("a", "b", "c"), each = 20), y = rnorm(60))
 #' summary(anova_welch(d, "y", "g", plots = FALSE))
 #' @export
-summary.anovatoolbox_fit <- function(object, digits = 4L, ...) {
+summary.anovakit_fit <- function(object, digits = 4L, ...) {
   print(object, digits = digits)
 
   if (length(object$assumptions) > 0L) {
@@ -206,12 +206,12 @@ summary.anovatoolbox_fit <- function(object, digits = 4L, ...) {
   invisible(object)
 }
 
-#' Plot an ANOVAtoolbox result
+#' Plot an anovakit result
 #'
 #' Returns one of the \pkg{ggplot2} objects the analysis built. The available
 #' names are listed by \code{print()} and stored in \code{x$plots}.
 #'
-#' @param x An \code{\link{anovatoolbox_fit}} object.
+#' @param x An \code{\link{anovakit_fit}} object.
 #' @param which Name or index of the plot. Defaults to the first one.
 #' @param ... Ignored.
 #' @return A \pkg{ggplot2} object, invisibly returning \code{NULL} when the fit
@@ -222,7 +222,7 @@ summary.anovatoolbox_fit <- function(object, digits = 4L, ...) {
 #' fit <- anova_welch(d, "y", "g")
 #' p <- plot(fit, which = "means")
 #' @export
-plot.anovatoolbox_fit <- function(x, which = 1L, ...) {
+plot.anovakit_fit <- function(x, which = 1L, ...) {
   if (length(x$plots) == 0L) {
     message("This fit holds no plots (it was called with plots = FALSE).")
     return(invisible(NULL))

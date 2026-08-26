@@ -1,4 +1,4 @@
-Package: ANOVAtoolbox
+Package: anovakit
 Title: Analysis of Variance Workflows with Assumption Checks and Effect Sizes
 Version: 0.1.0
 Authors@R: person("Justin", "Chase", email = "jchase.msu@gmail.com",
@@ -43,6 +43,6 @@ Suggests:
     withr
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-URL: https://github.com/elkronos/ANOVAtoolbox
-BugReports: https://github.com/elkronos/ANOVAtoolbox/issues
+URL: https://github.com/elkronos/anovakit
+BugReports: https://github.com/elkronos/anovakit/issues
 RoxygenNote: 7.3.1

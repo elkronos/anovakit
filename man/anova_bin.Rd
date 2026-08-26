@@ -78,7 +78,7 @@ dropped for missing values.}
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovatoolbox_fit}} object with \code{$model_stats}
+An \code{\link{anovakit_fit}} object with \code{$model_stats}
   (AIC, BIC, the log-likelihood, McFadden's pseudo R squared, the level
   treated as a success, and \code{lr_vs_null}, the model-versus-null
   likelihood ratio test), and \code{$assumptions} holding

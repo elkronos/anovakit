@@ -1,8 +1,8 @@
 ---
-title: "Getting started with ANOVAtoolbox"
+title: "Getting started with anovakit"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Getting started with ANOVAtoolbox}
+  %\VignetteIndexEntry{Getting started with anovakit}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -10,7 +10,7 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 6,
                       fig.height = 3.5, dpi = 96)
-library(ANOVAtoolbox)
+library(anovakit)
 ```
 
 One dataset, run through the whole package. Every function names its columns as
@@ -266,7 +266,7 @@ cnt$notes
 
 ## Where to go next
 
-`?anovatoolbox_fit` documents every component of the returned object, including
+`?anovakit_fit` documents every component of the returned object, including
 the ones each function adds for itself. `names(fit)` lists them for any fit you
 have in hand.
 

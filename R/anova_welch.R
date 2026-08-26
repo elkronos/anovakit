@@ -47,7 +47,7 @@
 #' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
 #'   Default \code{FALSE}.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object. \code{$anova} holds the
+#' @return An \code{\link{anovakit_fit}} object. \code{$anova} holds the
 #'   Welch test, \code{$emmeans} the group means with intervals,
 #'   \code{$posthoc} the pairwise comparisons with adjusted p-values and
 #'   intervals, \code{$effect_sizes} the standardised mean differences (both

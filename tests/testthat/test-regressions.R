@@ -156,7 +156,7 @@ test_that("anova_manova survives non-syntactic grouping column names", {
     names(d2)[names(d2) == "g"] <- nm
     expect_s3_class(anova_manova(d2, c("score1", "score2"), nm,
                                  assumptions = FALSE, plots = FALSE),
-                    "anovatoolbox_fit")
+                    "anovakit_fit")
   }
 })
 
@@ -183,7 +183,7 @@ test_that("Inf in the response is treated as missing, not passed to a test", {
   expect_true(all(is.finite(fit$data_used$value)))
 
   expect_s3_class(anova_kw(d, "value", "group", diagnostics = TRUE,
-                           plots = FALSE), "anovatoolbox_fit")
+                           plots = FALSE), "anovakit_fit")
 })
 
 test_that("a zero-variance group is refused rather than returning NaN", {
@@ -192,7 +192,7 @@ test_that("a zero-variance group is refused rather than returning NaN", {
                         withr::with_seed(8, stats::rnorm(5, 3))))
   expect_error(anova_welch(d, "y", "g"), "positive variance in every group")
   # the rank-based route still works on the same data
-  expect_s3_class(anova_kw(d, "y", "g", plots = FALSE), "anovatoolbox_fit")
+  expect_s3_class(anova_kw(d, "y", "g", plots = FALSE), "anovakit_fit")
 })
 
 test_that("a factor response with a binomial family does not crash the plots", {
@@ -202,7 +202,7 @@ test_that("a factor response with a binomial family does not crash the plots", {
     dd
   })
   fit <- anova_glm(d, "fy", "A", family = "binomial")
-  expect_s3_class(fit, "anovatoolbox_fit")
+  expect_s3_class(fit, "anovakit_fit")
   expect_false("box" %in% names(fit$plots))
 
   # and a factor response with a Gaussian family is refused with a useful message
@@ -238,7 +238,7 @@ test_that("an ordered grouping factor accepts a reference level", {
   d <- fx_binary()
   d$g <- factor(d$g, ordered = TRUE)
   fit <- anova_bin(d, "y", "g", reference = list(g = "b"), plots = FALSE)
-  expect_s3_class(fit, "anovatoolbox_fit")
+  expect_s3_class(fit, "anovakit_fit")
   expect_identical(levels(fit$data_used$g)[1], "b")
 })
 
@@ -397,7 +397,7 @@ test_that("print honours its digits argument regardless of the global option", {
 test_that("per-group normality reports the n the test actually used", {
   v <- c(1, 2, NA, 4, 5, 1, 2, 3, 4, 5)
   g <- factor(rep(c("a", "b"), each = 5))
-  tab <- ANOVAtoolbox:::.normality_by_group(v, g)
+  tab <- anovakit:::.normality_by_group(v, g)
   expect_identical(tab$n, c(4L, 5L))
 })
 
@@ -556,7 +556,7 @@ test_that("emmeans plots find their columns when a grouping name was protected",
     expect_true(any(grepl("renamed", fit$notes)), info = nm)
     # The plot's y values are the estimates, not the grouping labels
     py <- fit$plots$emmeans$data
-    ycol <- ANOVAtoolbox:::.emm_col(py, "estimate", protect = nm)
+    ycol <- anovakit:::.emm_col(py, "estimate", protect = nm)
     expect_true(is.numeric(py[[ycol]]), info = nm)
   }
 })
@@ -593,12 +593,12 @@ test_that("the suppressed-comparison count is the number that would be made", {
 
 test_that("the suppressed-comparison count survives more cells than an integer", {
   # choose(65537, 2) exceeds .Machine$integer.max, and sprintf("%d") rejects it
-  note <- ANOVAtoolbox:::.no_posthoc_note(65537L)
+  note <- anovakit:::.no_posthoc_note(65537L)
   expect_gt(choose(65537L, 2L), .Machine$integer.max)
   expect_match(note, "2147516416", fixed = TRUE)
   expect_false(grepl("e+", note, fixed = TRUE))
-  expect_match(ANOVAtoolbox:::.no_posthoc_note(3L), "3.", fixed = TRUE)
-  expect_match(ANOVAtoolbox:::.no_posthoc_note(NA_integer_), "posthoc = FALSE")
+  expect_match(anovakit:::.no_posthoc_note(3L), "3.", fixed = TRUE)
+  expect_match(anovakit:::.no_posthoc_note(NA_integer_), "posthoc = FALSE")
 })
 
 test_that("a saturated model reports NA inference instead of warning", {
@@ -609,11 +609,11 @@ test_that("a saturated model reports NA inference instead of warning", {
                                  plots = FALSE, posthoc = FALSE))
   expect_true(any(grepl("saturated", fit$notes)))
   expect_true(any(grepl("undefined or degenerate", fit$notes)))
-  expect_true(is.na(ANOVAtoolbox:::.coef_crit(fit$model, 0.95)))
+  expect_true(is.na(anovakit:::.coef_crit(fit$model, 0.95)))
 
   # A model with residual degrees of freedom is unaffected
   ok <- anova_glm(fx_oneway(), "value", "group", plots = FALSE)
-  expect_true(is.finite(ANOVAtoolbox:::.coef_crit(ok$model, 0.95)))
+  expect_true(is.finite(anovakit:::.coef_crit(ok$model, 0.95)))
   expect_false(any(grepl("saturated", ok$notes)))
 })
 
@@ -660,18 +660,18 @@ test_that("afex's own warnings are captured rather than printed", {
 })
 
 test_that("the collector returns the value and never re-raises", {
-  q <- ANOVAtoolbox:::.collect_conditions({
+  q <- anovakit:::.collect_conditions({
     warning("first"); message("second"); 42
   })
   expect_identical(q$value, 42)
   expect_identical(q$said, c("first", "second"))
 
-  e <- ANOVAtoolbox:::.collect_conditions(stop("boom"))
+  e <- anovakit:::.collect_conditions(stop("boom"))
   expect_s3_class(e$value, "error")
   expect_identical(conditionMessage(e$value), "boom")
 
-  expect_identical(ANOVAtoolbox:::.said_note(character(0), "x"), character(0))
-  expect_match(ANOVAtoolbox:::.said_note(c("a", "b"), "x()"), "x\\(\\) reported: a / b")
+  expect_identical(anovakit:::.said_note(character(0), "x"), character(0))
+  expect_match(anovakit:::.said_note(c("a", "b"), "x()"), "x\\(\\) reported: a / b")
 })
 
 test_that("the repeated-measures duplicate count cannot be fooled by labels", {
@@ -681,7 +681,7 @@ test_that("the repeated-measures duplicate count cannot be fooled by labels", {
   d$score <- c(1, 2, 3, 4)
   d$id <- factor(d$id); d$time <- factor(d$time)
   # id "a" + cell "bc" and id "ab" + cell "c" both paste to "abc" with sep = ""
-  bal <- ANOVAtoolbox:::.balance_subjects(d, "id", "time")
+  bal <- anovakit:::.balance_subjects(d, "id", "time")
   expect_identical(bal$duplicates, 0L)
 })
 
@@ -702,17 +702,17 @@ test_that("a negative binomial fit uses z, as MASS does, not t", {
 
   # MASS::glm.nb fixes the dispersion at 1 and reports a z value; using a t
   # reference with df.residual made the p-value and the interval too wide
-  expect_false(ANOVAtoolbox:::.estimates_dispersion(ref))
-  expect_equal(ANOVAtoolbox:::.coef_crit(ref, 0.95), stats::qnorm(0.975))
+  expect_false(anovakit:::.estimates_dispersion(ref))
+  expect_equal(anovakit:::.coef_crit(ref, 0.95), stats::qnorm(0.975))
   expect_equal(fit$effect_sizes$p_value[1], unname(rc["gb", 4]))
   expect_equal(fit$effect_sizes$conf_low[1],
                exp(rc["gb", 1] - stats::qnorm(0.975) * rc["gb", 2]))
 
   # ... while Gaussian and Gamma still use t, and binomial and Poisson still z
   ok <- anova_glm(fx_oneway(), "value", "group", plots = FALSE)
-  expect_true(ANOVAtoolbox:::.estimates_dispersion(ok$model))
+  expect_true(anovakit:::.estimates_dispersion(ok$model))
   b <- anova_bin(fx_binary(), "y", "g", plots = FALSE)
-  expect_false(ANOVAtoolbox:::.estimates_dispersion(b$model))
+  expect_false(anovakit:::.estimates_dispersion(b$model))
 })
 
 test_that("routine third-party chatter does not become a note", {
@@ -722,12 +722,12 @@ test_that("routine third-party chatter does not become a note", {
   fit <- anova_rm(fx_repeated(), "score", subject = "id", within = "time",
                   between = "arm", plots = FALSE)
   expect_false(any(grepl("Contrasts set to", fit$notes)))
-  expect_identical(ANOVAtoolbox:::.said_note(
+  expect_identical(anovakit:::.said_note(
     "Contrasts set to contr.sum for the following variables: arm", "afex"),
     character(0))
 
   # A real warning still gets through
-  expect_match(ANOVAtoolbox:::.said_note("glm.fit: algorithm did not converge",
+  expect_match(anovakit:::.said_note("glm.fit: algorithm did not converge",
                                          "stats::glm()"),
                "did not converge")
 })
@@ -839,7 +839,7 @@ test_that("a matrix response is refused by name, not by an internal error", {
     function() anova_count(transform(fx_counts(), count = scale(count) * 0 +
                                        fx_counts()$count),
                            "count", "g1", plots = FALSE))) {
-    expect_s3_class(f(), "anovatoolbox_fit")
+    expect_s3_class(f(), "anovakit_fit")
   }
 })
 
@@ -857,8 +857,8 @@ test_that("only MASS's negbin fit fixes the dispersion; the family alone does no
   # MASS::glm.nb() estimates theta then fixes the dispersion at 1 -> z
   nb <- MASS::glm.nb(cnt ~ g, data = d)
   expect_s3_class(nb, "negbin")
-  expect_false(ANOVAtoolbox:::.estimates_dispersion(nb))
-  expect_equal(ANOVAtoolbox:::.coef_crit(nb, 0.95), stats::qnorm(0.975))
+  expect_false(anovakit:::.estimates_dispersion(nb))
+  expect_equal(anovakit:::.coef_crit(nb, 0.95), stats::qnorm(0.975))
 
   # glm(family = negative.binomial(theta)) carries the SAME family string but
   # is an ordinary glm whose dispersion summary.glm() estimates -> t
@@ -868,7 +868,7 @@ test_that("only MASS's negbin fit fixes the dispersion; the family alone does no
   expect_true(grepl("^Negative Binomial", stats::family(nb)$family))
   expect_true(grepl("^Negative Binomial", stats::family(fx)$family))
   expect_false(inherits(fx, "negbin"))
-  expect_true(ANOVAtoolbox:::.estimates_dispersion(fx))
+  expect_true(anovakit:::.estimates_dispersion(fx))
 
   ref <- stats::coef(summary(fx))
   got <- anova_glm(d, "cnt", "g", family = MASS::negative.binomial(2),

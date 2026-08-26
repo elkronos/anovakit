@@ -60,7 +60,7 @@
 #'   against the original frame and silently misaligns as soon as one row is
 #'   dropped for missing values.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object with \code{$model_stats}
+#' @return An \code{\link{anovakit_fit}} object with \code{$model_stats}
 #'   (AIC, BIC, the log-likelihood, McFadden's pseudo R squared, the level
 #'   treated as a success, and \code{lr_vs_null}, the model-versus-null
 #'   likelihood ratio test), and \code{$assumptions} holding

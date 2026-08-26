@@ -46,7 +46,7 @@
 #' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
 #'   Default \code{FALSE}.
 #'
-#' @return An \code{\link{anovatoolbox_fit}} object. \code{$anova} holds the
+#' @return An \code{\link{anovakit_fit}} object. \code{$anova} holds the
 #'   Kruskal-Wallis test, \code{$posthoc} Dunn's comparisons with raw and
 #'   adjusted p-values, \code{$effect_sizes} epsilon squared and eta squared for
 #'   the rank statistic, and \code{$emmeans} one row per group with its size,

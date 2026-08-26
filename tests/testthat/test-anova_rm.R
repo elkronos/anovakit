@@ -83,7 +83,7 @@ test_that("a large design does not fail on the Shapiro-Wilk size limit", {
     dd
   })
   fit <- anova_rm(d, "y", subject = "id", within = "time", plots = FALSE)
-  expect_s3_class(fit, "anovatoolbox_fit")
+  expect_s3_class(fit, "anovakit_fit")
   expect_null(fit$assumptions$normality)
   expect_true(any(grepl("Shapiro-Wilk skipped", fit$notes)))
 })

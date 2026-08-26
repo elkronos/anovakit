@@ -1,8 +1,8 @@
 bibentry(
   bibtype  = "Manual",
-  title    = "ANOVAtoolbox: Analysis of Variance Workflows with Assumption Checks and Effect Sizes",
+  title    = "anovakit: Analysis of Variance Workflows with Assumption Checks and Effect Sizes",
   author   = person("Justin", "Chase"),
   year     = "2026",
   note     = "R package version 0.1.0",
-  url      = "https://github.com/elkronos/ANOVAtoolbox"
+  url      = "https://github.com/elkronos/anovakit"
 )

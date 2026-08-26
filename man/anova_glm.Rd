@@ -77,7 +77,7 @@ dropped for missing values.}
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovatoolbox_fit}} object, with \code{$family} (the
+An \code{\link{anovakit_fit}} object, with \code{$family} (the
   family object actually used) and \code{$model_stats} (AIC, BIC, the null
   and residual deviances, and the residual degrees of freedom).
   \code{$assumptions} holds \code{coefficients} -- the coefficient table,
