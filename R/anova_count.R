@@ -1,486 +1,432 @@
-#' Analysis of Count Data with Poisson / Negative Binomial Models
+#' Analysis of Deviance for a Count Response
 #'
-#' Fits a Poisson regression for count outcomes with one or more grouping
-#' factors (including their interaction), assesses dispersion, optionally
-#' refits using a Negative Binomial model, computes marginal means and
-#' pairwise comparisons, and returns a plot of estimated means with
-#' confidence intervals.
-#'
-#' @section Overview:
-#' \itemize{
-#'   \item Validates inputs and factor levels.
-#'   \item Fits \code{glm(..., family = poisson(link = "log"))}.
-#'   \item Computes the Pearson dispersion statistic.
-#'   \item If dispersion exceeds a threshold and requested, refits with
-#'         \code{MASS::glm.nb(...)}.
-#'   \item Obtains estimated marginal means (EMMs) using \pkg{emmeans}
-#'         on the response scale and pairwise comparisons with Tukey
-#'         adjustment.
-#'   \item Normalizes common column names from \pkg{emmeans} outputs so the
-#'         returned tables consistently contain \code{response}, \code{lower.CL},
-#'         and \code{upper.CL}.
-#'   \item Provides a bar chart of estimated means (with intervals when available).
-#' }
-#'
-#' @section Helpers:
-#' Internal utilities used by the function include:
-#' \itemize{
-#'   \item Input checks and formula builder.
-#'   \item Pearson dispersion computation.
-#'   \item Optional HC0 variance-covariance matrix for inference.
-#'   \item Name normalization for \pkg{emmeans} outputs.
-#'   \item Assembly of EMM tables and pairwise contrasts (with fallbacks).
-#'   \item A prediction-based fallback grid used if \pkg{emmeans} fails.
-#'   \item Data preparation for plotting.
-#' }
-#'
-#' @param data A \code{data.frame} containing the analysis variables.
-#' @param response_var Character string. Name of the count response variable.
-#'   Values must be non-negative integers; \code{NA}s are allowed and dropped.
-#' @param group_vars Character vector. One or more grouping variables. When
-#'   multiple variables are supplied, their interaction is modeled.
-#' @param overdispersion_threshold Numeric. Pearson dispersion threshold used
-#'   to flag overdispersion. Default \code{1.5}.
-#' @param use_nb_if_overdispersed Logical. If \code{TRUE}, refit a Negative
-#'   Binomial model via \code{MASS::glm.nb} when overdispersion is flagged.
-#' @param vcov_type Character. Variance-covariance type: \code{"default"} (model
-#'   based) or \code{"robust"} (HC0 via \pkg{sandwich}). Default \code{"default"}.
-#' @param offset_var Optional character. Name of a strictly positive exposure
-#'   variable to be used as a log-offset (e.g., time-at-risk).
-#' @param ci_level Confidence level for intervals. Default \code{0.95}.
-#' @param type_anova Character. \code{"LR"} or \code{"Wald"} for
-#'   \code{car::Anova} test statistic. Default \code{"LR"}.
-#' @param plot Logical. If \code{TRUE}, returns a \pkg{ggplot2} bar chart of
-#'   estimated means by group combination. Default \code{TRUE}.
-#' @param debug Logical. If \code{TRUE}, prints internal diagnostics. Default \code{FALSE}.
-#'
-#' @return A list with elements:
-#' \describe{
-#'   \item{model}{The fitted object (\code{glm} or \code{negbin}).}
-#'   \item{model_type}{Character, either \code{"poisson"} or \code{"negbin"}.}
-#'   \item{overdispersion_statistic}{Pearson dispersion statistic.}
-#'   \item{overdispersion_flagged}{Logical, whether dispersion exceeded threshold.}
-#'   \item{anova_table}{ANOVA table from \code{car::Anova}, or \code{NULL}.}
-#'   \item{emm_grid}{The \code{emmGrid} object (if constructed), or \code{NULL}.}
-#'   \item{emmeans_table}{Data frame of estimated means with columns
-#'         \code{response}, \code{lower.CL}, \code{upper.CL}.}
-#'   \item{posthoc_pairs}{Data frame of Tukey pairwise comparisons with
-#'         columns \code{contrast}, \code{IRR}, \code{lower.CL}, \code{upper.CL},
-#'         \code{p.value}. May be empty if contrasts are not available.}
-#'   \item{plot}{A \pkg{ggplot2} object when \code{plot = TRUE}, otherwise \code{NULL}.}
-#'   \item{messages}{Character vector with analysis notes.}
-#'   \item{n_removed_na}{Number of rows dropped due to missing values.}
-#' }
+#' Fits a Poisson, quasi-Poisson or negative binomial regression for a count
+#' response across one or more grouping variables, checks for overdispersion,
+#' and reports an analysis of deviance table, incidence rate ratios, estimated
+#' marginal rates and pairwise comparisons.
 #'
 #' @details
-#' The model is fit on complete cases across the response, grouping variables,
-#' and the offset (if provided). For \pkg{emmeans}, results are requested on the
-#' response scale; when column names differ across versions (e.g., \code{rate},
-#' \code{asymp.LCL}, \code{asymp.UCL}), names are standardized to
-#' \code{response}, \code{lower.CL}, and \code{upper.CL}. If \pkg{emmeans}
-#' summaries or confidence intervals are unavailable, a prediction-based table
-#' is produced from the fitted model using a full factorial grid.
+#' \strong{Overdispersion.} The Pearson dispersion statistic is computed from
+#' the Poisson fit. With \code{model = "auto"} (the default) a dispersion above
+#' \code{overdispersion_threshold} switches the model to negative binomial when
+#' \pkg{MASS} is installed, and to quasi-Poisson otherwise. Which model was
+#' used, and why, is always recorded in \code{$notes} and in
+#' \code{$model_type}. Set \code{model} explicitly to take the decision out of
+#' the function's hands.
+#'
+#' \strong{Exposure.} An \code{offset} column enters the model as
+#' \code{offset(log(exposure))} in the formula, not through \code{glm()}'s
+#' \code{offset} argument. That matters: an offset supplied through the argument
+#' is invisible to \code{terms()}, which means \pkg{emmeans} cannot see it and
+#' \code{predict(newdata = )} silently recycles it. Estimated marginal means are
+#' reported at an exposure of 1, so they are rates per unit of exposure.
+#'
+#' \strong{Interactions.} The model is additive by default. Set
+#' \code{interaction = TRUE} for the full factorial, or to a whole number for
+#' the highest interaction order. With three or more grouping variables the full
+#' factorial is often unestimable, so this is deliberately not the default.
+#'
+#' @param data A data frame, or anything inheriting from one, such as a
+#'   \code{data.table} or a tibble.
+#' @param response Character. Name of the count column. Must be non-negative
+#'   whole numbers.
+#' @param groups Character vector. One or more grouping columns.
+#' @param offset Optional character. Name of a strictly positive exposure
+#'   column, entered as a log offset.
+#' @param interaction \code{FALSE} (additive, the default), \code{TRUE} (full
+#'   factorial), or a whole number giving the highest interaction order.
+#' @param model Character. \code{"auto"} (default), \code{"poisson"},
+#'   \code{"negbin"} or \code{"quasipoisson"}.
+#' @param overdispersion_threshold Numeric. Pearson dispersion above which
+#'   \code{model = "auto"} moves away from Poisson. Default \code{1.5}.
+#' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
+#'   With \code{"III"} the model is fitted under sum-to-zero contrasts.
+#' @param test_statistic Character. \code{"LR"} (default), \code{"Wald"} or
+#'   \code{"F"}, passed to \code{\link[car]{Anova}}. \code{"F"} is the right
+#'   choice for a quasi-Poisson model.
+#' @param conf_level Numeric in (0, 1). Level for every interval returned.
+#'   Default \code{0.95}.
+#' @param vcov_type Character. \code{"model"} (default) or an HC type
+#'   (\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
+#' @param adjust Character. Multiplicity adjustment for the pairwise
+#'   comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
+#'   \code{"sidak"}, \code{"scheffe"}, \code{"dunnettx"}, \code{"bonferroni"},
+#'   \code{"holm"}, \code{"hochberg"}, \code{"hommel"}, \code{"BH"},
+#'   \code{"BY"}, \code{"fdr"} or \code{"none"}. Default \code{"tukey"}.
+#' @param posthoc Logical. Compute pairwise comparisons. There are
+#'   \code{choose(k, 2)} of them, so this is worth turning off when the number
+#'   of cells is large; \code{$notes} records that they were skipped. Default
+#'   \code{TRUE}.
+#' @param plots Logical. Build \pkg{ggplot2} objects. They are returned in
+#'   \code{$plots}, never drawn. Default \code{TRUE}.
+#' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
+#'   Default \code{FALSE}.
+#' @param weights Optional character. Name of a numeric column of prior
+#'   weights. Given as a column name rather than a vector so that it is
+#'   subsetted with the data: a vector supplied by the caller is evaluated
+#'   against the original frame and silently misaligns as soon as one row is
+#'   dropped for missing values.
+#'
+#' @return An \code{\link{anovatoolbox_fit}} object, with \code{$model_type}
+#'   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
+#'   of the \emph{Poisson} fit (the statistic the model choice was made on) and
+#'   \code{$model_dispersion} that of the model actually returned.
+#'   \code{$effect_sizes} holds incidence rate ratios, \code{$emmeans} the
+#'   estimated marginal rates.
+#'
+#' @seealso \code{\link{anova_bin}} for binary responses.
 #'
 #' @examples
-#' \dontrun{
 #' set.seed(1)
 #' n <- 400
 #' d <- data.frame(
-#'   g1 = factor(rep(c("A","B"), each = n/2)),
-#'   g2 = factor(rep(rep(c("X","Y"), each = n/4), 2))
+#'   g1 = factor(rep(c("A", "B"), each = n / 2)),
+#'   g2 = factor(rep(rep(c("X", "Y"), each = n / 4), 2))
 #' )
-#' lambda <- with(d, ifelse(g1=="A" & g2=="X", 5,
-#'                   ifelse(g1=="A" & g2=="Y",10,
-#'                   ifelse(g1=="B" & g2=="X",15,20))))
+#' lambda <- with(d, ifelse(g1 == "A" & g2 == "X", 5,
+#'                   ifelse(g1 == "A" & g2 == "Y", 10,
+#'                   ifelse(g1 == "B" & g2 == "X", 15, 20))))
 #' d$count <- rpois(n, lambda)
+#' fit <- anova_count(d, "count", c("g1", "g2"), interaction = TRUE)
+#' fit
+#' fit$emmeans
+#' fit$posthoc
 #'
-#' out <- anova_count(
-#'   data = d,
-#'   response_var = "count",
-#'   group_vars = c("g1","g2"),
-#'   plot = TRUE
-#' )
-#' out$anova_table
-#' out$emmeans_table
-#' out$posthoc_pairs
-#' out$plot
-#' }
+#' # With an exposure offset, the marginal means are rates per unit exposure
+#' d$hours <- runif(n, 0.5, 4)
+#' anova_count(d, "count", "g1", offset = "hours", plots = FALSE)$emmeans
 #'
-#' @seealso \code{\link[stats]{glm}}, \code{\link[MASS]{glm.nb}},
-#'   \code{\link[emmeans]{emmeans}}, \code{\link[car]{Anova}}
-#'
-#' @import stats
-#' @import ggplot2
-#' @importFrom MASS glm.nb
-#' @importFrom car Anova
-#' @importFrom emmeans emmeans
-#' @importFrom sandwich vcovHC
 #' @export
-anova_count <- function(
-    data,
-    response_var,
-    group_vars,
-    overdispersion_threshold = 1.5,
-    use_nb_if_overdispersed = TRUE,
-    vcov_type = c("default", "robust"),
-    offset_var = NULL,
-    ci_level = 0.95,
-    type_anova = c("LR", "Wald"),
-    plot = TRUE,
-    debug = FALSE
-) {
-  # ==== Helpers ================================================================
-  .dbg <- function(...) if (isTRUE(debug)) cat("[anova_count]", sprintf(...), "\n")
-  
-  .is_whole_ignoring_na <- function(v) {
-    if (!is.numeric(v)) return(FALSE)
-    v_ok <- v[!is.na(v)]
-    if (length(v_ok) == 0) return(TRUE)
-    all(v_ok >= 0) && all(abs(v_ok - round(v_ok)) < .Machine$double.eps^0.5)
+anova_count <- function(data, response, groups,
+                        offset = NULL,
+                        interaction = FALSE,
+                        model = c("auto", "poisson", "negbin", "quasipoisson"),
+                        overdispersion_threshold = 1.5,
+                        type = c("II", "III"),
+                        test_statistic = c("LR", "Wald", "F"),
+                        conf_level = 0.95,
+                        vcov_type = "model",
+                        adjust = "tukey",
+                        posthoc = TRUE,
+                        plots = TRUE,
+                        weights = NULL,
+                        verbose = FALSE) {
+  cl <- match.call()
+  model <- match.arg(model)
+  type <- match.arg(type)
+  test_statistic <- match.arg(test_statistic)
+  .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
+  .check_adjust(adjust, .adjust_choices(), "adjust")
+  data <- .as_df(data)
+  .check_name(response, "response")
+  .check_names(groups, "groups")
+  .check_columns(data, response, "Response column")
+  .check_columns(data, groups, "Grouping column(s)")
+  if (!is.null(offset)) {
+    .check_name(offset, "offset")
+    .check_columns(data, offset, "Offset column")
   }
-  
-  .build_formula <- function(resp, groups) {
-    rhs <- paste(groups, collapse = " * ")
-    stats::as.formula(paste(resp, "~", rhs))
+  .check_conf_level(conf_level)
+  .check_interaction(interaction, length(groups))
+  .check_flag(posthoc, "posthoc")
+  .check_flag(plots, "plots")
+  .check_flag(verbose, "verbose")
+  if (!is.numeric(overdispersion_threshold) ||
+      length(overdispersion_threshold) != 1L ||
+      !is.finite(overdispersion_threshold) || overdispersion_threshold <= 0) {
+    .stopf("`overdispersion_threshold` must be a single positive number.")
   }
-  
-  .pearson_overdispersion <- function(fit) {
-    pr <- stats::resid(fit, type = "pearson")
-    sum(pr^2, na.rm = TRUE) / stats::df.residual(fit)
-  }
-  
-  .vcov_matrix <- function(model, type = c("default","robust")) {
-    type <- match.arg(type)
-    if (type == "default") return(NULL)
-    V <- NULL
-    try({ V <- sandwich::vcovHC(model, type = "HC0") }, silent = TRUE)
-    V
-  }
-  
-  .normalize_ci_cols <- function(d) {
-    if (!is.null(d) && is.data.frame(d)) {
-      nm <- names(d)
-      if ("asymp.LCL" %in% nm && !"lower.CL" %in% nm) names(d)[nm == "asymp.LCL"] <- "lower.CL"
-      nm <- names(d)
-      if ("asymp.UCL" %in% nm && !"upper.CL" %in% nm) names(d)[nm == "asymp.UCL"] <- "upper.CL"
-      nm <- names(d)
-      if ("LCL" %in% nm && !"lower.CL" %in% nm) names(d)[nm == "LCL"] <- "lower.CL"
-      nm <- names(d)
-      if ("UCL" %in% nm && !"upper.CL" %in% nm) names(d)[nm == "UCL"] <- "upper.CL"
+
+  .check_counts(data[[response]], response)
+
+  .say(verbose, "Preparing data.")
+  .check_weights_column(data, weights, response, groups, offset)
+  cols <- c(response, groups, offset, weights)
+  prep <- .prepare_frame(data, cols, factors = groups, keep_all = FALSE)
+  d <- prep$data
+  notes <- prep$notes
+  .check_groups(d, groups, min_levels = 2L, min_n = 1L)
+
+  if (!is.null(offset)) {
+    if (!is.numeric(d[[offset]]) || any(d[[offset]] <= 0)) {
+      .stopf("Offset column `%s` must be numeric and strictly positive; a log offset is undefined otherwise.",
+             offset)
     }
-    d
   }
-  
-  .normalize_response_col <- function(d) {
-    if (is.null(d) || !is.data.frame(d)) return(d)
-    nm <- names(d)
-    if ("response" %in% nm) return(d)
-    if ("rate" %in% nm) { names(d)[nm == "rate"] <- "response"; return(d) }
-    if ("emmean" %in% nm) { names(d)[nm == "emmean"] <- "response"; return(d) }
-    d
+
+  wts <- .resolve_weights(d, weights)
+  notes <- c(notes, .sparse_cell_note(d, groups))
+
+  ## Build the formula, with the offset inside it -----------------------------
+  terms_rhs <- .group_terms(groups, interaction)
+  if (!is.null(offset)) {
+    terms_rhs <- c(terms_rhs, sprintf("offset(log(%s))", .bq(offset)))
   }
-  
-  .ensure_emmeans_ci <- function(obj, level = 0.95) {
-    # summary on response scale
-    summ <- try(suppressWarnings(summary(obj, infer = c(TRUE, TRUE), level = level, type = "response")),
-                silent = TRUE)
-    d_base <- NULL
-    if (!inherits(summ, "try-error")) {
-      d_base <- as.data.frame(summ)
-      d_base <- .normalize_response_col(.normalize_ci_cols(d_base))
-    } else {
-      # fallback summaries
-      d_base <- try(as.data.frame(summary(obj, type = "response")), silent = TRUE)
-      if (inherits(d_base, "try-error")) d_base <- try(as.data.frame(summary(obj)), silent = TRUE)
-      if (inherits(d_base, "try-error")) d_base <- NULL
-      if (!is.null(d_base)) d_base <- .normalize_response_col(.normalize_ci_cols(d_base))
-    }
-    # add CIs via confint if missing
-    if (!is.null(d_base) && !all(c("lower.CL","upper.CL") %in% names(d_base))) {
-      ci <- try(as.data.frame(confint(obj, level = level, type = "response")), silent = TRUE)
-      if (!inherits(ci, "try-error")) {
-        ci <- .normalize_response_col(.normalize_ci_cols(ci))
-        fac_cols <- intersect(names(d_base), names(ci))
-        fac_cols <- setdiff(fac_cols, c("response","SE","df","t.ratio","z.ratio","p.value",
-                                        "lower.CL","upper.CL","estimate","emmean"))
-        if (length(fac_cols) == 0) {
-          fac_cols <- setdiff(names(ci), c("response","SE","df","t.ratio","z.ratio","p.value",
-                                           "lower.CL","upper.CL","estimate","emmean"))
-        }
-        if (length(fac_cols) > 0) {
-          keep_ci <- c(fac_cols, intersect(c("lower.CL","upper.CL"), names(ci)))
-          d_base <- merge(d_base, ci[, keep_ci, drop = FALSE], by = fac_cols, all.x = TRUE)
-        }
-      }
-    }
-    d_base
+  fml <- stats::reformulate(terms_rhs, response = .bq(response))
+  .say(verbose, "Fitting %s", paste(deparse(fml), collapse = " "))
+
+  ## Poisson first, to measure dispersion -------------------------------------
+  # Wrapped like every other fitting call: glm() warns about numerically zero
+  # fitted rates, and that belongs in $notes rather than on the console.
+  got <- .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, d, stats::poisson(link = "log"), wts),
+    type = type))
+  pois <- got$value
+  if (inherits(pois, "error")) {
+    .stopf("The Poisson model could not be fitted: %s", conditionMessage(pois))
   }
-  
-  .pairs_to_df <- function(obj, level = 0.95) {
-    prs <- try(emmeans::pairs(obj, adjust = "tukey"), silent = TRUE)
-    if (inherits(prs, "try-error")) {
-      prs <- try(emmeans::contrast(obj, "pairwise", adjust = "tukey"), silent = TRUE)
-      if (inherits(prs, "try-error")) return(NULL)
-    }
-    # response-scale summary with CIs
-    summ <- try(suppressWarnings(summary(prs, infer = c(TRUE, TRUE), level = level, type = "response")),
-                silent = TRUE)
-    if (!inherits(summ, "try-error")) {
-      d <- as.data.frame(summ)
-      if ("ratio" %in% names(d) && !"IRR" %in% names(d)) names(d)[names(d) == "ratio"] <- "IRR"
-      d <- .normalize_ci_cols(d)
-      if (!"IRR" %in% names(d) && "estimate" %in% names(d)) d$IRR <- exp(d$estimate)
-      return(d)
-    }
-    # fallback: link-scale + response CIs
-    d0 <- try(as.data.frame(summary(prs)), silent = TRUE)
-    if (inherits(d0, "try-error")) return(NULL)
-    if (!"IRR" %in% names(d0) && "estimate" %in% names(d0)) d0$IRR <- exp(d0$estimate)
-    ci <- try(as.data.frame(confint(prs, level = level, type = "response")), silent = TRUE)
-    if (!inherits(ci, "try-error")) {
-      ci <- .normalize_ci_cols(ci)
-      key <- if ("contrast" %in% intersect(names(d0), names(ci))) "contrast" else intersect(names(d0), names(ci))[1]
-      if (length(key)) d0 <- merge(d0, ci[, c(key, intersect(c("lower.CL","upper.CL"), names(ci)))],
-                                   by = key, all.x = TRUE)
-    }
-    .normalize_ci_cols(d0)
-  }
-  
-  .emm_from_predict <- function(fit, groups, offset_var = NULL, level = 0.95) {
-    levs <- lapply(groups, function(g) levels(model.frame(fit)[[g]]))
-    names(levs) <- groups
-    grid <- do.call(expand.grid, c(levs, stringsAsFactors = FALSE))
-    newdata <- grid
-    if (!is.null(offset_var)) newdata[[offset_var]] <- 1
-    pr <- stats::predict(fit, newdata = newdata, type = "link", se.fit = TRUE)
-    z <- stats::qnorm(0.5 + level/2)
-    response  <- exp(pr$fit)
-    lower.CL  <- exp(pr$fit - z * pr$se.fit)
-    upper.CL  <- exp(pr$fit + z * pr$se.fit)
-    out <- data.frame(grid, response = as.numeric(response),
-                      lower.CL = as.numeric(lower.CL),
-                      upper.CL = as.numeric(upper.CL),
-                      stringsAsFactors = FALSE)
-    for (g in groups) out[[g]] <- base::droplevels(as.factor(out[[g]]))
-    out
-  }
-  
-  .coerce_plot_df <- function(d, factors, response_col = "response") {
-    keep <- intersect(c(factors, response_col, "lower.CL", "upper.CL"), names(d))
-    out <- as.data.frame(d[keep])
-    for (f in factors) out[[f]] <- base::droplevels(as.factor(out[[f]]))
-    out[[response_col]] <- as.numeric(out[[response_col]])
-    if ("lower.CL" %in% names(out)) out[["lower.CL"]] <- as.numeric(out[["lower.CL"]])
-    if ("upper.CL" %in% names(out)) out[["upper.CL"]] <- as.numeric(out[["upper.CL"]])
-    out$interaction_label <- do.call(interaction, c(out[factors], list(drop = TRUE, sep = " : ")))
-    out
-  }
-  
-  # ==== Input validation =======================================================
-  if (missing(data) || !is.data.frame(data) || nrow(data) == 0)
-    stop("`data` must be a non-empty data.frame.")
-  if (missing(response_var) || !is.character(response_var) || length(response_var) != 1)
-    stop("`response_var` must be a single character string.")
-  if (!response_var %in% names(data))
-    stop(sprintf("Response variable '%s' not found.", response_var))
-  if (missing(group_vars) || !is.character(group_vars) || length(group_vars) < 1)
-    stop("`group_vars` must be a character vector of one or more grouping variables.")
-  if (!all(group_vars %in% names(data))) {
-    missing_vars <- group_vars[!group_vars %in% names(data)]
-    stop(sprintf("Grouping variable(s) missing: %s", paste(missing_vars, collapse = ", ")))
-  }
-  
-  resp_vec <- data[[response_var]]
-  if (!is.numeric(resp_vec))
-    stop(sprintf("`%s` must be numeric (non-negative integer counts).", response_var))
-  if (!.is_whole_ignoring_na(resp_vec))
-    stop(sprintf("`%s` must be non-negative integer counts (NAs allowed and will be dropped).", response_var))
-  
-  cols_needed <- c(response_var, group_vars)
-  if (!is.null(offset_var)) cols_needed <- c(cols_needed, offset_var)
-  data_local <- data[, cols_needed, drop = FALSE]
-  
-  for (g in group_vars) data_local[[g]] <- as.factor(data_local[[g]])
-  
-  complete_idx <- stats::complete.cases(data_local)
-  n_removed_na <- sum(!complete_idx)
-  data_local <- data_local[complete_idx, , drop = FALSE]
-  if (nrow(data_local) == 0)
-    stop("All rows were removed due to missing data in analyzed columns.")
-  
-  for (g in group_vars) {
-    if (nlevels(base::droplevels(data_local[[g]])) < 2)
-      stop(sprintf("Grouping variable '%s' must have at least 2 levels after removing NAs.", g))
-  }
-  if (!is.null(offset_var)) {
-    if (!is.numeric(data_local[[offset_var]]) || any(data_local[[offset_var]] <= 0))
-      stop("`offset_var` must be numeric and strictly positive (for log-offset) after removing NAs.")
-  }
-  
-  # Sparse/zero cell note
-  messages <- character(0)
-  {
-    levs <- lapply(group_vars, function(g) levels(data_local[[g]])); names(levs) <- group_vars
-    full <- do.call(expand.grid, c(levs, stringsAsFactors = FALSE))
-    obs <- stats::aggregate(rep(1, nrow(data_local)), data_local[group_vars], sum, drop = FALSE)
-    names(obs)[ncol(obs)] <- "Freq"
-    merged <- merge(full, obs, by = group_vars, all.x = TRUE)
-    merged$Freq[is.na(merged$Freq)] <- 0L
-    small <- sum(merged$Freq > 0L & merged$Freq < 5L)
-    zero  <- sum(merged$Freq == 0L)
-    messages <- c(messages,
-                  sprintf("small counts check: %d cells < 5; zero observations check: %d cells.",
-                          small, zero))
-    if (zero > 0) messages <- c(messages, "Some interaction cells have zero observations; certain contrasts may be undefined or unstable.")
-    if (small > 0) messages <- c(messages, "Some interaction cells have very small counts (< 5 rows); inference may be unstable.")
-  }
-  
-  # ==== Model fitting ==========================================================
-  type_anova <- match.arg(type_anova)
-  vcov_type <- match.arg(vcov_type)
-  
-  fml <- .build_formula(response_var, group_vars)
-  .dbg("Formula: %s", deparse(fml))
-  
-  poisson_fit <- stats::glm(
-    formula = fml,
-    data    = data_local,
-    family  = stats::poisson(link = "log"),
-    offset  = if (!is.null(offset_var)) log(data_local[[offset_var]]) else NULL
-  )
-  
-  disp <- .pearson_overdispersion(poisson_fit)
-  overdispersion_flag <- is.finite(disp) && (disp > overdispersion_threshold)
-  .dbg("Dispersion: %.3f (threshold %.3f) -> flagged=%s",
-       disp, overdispersion_threshold, as.character(overdispersion_flag))
-  
-  final_fit <- poisson_fit
+  notes <- c(notes, .said_note(got$said, "stats::glm()"))
+  dispersion <- .dispersion(pois)
+
+  chosen <- .choose_count_model(model, dispersion, overdispersion_threshold)
+  notes <- c(notes, chosen$notes)
+
+  fit <- pois
   model_type <- "poisson"
-  if (overdispersion_flag && isTRUE(use_nb_if_overdispersed)) {
-    nb_fit <- try(MASS::glm.nb(
-      formula = fml,
-      data    = data_local,
-      link    = log,
-      offset  = if (!is.null(offset_var)) log(data_local[[offset_var]]) else NULL
-    ), silent = TRUE)
-    
-    if (!inherits(nb_fit, "try-error")) {
-      final_fit <- nb_fit
-      model_type <- "negbin"
-      messages <- c(messages, sprintf("Overdispersion detected (%.3f). Refit with Negative Binomial.", disp))
-    } else {
-      messages <- c(messages, sprintf("Overdispersion detected (%.3f), but NB refit failed; proceeding with Poisson.", disp))
-    }
-  } else if (overdispersion_flag) {
-    messages <- c(messages, sprintf("Overdispersion detected (%.3f). Consider alternative variance estimators or a Negative Binomial model.", disp))
-  }
-  
-  anova_table <- NULL
-  try({ anova_table <- car::Anova(final_fit, test.statistic = type_anova) }, silent = TRUE)
-  if (is.null(anova_table)) messages <- c(messages, "ANOVA failed; returning NULL.")
-  
-  vc <- .vcov_matrix(final_fit, vcov_type)
-  if (!is.null(vc)) .dbg("Using HC0 variance-covariance matrix")
-  
-  emm_spec <- if (length(group_vars) == 1)
-    stats::as.formula(paste("~", group_vars))
-  else
-    stats::as.formula(paste("~", paste(group_vars, collapse = ":")))
-  .dbg("EMM spec: %s", deparse(emm_spec))
-  
-  em_grid <- NULL
-  emmeans_table <- NULL
-  posthoc_pairs <- NULL
-  
-  em_ok <- TRUE
-  try({
-    em_grid <- emmeans::emmeans(
-      final_fit,
-      specs = emm_spec,
-      type  = "response",
-      vcov  = vc
-    )
-  }, silent = TRUE)
-  if (is.null(em_grid)) {
-    em_ok <- FALSE
-    messages <- c(messages, "emmeans failed; marginal means and post-hoc not available.")
-  }
-  
-  if (em_ok) {
-    emmeans_table <- .ensure_emmeans_ci(em_grid, level = ci_level)
-    posthoc_pairs <- .pairs_to_df(em_grid, level = ci_level)
-    if (isTRUE(debug) && !is.null(emmeans_table)) {
-      .dbg("emmeans_table names: %s", paste(names(emmeans_table), collapse = ", "))
-      print(utils::head(emmeans_table))
-    }
-    if (isTRUE(debug) && !is.null(posthoc_pairs)) {
-      .dbg("posthoc_pairs names: %s", paste(names(posthoc_pairs), collapse = ", "))
-      print(utils::head(posthoc_pairs))
-    }
-  }
-  
-  # Fallbacks when emmeans is unavailable
-  if (is.null(emmeans_table)) {
-    emmeans_table <- .emm_from_predict(final_fit, group_vars, offset_var = offset_var, level = ci_level)
-  }
-  if (is.null(posthoc_pairs)) {
-    posthoc_pairs <- data.frame(contrast = character(), IRR = numeric(),
-                                lower.CL = numeric(), upper.CL = numeric(),
-                                p.value = numeric(), stringsAsFactors = FALSE)
-  }
-  
-  # ==== Plot ==================================================================
-  plt <- NULL
-  if (plot) {
-    if (is.null(emmeans_table) && !is.null(em_grid)) {
-      emmeans_table <- .ensure_emmeans_ci(em_grid, level = ci_level)
-    }
-    if (is.null(emmeans_table)) {
-      emmeans_table <- .emm_from_predict(final_fit, group_vars, offset_var = offset_var, level = ci_level)
-    }
-    if (!is.null(emmeans_table)) {
-      emmeans_table <- .normalize_ci_cols(.normalize_response_col(emmeans_table))
-      factor_cols <- group_vars[group_vars %in% names(emmeans_table)]
-      if (length(factor_cols) > 0 && "response" %in% names(emmeans_table)) {
-        plot_df <- .coerce_plot_df(emmeans_table, factor_cols, response_col = "response")
-        has_ci <- all(c("lower.CL","upper.CL") %in% names(plot_df))
-        plt <- ggplot2::ggplot(plot_df,
-                               ggplot2::aes(x = interaction_label, y = .data[["response"]])) +
-          ggplot2::geom_col() +
-          { if (has_ci) ggplot2::geom_errorbar(
-            ggplot2::aes(ymin = .data[["lower.CL"]], ymax = .data[["upper.CL"]]),
-            width = 0.2
-          ) } +
-          ggplot2::labs(
-            x = paste(factor_cols, collapse = " × "),
-            y = paste0("Estimated ", response_var, " (rate)"),
-            title = "Model-estimated means with confidence intervals"
-          ) +
-          ggplot2::theme_minimal() +
-          ggplot2::theme(
-            axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-            plot.title = ggplot2::element_text(hjust = 0.5, face = "bold")
-          )
-      } else {
-        messages <- c(messages, "Plot could not be constructed; missing expected emmeans columns.")
+  if (chosen$model == "negbin") {
+    # glm.nb() captures `link` with substitute(), so it must not be passed
+    # through do.call() as a value. The default is already log.
+    nb_warnings <- character(0)
+    nb <- withCallingHandlers(
+      tryCatch(
+        .fit_with_contrasts(
+          function() .fit_glm(fml, d, NULL, wts),
+          type = type),
+        error = function(e) e),
+      warning = function(w) {
+        nb_warnings <<- c(nb_warnings, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
+    if (inherits(nb, "error")) {
+      notes <- c(notes, sprintf(
+        "The negative binomial fit failed (%s); a quasi-Poisson model was used instead.",
+        conditionMessage(nb)))
+      qp <- .collect_conditions(.fit_with_contrasts(
+        function() .fit_glm(fml, d, stats::quasipoisson(), wts),
+        type = type))
+      fit <- qp$value
+      if (inherits(fit, "error")) {
+        .stopf("Neither a negative binomial nor a quasi-Poisson model could be fitted: %s",
+               conditionMessage(fit))
       }
+      notes <- c(notes, .said_note(qp$said, "stats::glm()"))
+      model_type <- "quasipoisson"
     } else {
-      messages <- c(messages, "Plot skipped: emmeans_table unavailable.")
+      fit <- nb
+      model_type <- "negbin"
+      attr(fit, "nb_warnings") <- nb_warnings
+      # Read from `fit`, which carries the attribute: `nb` is the pre-copy
+      # object and never has it, so the non-convergence branch was dead.
+      notes <- c(notes, .theta_note(fit))
     }
+  } else if (chosen$model == "quasipoisson") {
+    qp <- .collect_conditions(.fit_with_contrasts(
+      function() .fit_glm(fml, d, stats::quasipoisson(), wts),
+      type = type))
+    fit <- qp$value
+    if (inherits(fit, "error")) {
+      .stopf("The quasi-Poisson model could not be fitted: %s",
+             conditionMessage(fit))
+    }
+    notes <- c(notes, .said_note(qp$said, "stats::glm()"))
+    model_type <- "quasipoisson"
   }
-  
-  # ==== Return ================================================================
-  list(
-    model                     = final_fit,
-    model_type                = model_type,
-    overdispersion_statistic  = disp,
-    overdispersion_flagged    = isTRUE(overdispersion_flag),
-    anova_table               = anova_table,
-    emm_grid                  = em_grid,
-    posthoc_pairs             = .normalize_ci_cols(posthoc_pairs),
-    emmeans_table             = .normalize_ci_cols(.normalize_response_col(emmeans_table)),
-    plot                      = plt,
-    messages                  = messages,
-    n_removed_na              = n_removed_na
+
+  if (model_type == "quasipoisson" && test_statistic == "LR") {
+    test_statistic <- "F"
+    notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
+  }
+  notes <- c(notes, .check_model_size(fit))
+
+  ## Analysis of deviance -----------------------------------------------------
+  av <- .car_anova(fit, type = type, test_statistic = test_statistic)
+  notes <- c(notes, av$note)
+
+  ## Marginal rates and pairwise incidence rate ratios ------------------------
+  rv <- .robust_vcov(fit, vcov_type)
+  notes <- c(notes, rv$note)
+  emm_args <- list(model = fit, specs = groups, type = "response",
+                   vcov_matrix = rv$matrix)
+  if (!is.null(offset)) emm_args$offset <- 0
+  emm <- do.call(.emmeans_grid, emm_args)
+  notes <- c(notes, emm$note)
+  if (!is.null(offset) && !is.null(emm$grid)) {
+    notes <- c(notes, sprintf(
+      "Estimated marginal means are rates at %s = 1 (one unit of exposure).", offset))
+  }
+  emm_tab <- .emmeans_table(emm$grid, conf_level, protect = groups)
+  notes <- c(notes, emm_tab$note)
+  ph <- if (posthoc) {
+    .emmeans_pairs(emm$grid, adjust = adjust, conf_level = conf_level,
+                   ratios = TRUE)
+  } else list(table = NULL,
+              note = .no_posthoc_note(NROW(emm_tab$table),
+                                      extra = "$effect_sizes still reports the incidence rate ratios from the model."))
+  notes <- c(notes, ph$note)
+  if (!is.null(ph$table) && "ratio" %in% names(ph$table)) {
+    names(ph$table)[names(ph$table) == "ratio"] <- "IRR"
+  }
+
+  ## Coefficient-scale incidence rate ratios ---------------------------------
+  ct <- .coef_table(fit, rv$matrix)
+  z <- .coef_crit(fit, conf_level)
+  effect_sizes <- data.frame(
+    term = ct$term, IRR = exp(ct$estimate),
+    conf_low = exp(ct$estimate - z * ct$se),
+    conf_high = exp(ct$estimate + z * ct$se),
+    p_value = ct$p_value, stringsAsFactors = FALSE)
+  effect_sizes <- effect_sizes[effect_sizes$term != "(Intercept)", , drop = FALSE]
+  row.names(effect_sizes) <- NULL
+
+  ## Plots --------------------------------------------------------------------
+  plot_list <- list()
+  if (plots && !is.null(emm_tab$table)) {
+    .say(verbose, "Building plots.")
+    plot_list$emmeans <- .plot_emmeans(
+      emm_tab$table, groups, estimate = "estimate",
+      lower = "conf_low", upper = "conf_high", conf_level = conf_level,
+      title = sprintf("Estimated %s rate by group", response),
+      ylab = sprintf("Estimated %s", response))
+    added <- .add_cell(d, groups)
+    plot_list$observed <- .plot_box(added$data, response, added$cell,
+                                    title = "Observed counts by group",
+                                    xlab = paste(groups, collapse = " : "))
+  } else if (plots) {
+    notes <- c(notes, "Plots were skipped because the estimated marginal means could not be computed.")
+  }
+
+  .new_fit(
+    method       = sprintf("Analysis of deviance for a count response (%s regression)",
+                           model_type),
+    call         = cl,
+    model        = fit,
+    anova        = av$table,
+    effect_sizes = effect_sizes,
+    emmeans      = emm_tab$table,
+    emmeans_object = emm$grid,
+    posthoc      = ph$table,
+    assumptions  = list(poisson_dispersion = dispersion,
+                        model_dispersion = .dispersion(fit),
+                        cell_counts = .cell_counts(d, groups)),
+    plots        = plot_list,
+    data_used    = d,
+    n_removed    = prep$n_removed,
+    conf_level   = conf_level,
+    notes        = notes,
+    extra        = list(model_type = model_type,
+                        dispersion = dispersion,
+                        model_dispersion = .dispersion(fit))
   )
+}
+
+#' Validate a count response
+#' @noRd
+.check_counts <- function(x, name) {
+  if (!is.numeric(x)) {
+    .stopf("Response `%s` must be numeric (non-negative whole numbers); it is %s.",
+           name, paste(class(x), collapse = "/"))
+  }
+  # Non-finite values are dropped by .prepare_frame() and counted in $n_removed,
+  # so they must not be judged here: abs(Inf - round(Inf)) is NaN, and the
+  # whole-number test below would fail with "missing value where TRUE/FALSE
+  # needed" before the row ever reached the code that removes it.
+  v <- x[is.finite(x)]
+  if (length(v) == 0L) {
+    .stopf("Response `%s` has no finite values; every row is missing or infinite.",
+           name)
+  }
+  if (any(v < 0)) {
+    .stopf("Response `%s` contains negative values; counts cannot be negative.", name)
+  }
+  if (any(abs(v - round(v)) > .Machine$double.eps^0.5)) {
+    .stopf("Response `%s` contains non-integer values; counts must be whole numbers.",
+           name)
+  }
+  invisible(TRUE)
+}
+
+#' Decide which count model to fit
+#' @noRd
+.choose_count_model <- function(model, dispersion, threshold) {
+  notes <- character(0)
+  if (model != "auto") {
+    if (model == "negbin" && !requireNamespace("MASS", quietly = TRUE)) {
+      .stopf("model = \"negbin\" requires the {MASS} package. Install it, or use model = \"quasipoisson\".")
+    }
+    return(list(model = model, notes = notes))
+  }
+  overdispersed <- is.finite(dispersion) && dispersion > threshold
+  if (!overdispersed) {
+    if (is.finite(dispersion)) {
+      notes <- c(notes, sprintf(
+        "Pearson dispersion is %.2f, at or below the threshold of %.2f, so a Poisson model was kept.",
+        dispersion, threshold))
+    }
+    return(list(model = "poisson", notes = notes))
+  }
+  if (requireNamespace("MASS", quietly = TRUE)) {
+    notes <- c(notes, sprintf(
+      "Pearson dispersion is %.2f, above the threshold of %.2f, so a negative binomial model was fitted instead of Poisson. Set model = \"poisson\" to override.",
+      dispersion, threshold))
+    return(list(model = "negbin", notes = notes))
+  }
+  notes <- c(notes, sprintf(
+    "Pearson dispersion is %.2f, above the threshold of %.2f. The {MASS} package is not installed, so a quasi-Poisson model was fitted instead of a negative binomial one.",
+    dispersion, threshold))
+  list(model = "quasipoisson", notes = notes)
+}
+
+#' Note sparse or empty cells
+#' @noRd
+.sparse_cell_note <- function(d, groups) {
+  levs <- lapply(groups, function(g) levels(droplevels(as.factor(d[[g]]))))
+  names(levs) <- groups
+  full <- expand.grid(levs, stringsAsFactors = FALSE)
+  observed <- .cell_counts(d, groups)
+  n_possible <- nrow(full)
+  n_observed <- nrow(observed)
+  notes <- character(0)
+  empty <- n_possible - n_observed
+  small <- sum(observed$n < 5L)
+  if (empty > 0L) {
+    notes <- c(notes, sprintf(
+      "%d of the %d possible group combination(s) contain no observations; contrasts involving them are not estimable.",
+      empty, n_possible))
+  }
+  if (small > 0L) {
+    notes <- c(notes, sprintf(
+      "%d group combination(s) have fewer than 5 observations; inference for those cells is unstable.",
+      small))
+  }
+  notes
+}
+
+#' Describe the negative binomial dispersion parameter honestly
+#'
+#' A theta in the hundreds or thousands is not an estimate of overdispersion, it
+#' is the fit telling you there is none: the negative binomial has collapsed
+#' towards the Poisson it generalises. Reporting it to three decimals as though
+#' it were a parameter estimate invites the wrong reading.
+#' @noRd
+.theta_note <- function(nb) {
+  th <- nb$theta; se <- nb$SE.theta
+  warns <- attr(nb, "nb_warnings")
+  if (!is.null(warns) && any(grepl("iteration limit|alternation limit", warns))) {
+    return(sprintf(
+      "The negative binomial dispersion parameter did not converge (theta reached %.3g before the iteration limit). Treat the model as unreliable and compare it with model = \"poisson\".",
+      th))
+  }
+  if (!is.finite(th) || th > 1000) {
+    return(sprintf(
+      "The negative binomial dispersion parameter is very large (theta = %.3g), which means the data are not meaningfully overdispersed relative to Poisson and the negative binomial has collapsed towards it. model = \"poisson\" would give essentially the same answer more simply.",
+      th))
+  }
+  if (is.finite(se) && se > 0 && th / se < 2) {
+    return(sprintf(
+      "Negative binomial dispersion parameter theta = %.3f (SE %.3f), which is not well determined: the data are only weakly overdispersed. The analysis of deviance treats theta as known, so its p-values are mildly anti-conservative.",
+      th, se))
+  }
+  sprintf(
+    "Negative binomial dispersion parameter theta = %.3f (SE %.3f). The analysis of deviance treats theta as known, so its p-values are mildly anti-conservative.",
+    th, se)
 }
