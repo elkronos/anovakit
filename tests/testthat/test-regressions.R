@@ -240,6 +240,14 @@ test_that("an ordered grouping factor accepts a reference level", {
   fit <- anova_bin(d, "y", "g", reference = list(g = "b"), plots = FALSE)
   expect_s3_class(fit, "anovakit_fit")
   expect_identical(levels(fit$data_used$g)[1], "b")
+  # An ordered factor has no reference level: it used to be kept ordered with
+  # its levels permuted (b < a < c), so the polynomial "odds ratios" described
+  # a scrambled scale. It is now unordered, and says so.
+  expect_false(is.ordered(fit$data_used$g))
+  p <- tapply(d$y, d$g, mean)
+  o <- as.vector(p / (1 - p)); names(o) <- names(p)
+  expect_equal(fit$effect_sizes$odds_ratio, unname(o[c("a", "c")] / o["b"]))
+  expect_true(any(grepl("ordered factor", fit$notes)))
 })
 
 test_that("the response may not also be a covariate or a group", {
