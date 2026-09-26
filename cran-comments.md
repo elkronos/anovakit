@@ -8,9 +8,16 @@
 * GitHub Actions (.github/workflows/R-CMD-check.yaml): macOS, Windows and
   Ubuntu on R release, Ubuntu on R devel and oldrel-1
 
-Still to run before submission, since none can be run from the machines above:
-win-builder (devel and release), the macOS builder, and R-hub
-(`rhub::rhub_check()`). Record their results here.
+## Before submitting
+
+These need the maintainer's CRAN-facing accounts, so they are run at
+submission time rather than from the environments above. Replace each line
+with its result:
+
+- [ ] win-builder, R-devel and R-release (`devtools::check_win_devel()`,
+      `devtools::check_win_release()`)
+- [ ] the macOS builder (`devtools::check_mac_release()`)
+- [ ] R-hub (`rhub::rhub_check()`)
 
 ## R CMD check results
 
@@ -38,9 +45,10 @@ this check is skipped rather than failed.
 with `requireNamespace()`. No example is wrapped in `\donttest{}`: every one
 runs unconditionally.
 
-Every use of a suggested package ({afex}, {MASS}, {sandwich}) is behind
-`requireNamespace()` in R/ and `skip_if_not_installed()` in the tests. The suite
-passes with all three absent.
+Every use of a suggested package is behind `requireNamespace()` in R/ and
+`skip_if_not_installed()` in the tests. The suite passes with {afex} and
+{sandwich} absent. {MASS} is always installed, since {car} and {ggplot2} import
+it, but it is still used only through `requireNamespace()`.
 
 Three of the methods cited in the Description are implemented directly rather
 than delegated, so their DOIs point at the papers the code follows: Dunn's test

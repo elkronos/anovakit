@@ -294,10 +294,16 @@
 #' @noRd
 .emm_col <- function(df, target, protect = character(0)) {
   if (is.null(target)) return(NULL)
-  prefixed <- paste0("emm_", target)
-  # A grouping column may itself be called emm_estimate; it is never the
-  # statistic, so only a prefixed name that is not a grouping column counts.
-  if (prefixed %in% names(df) && !prefixed %in% protect) return(prefixed)
-  if (target %in% names(df) && !target %in% protect) return(target)
+  # A grouping column may itself be called emm_estimate, which pushes the
+  # statistic on to emm_estimate2; a grouping column is never the statistic,
+  # so only a (possibly numbered) prefixed name that is not one counts.
+  nm <- setdiff(names(df), protect)
+  prefixed <- nm[grepl(paste0("^emm_", .re_escape(target), "[0-9]*$"), nm)]
+  if (length(prefixed) > 0L) return(prefixed[1L])
+  if (target %in% nm) return(target)
   NULL
 }
+
+#' Escape a string for literal use in a regular expression
+#' @noRd
+.re_escape <- function(x) gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x)

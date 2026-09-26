@@ -301,7 +301,7 @@
   for (g in groups) {
     lv <- nlevels(droplevels(data[[g]]))
     if (lv < min_levels) {
-      .stopf("Grouping variable `%s` has %d level(s) after removing missing values; at least %d are required.",
+      .stopf("Grouping variable `%s` has %d level(s) in the rows that are analysed (after dropping rows with missing values, or with zero weight); at least %d are required.",
              g, lv, min_levels)
     }
   }
@@ -403,8 +403,12 @@
 #' \code{anova_glm()} accepts any family, so the response may legitimately be a
 #' factor (binomial) or a matrix of counts. What it must never be is a type the
 #' family cannot use at all, or one the plots will choke on later.
+#' @param values \code{FALSE} to check only the column's type, which is done
+#'   on the input; the levels and values are checked (the default) on the rows
+#'   that are analysed, so that a level or value seen only in a dropped row
+#'   neither triggers nor hides an error.
 #' @noRd
-.check_response_for_family <- function(data, response, family) {
+.check_response_for_family <- function(data, response, family, values = TRUE) {
   y <- data[[response]]
   fam <- family$family
   # A two-column successes/failures matrix is a legitimate binomial response
@@ -424,7 +428,7 @@
       .stopf("Response `%s` must be numeric, logical, character or a factor for a %s family; it is %s.",
              response, fam, paste(class(y), collapse = "/"))
     }
-    if (is.factor(y) || is.character(y)) {
+    if (values && (is.factor(y) || is.character(y))) {
       lv <- if (is.factor(y)) levels(droplevels(y)) else
         sort(unique(y[!is.na(y)]), method = "radix")
       if (length(lv) != 2L) {
@@ -438,7 +442,7 @@
     .stopf("Response `%s` must be numeric for a %s family; it is %s. For a two-level factor use family = \"binomial\", or see anova_bin().",
            response, fam, paste(class(y), collapse = "/"))
   }
-  if (fam == "poisson" && is.numeric(y) &&
+  if (values && fam == "poisson" && is.numeric(y) &&
       any(y[is.finite(y)] < 0)) {
     .stopf("Response `%s` contains negative values, which a Poisson family cannot model.",
            response)

@@ -496,6 +496,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
                                  response_col = resp_col, term_col = term_col)
       if (!is.null(pe)) plot_list$emmeans <- pe
     }
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
     if (!is.null(cds)) {
       plot_list$canonical <- .plot_canonical(
         cds$scores, cds$group, paste(ct$vars, collapse = " : "),

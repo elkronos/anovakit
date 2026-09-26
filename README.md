@@ -93,7 +93,7 @@ list, so `$` works as usual, with `print()`, `summary()` and `plot()` methods.
 |---|---|
 | `$method` | the analysis that was run |
 | `$call` | the matched call |
-| `$model` | the fitted model — `lm`, `glm`, the multivariate `mlm` of `anova_manova()`, or `afex_aov`; for `anova_welch()` and `anova_kw()`, which fit no model, the `htest` from `oneway.test()` or `kruskal.test()`. `update(fit$model, data = fit$data_used)` refits an `lm` or `glm` |
+| `$model` | the fitted model — `lm`, `glm`, the multivariate `mlm` of `anova_manova()`, or `afex_aov`; for `anova_welch()` and `anova_kw()`, which fit no model, the `htest` from `oneway.test()` or `kruskal.test()`. an `lm` or `glm` can be refitted with `update(fit$model, . ~ 1)`, `step()` or `lmtest::lrtest()` directly |
 | `$anova` | the omnibus table; its heading in `print()` names the sums of squares, the test statistic and any sphericity correction |
 | `$effect_sizes` | a standardised mean difference, odds ratios, incidence rate ratios, partial eta and omega squared, epsilon squared, generalised eta squared, or the deviance explained with McFadden's pseudo R², depending on the method. Odds ratios and rate ratios are each a level against its reference level, whatever the contrasts. Intervals accompany the standardised mean differences, odds ratios and rate ratios; the variance-explained measures are point estimates |
 | `$emmeans` | estimated marginal means with intervals at `conf_level`; per factor (with a `term` column) when the grouping factors enter the model additively |
@@ -228,12 +228,14 @@ runs no checks at all unless you ask with `diagnostics = TRUE`.
 flows through to the marginal means and the comparisons, not only to the
 coefficient table; in `anova_ancova()` it also reaches the F tests (as robust
 Wald F tests) and the simple slopes, and in `anova_glm()` the omnibus table
-when `test_statistic = "Wald"`. Likelihood-ratio tests rest on the model and
-say so. Where a sandwich covariance is wrong rather than merely different --
-fitted values on the boundary (separation, an all-zero group) or a
-single-observation cell -- the model-based covariance is used, with a note.
-The sandwich treats each row as one unit, so it is not valid for frequency
-weights; `$notes` says so whenever weights are supplied.
+when `test_statistic = "Wald"` (in `anova_bin()` and `anova_count()` too).
+Likelihood-ratio tests rest on the model and say so. Where a sandwich
+covariance is wrong rather than merely different -- fitted values on the
+boundary (separation, an all-zero group) or a single-observation cell -- the
+model-based covariance is used, with a note. Whole-number weights on a count or
+0/1 response are frequency weights, and the sandwich is then computed per
+observation, exactly as on the data expanded to one row per observation;
+other weights keep each row as one unit, and `$notes` says which applies.
 
 **Multiplicity adjustments differ by method.** `anova_welch()` and `anova_kw()`
 compare directly and take the `p.adjust()` methods, defaulting to `"holm"` and

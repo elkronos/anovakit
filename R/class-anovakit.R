@@ -20,8 +20,10 @@
 #'     \code{$internal_names}), and the \code{htest} returned by
 #'     \code{\link[stats]{oneway.test}} or \code{\link[stats]{kruskal.test}}
 #'     from \code{\link{anova_welch}} and \code{\link{anova_kw}}, which fit no
-#'     model. A fitted \code{lm} or \code{glm} refers to the analysed rows, so
-#'     \code{update(fit$model, data = fit$data_used)} refits it.}
+#'     model. The call of a fitted \code{lm} or \code{glm} reaches the
+#'     analysed rows from anywhere, so \code{update()}, \code{step()} and
+#'     \code{lmtest::lrtest()} work on it directly: for instance
+#'     \code{update(fit$model, . ~ 1)}.}
 #'   \item{anova}{Data frame. The omnibus test table. Its attributes record
 #'     the type of sums of squares, the test statistic and (in
 #'     \code{anova_rm}) the sphericity correction; \code{print()} shows them.}
@@ -95,8 +97,9 @@
 #' \code{$canonical_term}, \code{$slopes_test} (with covariates),
 #' \code{$covariate_means} and \code{$test}; \code{\link{anova_count}} adds
 #' \code{$model_type}, \code{$dispersion} and \code{$model_dispersion};
-#' \code{\link{anova_bin}} and \code{\link{anova_glm}} add
-#' \code{$model_stats}. Each is documented on the function that produces it.
+#' \code{\link{anova_bin}} adds \code{$model_stats}; \code{\link{anova_glm}}
+#' adds \code{$model_stats} and \code{$family}. Each is documented on the
+#' function that produces it.
 #'
 #' @name anovakit_fit
 #' @seealso \code{\link{print.anovakit_fit}},
@@ -359,8 +362,23 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
     v <- df[[nm]]
     if (!is.numeric(v)) next
     if (.is_p_column(nm)) {
-      df[[nm]] <- ifelse(is.na(v), NA_character_,
-                         format.pval(v, digits = digits, eps = .Machine$double.eps))
+      # A p-value is printed down to the precision it was computed with, and
+      # below that as "< eps". Most are exact to double precision; emmeans'
+      # Tukey and Dunnett p-values come from ptukey(), whose upper tail has an
+      # absolute error of about 1e-14 (so digits below about 1e-10 are noise),
+      # and its Sidak ones from 1 - (1 - p)^m, which loses everything below
+      # about 1e-13.
+      eps <- rep(.Machine$double.eps, length(v))
+      if (nm == "p_adjusted" && "adjustment" %in% names(df)) {
+        fl <- c(tukey = 1e-10, dunnettx = 1e-10, sidak = 1e-12)[as.character(df$adjustment)]
+        eps[!is.na(fl)] <- fl[!is.na(fl)]
+      }
+      out <- rep("NA", length(v))
+      for (e in unique(eps)) {
+        i <- !is.na(v) & eps == e
+        if (any(i)) out[i] <- format.pval(v[i], digits = digits, eps = e)
+      }
+      df[[nm]] <- out
       next
     }
     if (is.integer(v) || all(is.na(v) | !is.finite(v) | v == round(v))) next
