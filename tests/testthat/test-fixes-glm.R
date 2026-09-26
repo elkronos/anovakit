@@ -330,10 +330,11 @@ test_that("F156: separation and unbounded profile intervals are noted", {
   ref <- suppressWarnings(suppressMessages(stats::confint(
     stats::glm(y ~ g, family = stats::binomial(), data = d))))
   expect_true(is.na(ref["gc", 2]))
-  expect_true(is.na(fit$assumptions$coefficients$conf_high[
-    fit$assumptions$coefficients$term == "gc"]))
+  # open above (Inf, not NA or a spline extrapolation), with a finite lower end
+  expect_identical(fit$assumptions$coefficients$conf_high[
+    fit$assumptions$coefficients$term == "gc"], Inf)
   expect_true(any(grepl("separation detected.*gc", fit$notes)))
-  expect_true(any(grepl("interval of gc is unbounded", fit$notes)))
+  expect_true(any(grepl("estimate of gc has diverged", fit$notes)))
 
   qb <- anova_glm(d, "y", "g", family = "quasibinomial", plots = FALSE)
   expect_true(any(grepl("separation detected", qb$notes)))
@@ -440,7 +441,8 @@ test_that("F157: frequency weights with robust SEs are flagged", {
                    vcov_type = "HC0", plots = FALSE)
   expect_true(any(grepl("frequency weights", fit$notes)))
   # a binary response cannot be overdispersed: no Pearson-dispersion note
-  expect_false(any(grepl("overdispersion", fit$notes)))
+  expect_false(any(grepl("^Pearson dispersion is", fit$notes)))
+  expect_true(is.na(fit$assumptions$dispersion))
 })
 
 test_that("F013: the omnibus test says which covariance it uses", {
@@ -519,4 +521,44 @@ test_that("an F test on a Poisson fit says it is a quasi-likelihood test", {
   expect_true(any(grepl("quasi-likelihood test", fit$notes)))
   expect_true(any(grepl(sprintf("%.3g", sum(stats::residuals(fit$model, type = "pearson")^2) /
                                    stats::df.residual(fit$model)), fit$notes, fixed = TRUE)))
+})
+
+# Separation, dispersion of 0/1 data (F045 and F032, glm parts) ----------------
+
+test_that("a separated logistic coefficient has an open side and a true profile end", {
+  withr::local_seed(106)
+  d <- data.frame(g = factor(c(rep("a", 100), rep("b", 100), rep("c", 12))),
+                  y = c(stats::rbinom(100, 1, 0.3), stats::rbinom(100, 1, 0.5), rep(1, 12)))
+  fit <- anova_glm(d, "y", "g", family = "binomial", plots = FALSE)
+  row <- fit$assumptions$coefficients[fit$assumptions$coefficients$term == "gc", ]
+  expect_identical(row$conf_high, Inf)
+  expect_true(is.finite(row$conf_low))
+  # Independent check: fixing gc at the lower end raises the deviance by the
+  # chi-square cut-off.
+  X <- stats::model.matrix(~ g, d)
+  full <- stats::glm(y ~ g, data = d, family = binomial)
+  fixed <- stats::glm(d$y ~ 0 + X[, c("(Intercept)", "gb")],
+                      offset = row$conf_low * X[, "gc"], family = binomial)
+  expect_equal(stats::deviance(fixed) - stats::deviance(full),
+               stats::qchisq(0.95, 1), tolerance = 1e-4)
+  expect_true(any(grepl("diverged", fit$notes)))
+})
+
+test_that("a zero-count Poisson cell gets an interval open below", {
+  withr::local_seed(6)
+  d <- data.frame(g = factor(rep(c("A", "B", "C"), each = 20)))
+  d$y <- c(stats::rpois(20, 3), stats::rpois(20, 5), rep(0, 20))
+  fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
+  row <- fit$assumptions$coefficients[fit$assumptions$coefficients$term == "gC", ]
+  expect_identical(row$conf_low, -Inf)
+  expect_true(is.na(row$conf_high) || row$conf_high > row$estimate)
+  expect_true(any(grepl("No events were observed in g = C", fit$notes)))
+})
+
+test_that("the dispersion of a 0/1 response is NA, with a reason", {
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 30)),
+                  y = rep(c(0, 1, 1, 0, 1), 18))
+  fit <- anova_glm(d, "y", "g", family = "binomial", plots = FALSE)
+  expect_true(is.na(fit$assumptions$dispersion))
+  expect_true(any(grepl("dispersion is reported as NA", fit$notes)))
 })

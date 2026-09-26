@@ -393,3 +393,12 @@ test_that("a grouping column called emm_estimate is not plotted against itself",
                    conf_low = c(0, 1), conf_high = c(2, 3))
   expect_identical(anovakit:::.emm_col(df, "estimate", "emm_estimate"), "estimate")
 })
+
+test_that("an empty-string group gets a box-plot label, not NA", {
+  d <- data.frame(g = rep(c("", "b", "c"), each = 6), y = c(1:6, 11:16, 21:26))
+  p <- anovakit:::.plot_box(transform(d, g = factor(g)), "y", "g")
+  labs <- levels(p$data$label)
+  expect_false(anyNA(labs))
+  expect_identical(length(labs), 3L)
+  expect_true(any(startsWith(labs, "\n(n = 6)")))
+})

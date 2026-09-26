@@ -102,11 +102,11 @@
                    stringsAsFactors = FALSE)
   counts <- table(df$cell)
   med <- tapply(df$value, df$cell, stats::median, na.rm = TRUE)
-  ord <- names(sort(med))
-  lab_map <- sprintf("%s\n(n = %d)", names(counts), as.integer(counts))
-  names(lab_map) <- names(counts)
-  df$label <- factor(lab_map[as.character(df$cell)],
-                     levels = unname(lab_map[ord]))
+  # Look levels up by position, not by name: a level that is the empty string
+  # cannot be used as a name, and would come out as an NA label.
+  ord <- order(med)
+  lab_map <- sprintf("%s\n(n = %d)", levels(df$cell), as.integer(counts))
+  df$label <- factor(lab_map[as.integer(df$cell)], levels = lab_map[ord])
   ggplot2::ggplot(df, ggplot2::aes(x = .data[["label"]], y = .data[["value"]],
                                    fill = .data[["label"]])) +
     ggplot2::geom_boxplot(outlier.alpha = 0.6, show.legend = FALSE) +

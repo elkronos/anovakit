@@ -448,7 +448,8 @@ test_that("F030: IRRs are level-vs-reference ratios under type III and global su
   t3 <- anova_count(d, "cnt", "g", type = "III", model = "poisson", plots = FALSE)
   expect_true(all(unlist(t3$model$contrasts) == "contr.sum"))
   expect_identical(t3$effect_sizes$term, c("gb", "gc"))
-  expect_identical(t3$effect_sizes$contrast, c("g: b / a", "g: c / a"))
+  expect_identical(t3$effect_sizes$comparison, c("b vs a", "c vs a"))
+  expect_identical(t3$effect_sizes$factor, c("g", "g"))
   expect_equal(t3$effect_sizes$IRR, unname(exp(rc[, 1])))
   expect_equal(t3$effect_sizes$IRR, obs[-1] / obs[1])
   expect_equal(t3$effect_sizes$conf_low,
@@ -463,7 +464,7 @@ test_that("F030: IRRs are level-vs-reference ratios under type III and global su
   d$dose <- factor(d$g, ordered = TRUE)
   od <- anova_count(d, "cnt", "dose", model = "poisson", plots = FALSE)
   expect_equal(od$effect_sizes$IRR, unname(exp(rc[, 1])))
-  expect_identical(od$effect_sizes$contrast, c("dose: b / a", "dose: c / a"))
+  expect_identical(od$effect_sizes$comparison, c("b vs a", "c vs a"))
 })
 
 test_that("F030: NB, quasi-Poisson, robust and interaction IRRs match a treatment-coded refit", {
@@ -500,7 +501,7 @@ test_that("F030: NB, quasi-Poisson, robust and interaction IRRs match a treatmen
   iref <- stats::coef(stats::glm(y ~ a * b, family = stats::poisson(), data = e))[-1]
   expect_identical(ix$effect_sizes$term, names(iref))
   expect_equal(ix$effect_sizes$IRR, unname(exp(iref)))     # NA for aq:bz
-  expect_identical(ix$effect_sizes$contrast[1], "a: q / p at b = x")
-  expect_identical(ix$effect_sizes$contrast[4],
-                   "a:b: (q / p at b = y) / (q / p at b = x)")
+  expect_identical(ix$effect_sizes$comparison[1], "q vs p at b = x")
+  expect_identical(ix$effect_sizes$comparison[4], "(q vs p) x (y vs x)")
+  expect_identical(ix$effect_sizes$factor[4], "a:b")
 })

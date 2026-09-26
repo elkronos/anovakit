@@ -97,7 +97,8 @@ An \code{\link{anovakit_fit}} object, with \code{$model_type}
   the frequency-weight denominator when the weights are frequencies).
   \code{$effect_sizes} holds incidence rate ratios against the reference
   level, with columns \code{term} (the treatment-coded coefficient),
-  \code{contrast} (what it compares), \code{IRR}, \code{conf_low},
+  \code{factor} and \code{comparison} (what it compares), \code{IRR},
+  \code{conf_low},
   \code{conf_high} and \code{p_value}. \code{$emmeans} holds the estimated
   marginal rates.
 }
@@ -163,10 +164,11 @@ expand a frequency table to one row per observation; \code{$notes} says so.
 treatment-coded parameterisation of the fitted model, whatever \code{type}
 and the global \code{contrasts} option are, and with ordered factors treated
 as unordered. Each ratio compares one level of a factor with its first
-(reference) level, as the \code{contrast} column says; in a model with
-interactions a main-effect ratio is taken at the reference levels of the
-factors it interacts with, and an interaction term is a ratio of rate
-ratios. The coefficients and their covariance (model-based or robust) are
+(reference) level, as the \code{factor} and \code{comparison} columns say
+(the same layout as the odds ratios of \code{\link{anova_bin}}); in a model
+with interactions a main-effect ratio is taken at the reference levels of
+the factors it interacts with, and an interaction term, labelled
+\code{"(B vs A) x (Y vs X)"}, is a ratio of rate ratios. The coefficients and their covariance (model-based or robust) are
 mapped exactly onto that coding, which gives what a refit with
 \code{contr.treatment} would give.
 

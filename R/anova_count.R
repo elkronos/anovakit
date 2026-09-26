@@ -61,10 +61,11 @@
 #' treatment-coded parameterisation of the fitted model, whatever \code{type}
 #' and the global \code{contrasts} option are, and with ordered factors treated
 #' as unordered. Each ratio compares one level of a factor with its first
-#' (reference) level, as the \code{contrast} column says; in a model with
-#' interactions a main-effect ratio is taken at the reference levels of the
-#' factors it interacts with, and an interaction term is a ratio of rate
-#' ratios. The coefficients and their covariance (model-based or robust) are
+#' (reference) level, as the \code{factor} and \code{comparison} columns say
+#' (the same layout as the odds ratios of \code{\link{anova_bin}}); in a model
+#' with interactions a main-effect ratio is taken at the reference levels of
+#' the factors it interacts with, and an interaction term, labelled
+#' \code{"(B vs A) x (Y vs X)"}, is a ratio of rate ratios. The coefficients and their covariance (model-based or robust) are
 #' mapped exactly onto that coding, which gives what a refit with
 #' \code{contr.treatment} would give.
 #'
@@ -130,7 +131,8 @@
 #'   the frequency-weight denominator when the weights are frequencies).
 #'   \code{$effect_sizes} holds incidence rate ratios against the reference
 #'   level, with columns \code{term} (the treatment-coded coefficient),
-#'   \code{contrast} (what it compares), \code{IRR}, \code{conf_low},
+#'   \code{factor} and \code{comparison} (what it compares), \code{IRR},
+#'   \code{conf_low},
 #'   \code{conf_high} and \code{p_value}. \code{$emmeans} holds the estimated
 #'   marginal rates.
 #'
@@ -696,7 +698,7 @@ anova_count <- function(data, response, groups,
     2 * stats::pnorm(-abs(stat))
   }
   tab <- data.frame(
-    term = got$term, contrast = got$contrast,
+    term = got$term, factor = got$factor, comparison = got$comparison,
     IRR = exp(got$estimate),
     conf_low = exp(got$estimate - crit * got$se),
     conf_high = exp(got$estimate + crit * got$se),
@@ -740,8 +742,9 @@ anova_count <- function(data, response, groups,
   estimate <- se <- rep(NA_real_, ncol(Xt))
   estimate[est] <- b
   se[est] <- sqrt(pmax(diag(Vt), 0))
+  lab <- .treatment_labels(Xt, tt, mf, facs)
   list(term = gsub("`", "", colnames(Xt), fixed = TRUE),
-       contrast = .treatment_labels(Xt, tt, mf, facs),
+       factor = lab$factor, comparison = lab$comparison,
        estimate = estimate, se = se)
 }
 
@@ -755,9 +758,12 @@ anova_count <- function(data, response, groups,
 #' @noRd
 .treatment_labels <- function(Xt, tt, mf, facs) {
   labels <- gsub("`", "", colnames(Xt), fixed = TRUE)
+  factor_of <- rep(NA_character_, length(labels))
   asg <- attr(Xt, "assign")
   fmat <- attr(tt, "factors")
-  if (is.null(fmat) || length(fmat) == 0L) return(labels)
+  if (is.null(fmat) || length(fmat) == 0L) {
+    return(list(factor = factor_of, comparison = labels))
+  }
   vars <- gsub("`", "", rownames(fmat), fixed = TRUE)
   term_vars <- lapply(seq_len(ncol(fmat)), function(j) vars[fmat[, j] > 0])
   ref <- vapply(facs, function(f) levels(mf[[f]])[1L], character(1))
@@ -779,20 +785,12 @@ anova_count <- function(data, response, groups,
     name <- paste(vs, collapse = ":")
     for (r in seq_len(nrow(combos))) {
       lv <- unlist(combos[r, ], use.names = FALSE)
-      labels[cols[r]] <- if (length(vs) == 1L) {
-        sprintf("%s: %s / %s%s", name, lv, ref[vs],
-                if (nzchar(at)) sprintf(" at %s", at) else "")
-      } else if (length(vs) == 2L) {
-        sprintf("%s: (%s / %s at %s = %s) / (%s / %s at %s = %s)%s",
-                name, lv[1L], ref[vs[1L]], vs[2L], lv[2L],
-                lv[1L], ref[vs[1L]], vs[2L], ref[vs[2L]],
-                if (nzchar(at)) sprintf(", at %s", at) else "")
-      } else {
-        sprintf("%s: interaction ratio of rate ratios for %s%s", name,
-                paste(sprintf("%s = %s vs %s", vs, lv, ref[vs]), collapse = ", "),
-                if (nzchar(at)) sprintf(", at %s", at) else "")
-      }
+      factor_of[cols[r]] <- name
+      one <- sprintf("%s vs %s", lv, ref[vs])
+      labels[cols[r]] <- paste0(
+        if (length(vs) == 1L) one else paste(sprintf("(%s)", one), collapse = " x "),
+        if (nzchar(at)) sprintf(" at %s", at) else "")
     }
   }
-  labels
+  list(factor = factor_of, comparison = labels)
 }
