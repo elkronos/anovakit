@@ -28,12 +28,13 @@ anova_count(
 \code{data.table} or a tibble.}
 
 \item{response}{Character. Name of the count column. Must be non-negative
-whole numbers.}
+whole numbers, not all zero.}
 
 \item{groups}{Character vector. One or more grouping columns.}
 
 \item{offset}{Optional character. Name of a strictly positive exposure
-column, entered as a log offset.}
+column, entered as a log offset. It cannot also be the response, a
+grouping column or the weights.}
 
 \item{interaction}{\code{FALSE} (additive, the default), \code{TRUE} (full
 factorial), or a whole number giving the highest interaction order.}
@@ -45,11 +46,18 @@ factorial), or a whole number giving the highest interaction order.}
 \code{model = "auto"} moves away from Poisson. Default \code{1.5}.}
 
 \item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.
-With \code{"III"} the model is fitted under sum-to-zero contrasts.}
+With \code{"III"} the model is fitted under sum-to-zero contrasts; this
+changes \code{$anova} only.}
 
 \item{test_statistic}{Character. \code{"LR"} (default), \code{"Wald"} or
 \code{"F"}, passed to \code{\link[car]{Anova}}. \code{"F"} is the right
-choice for a quasi-Poisson model.}
+choice for a quasi-Poisson model, which has no likelihood and is given it
+in place of \code{"LR"}. For a Poisson or negative binomial model,
+\code{"F"} makes \code{car::Anova()} estimate a dispersion from the Pearson
+residuals, so the table becomes a quasi-likelihood F test while
+\code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1;
+\code{$notes} gives the dispersion the F test used. Use
+\code{model = "quasipoisson"} for quasi-likelihood inference throughout.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
 Default \code{0.95}.}
@@ -72,10 +80,11 @@ of cells is large; \code{$notes} records that they were skipped. Default
 \code{$plots}, never drawn. Default \code{TRUE}.}
 
 \item{weights}{Optional character. Name of a numeric column of prior
-weights. Given as a column name rather than a vector so that it is
-subsetted with the data: a vector supplied by the caller is evaluated
-against the original frame and silently misaligns as soon as one row is
-dropped for missing values.}
+weights, which multiply each row's log-likelihood as frequency weights
+would (see Details). Given as a column name rather than a vector so that
+it is subsetted with the data: a vector supplied by the caller is
+evaluated against the original frame and silently misaligns as soon as
+one row is dropped for missing values.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
@@ -84,9 +93,13 @@ Default \code{FALSE}.}
 An \code{\link{anovakit_fit}} object, with \code{$model_type}
   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
   of the \emph{Poisson} fit (the statistic the model choice was made on) and
-  \code{$model_dispersion} that of the model actually returned.
-  \code{$effect_sizes} holds incidence rate ratios, \code{$emmeans} the
-  estimated marginal rates.
+  \code{$model_dispersion} that of the model actually returned (both with
+  the frequency-weight denominator when the weights are frequencies).
+  \code{$effect_sizes} holds incidence rate ratios against the reference
+  level, with columns \code{term} (the treatment-coded coefficient),
+  \code{contrast} (what it compares), \code{IRR}, \code{conf_low},
+  \code{conf_high} and \code{p_value}. \code{$emmeans} holds the estimated
+  marginal rates.
 }
 \description{
 Fits a Poisson, quasi-Poisson or negative binomial regression for a count
@@ -98,10 +111,33 @@ marginal rates and pairwise comparisons.
 \strong{Overdispersion.} The Pearson dispersion statistic is computed from
 the Poisson fit. With \code{model = "auto"} (the default) a dispersion above
 \code{overdispersion_threshold} switches the model to negative binomial when
-\pkg{MASS} is installed, and to quasi-Poisson otherwise. Which model was
-used, and why, is always recorded in \code{$notes} and in
-\code{$model_type}. Set \code{model} explicitly to take the decision out of
-the function's hands.
+\pkg{MASS} is installed, and to quasi-Poisson otherwise (or when the
+negative binomial fit fails). The threshold is a fixed cut-off, not a test,
+and a Poisson model kept below it is still affected by a dispersion
+\eqn{\phi} above 1: its likelihood-ratio and Wald statistics are inflated by
+about \eqn{\phi} and its intervals are too narrow, so at \eqn{\phi = 1.5} a
+nominal 5\% test on 1 degree of freedom rejects about 11\% of true null
+hypotheses, however large the sample. \code{$notes} then gives the
+dispersion and the size of the effect; use \code{model = "quasipoisson"} or
+\code{"negbin"} when that matters. When the Poisson model has no residual
+degrees of freedom the dispersion cannot be computed, and \code{$notes} says
+that overdispersion was not checked. Which model was used, and why, is
+always recorded in \code{$notes} and in \code{$model_type}. Set \code{model}
+explicitly to take the decision out of the function's hands: an explicit
+\code{model = "poisson"} is kept on overdispersed data (with a note), and an
+explicit \code{model = "negbin"} that cannot be fitted is an error rather
+than a substitution.
+
+\strong{Negative binomial inference.} The analysis of deviance treats the
+dispersion parameter theta as known, and its tests and the Wald intervals
+are asymptotic. With small groups they are anti-conservative, and not only
+because theta is treated as known: with fewer than about 10 observations
+per group a nominal 5\% test rejects roughly 10-15\% of true null hypotheses
+and 95\% intervals cover about 90\%; the excess fades by about 30 per group.
+The note on theta states the size of the problem for the smallest group in
+the data, whether theta is well determined, and whether the fit converged.
+Convergence is read from the fitted object, so the note is the same in
+every session language.
 
 \strong{Exposure.} An \code{offset} column enters the model as
 \code{offset(log(exposure))} in the formula, not through \code{glm()}'s
@@ -109,6 +145,30 @@ the function's hands.
 is invisible to \code{terms()}, which means \pkg{emmeans} cannot see it and
 \code{predict(newdata = )} silently recycles it. Estimated marginal means are
 reported at an exposure of 1, so they are rates per unit of exposure.
+
+\strong{Weights.} Prior weights multiply each row's contribution to the
+likelihood, which is exactly what a frequency weight does: a row with
+weight 3 counts as three identical observations, and a table with one row
+per distinct count and a column of frequencies gives the same estimates and
+likelihood-ratio tests as the expanded data. When every weight is a whole
+number and some exceed 1, the weights are taken to be frequencies and the
+Pearson dispersion (the one the model choice is made on, reported in
+\code{$dispersion}) divides by the number of observations they represent
+minus the number of parameters rather than by the number of rows, which
+would inflate it by up to the ratio of the two. A quasi-Poisson fit and an
+F test estimate their dispersion from the rows all the same, so for those
+expand a frequency table to one row per observation; \code{$notes} says so.
+
+\strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
+treatment-coded parameterisation of the fitted model, whatever \code{type}
+and the global \code{contrasts} option are, and with ordered factors treated
+as unordered. Each ratio compares one level of a factor with its first
+(reference) level, as the \code{contrast} column says; in a model with
+interactions a main-effect ratio is taken at the reference levels of the
+factors it interacts with, and an interaction term is a ratio of rate
+ratios. The coefficients and their covariance (model-based or robust) are
+mapped exactly onto that coding, which gives what a refit with
+\code{contr.treatment} would give.
 
 \strong{Interactions.} The model is additive by default. Set
 \code{interaction = TRUE} for the full factorial, or to a whole number for
