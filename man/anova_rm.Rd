@@ -30,7 +30,8 @@ anova_rm(
 
 \item{within}{Character vector. One or more within-subject factors.}
 
-\item{between}{Character vector or \code{NULL}. Between-subject factors.}
+\item{between}{Character vector or \code{NULL}. Between-subject factors,
+each constant within a subject.}
 
 \item{factorize}{Logical. Convert the response to numeric through its labels.
 Default \code{TRUE}; with \code{FALSE} a non-numeric response is an error.
@@ -38,7 +39,9 @@ The subject, within- and between-subject columns are always coerced to
 factors, whatever this is set to.}
 
 \item{emm_specs}{Character vector or \code{NULL}. Factors to compute
-estimated marginal means over. Defaults to all within-subject factors.}
+estimated marginal means over. Defaults to all within-subject factors;
+when it leaves out a factor of the model, the means are averaged over
+that factor's levels and \code{$notes} says so.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
 comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
@@ -49,8 +52,9 @@ comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
 Default \code{0.95}.}
 
-\item{correction}{Character. Sphericity correction reported in the ANOVA
-table: \code{"GG"} (default), \code{"HF"} or \code{"none"}.}
+\item{correction}{Character. Sphericity correction applied to the ANOVA
+table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. It is
+recorded in \code{attr(fit$anova, "correction")} and printed.}
 
 \item{posthoc}{Logical. Compute pairwise comparisons. There are
 \code{choose(k, 2)} of them, so this is worth turning off when the number
@@ -63,17 +67,58 @@ of cells is large; \code{$notes} records that they were skipped. Default
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
 
-\item{...}{Further arguments passed to \code{\link[afex]{aov_ez}}, for
-example \code{fun_aggregate} or \code{observed}.}
+\item{...}{Only these arguments of \code{\link[afex]{aov_ez}} are
+accepted; anything else is an error rather than silently ignored.
+\describe{
+  \item{\code{fun_aggregate}}{A function combining the rows of a subject
+    that share a within-subject cell into one number. Default
+    \code{mean}.}
+  \item{\code{observed}}{Character. Factors that were observed (measured)
+    rather than manipulated. Generalised eta squared depends on this
+    (Olejnik and Algina, 2003).}
+  \item{\code{type}}{Sums of squares: \code{3} (or \code{"III"}, the
+    default) or \code{2} (\code{"II"}).}
+  \item{\code{anova_table}}{A list holding only \code{p_adjust_method},
+    one of \code{\link[stats]{p.adjust.methods}}, which adjusts the
+    p-values of \code{$anova} across its terms. The \code{p_gg} and
+    \code{p_hf} columns of \code{$sphericity} stay unadjusted.}
+}
+\code{covariate} is refused: \code{anova_rm()} does not fit covariates.
+\code{id}, \code{dv}, \code{return}, \code{include_aov} and
+\code{print.formula} are set by the function itself, and
+\code{transformation} is refused (transform the response column
+instead).}
 }
 \value{
-An \code{\link{anovakit_fit}} object, with
-  \code{$subjects_dropped} listing any subjects removed for incomplete
-  within-subject cells, \code{$sphericity} holding Mauchly's test and the
-  epsilon corrections, \code{$residuals} the within-cell residuals the
-  diagnostics are built on, and \code{$n_removed_missing},
-  \code{$n_removed_unbalanced} and \code{$n_removed_aggregated} breaking
-  \code{$n_removed} into its three causes.
+An \code{\link{anovakit_fit}} object. \code{$anova} has the
+  corrected degrees of freedom, the MSE, F, partial eta squared and the
+  p-value for each term; \code{$effect_sizes} has partial and generalised
+  eta squared, the latter honouring \code{observed}. The function adds
+  \describe{
+    \item{\code{$sphericity}}{Mauchly's test (\code{mauchly_w},
+      \code{p_value}, \code{NA} where it is undefined), the
+      Greenhouse-Geisser and Huynh-Feldt epsilons (\code{gg_epsilon},
+      \code{hf_epsilon}, the latter capped at 1), the p-values under each
+      correction (\code{p_gg}, \code{p_hf}) and the uncapped Huynh-Feldt
+      estimate (\code{hf_epsilon_raw}), one row per within-subject term
+      with more than one degree of freedom.}
+    \item{\code{$residuals}}{The within-subject residuals (see Details),
+      one per row of \code{$data_used} and in the same order, so
+      \code{$residuals[i]} belongs to \code{$data_used[i, ]}.}
+    \item{\code{$subjects_dropped}}{The subjects removed for incomplete
+      within-subject cells.}
+    \item{\code{$internal_names}}{A data frame with the \code{role},
+      your \code{name} and the \code{internal} name each column has in
+      \code{$model}.}
+    \item{\code{$n_removed_missing}, \code{$n_removed_unbalanced},
+      \code{$n_removed_aggregated}}{\code{$n_removed} broken into its three
+      causes.}
+  }
+  \code{$data_used} has one row per subject and within-subject cell, in the
+  order the rows came in (a combined row takes the place of its first
+  row). \code{$assumptions$normality} has one Shapiro-Wilk test per
+  within-subject cell, with a \code{note} giving the reason when a cell
+  could not be tested.
 }
 \description{
 Fits a repeated measures ANOVA to data in long format using
@@ -82,15 +127,75 @@ Greenhouse-Geisser and Huynh-Feldt corrections, generalised and partial eta
 squared, residual diagnostics, and estimated marginal means.
 }
 \details{
-\strong{Sphericity comes from the model that was fitted.} \pkg{afex} already
-computes Mauchly's test and both epsilon corrections as part of
-\code{aov_ez()}; they are read from there rather than recomputed by reshaping
-the data and refitting a multivariate model.
+\strong{What is fixed rather than inherited.} The sums of squares are Type
+III unless \code{type = 2} is given through \code{...}; the between-subject
+factors are coded with sum-to-zero contrasts, which Type III needs; and the
+marginal means and comparisons use \pkg{afex}'s multivariate model, whose
+standard errors and degrees of freedom come from each within-subject cell's
+own variance rather than a pooled error term. None of these is read from
+\code{afex::afex_options()}, so a global setting made for some other
+analysis cannot change the result. The type is recorded in
+\code{attr(fit$anova, "ss_type")} (and printed), the emmeans model in
+\code{attr(fit$emmeans, "emmeans_model")} and
+\code{attr(fit$posthoc, "emmeans_model")}.
+
+\strong{Sphericity.} Mauchly's test and both epsilon estimates are read
+from the multivariate model \pkg{afex} fitted (through
+\code{car::summary.Anova.mlm()}). Each term's error matrix is first
+rescaled to unit average variance, so a response measured in small units
+does not fall below \pkg{car}'s \emph{absolute} singularity tolerance and
+lose its corrections. When the error matrix is genuinely singular -- fewer
+subjects than the term has contrasts -- \pkg{car} cannot give the
+corrections and Mauchly's test is undefined. The Greenhouse-Geisser
+epsilon, \eqn{tr(S)^2 / ((k-1) tr(S^2))}, is still defined, where \eqn{S}
+is the covariance matrix of the orthonormal within-subject contrasts; it
+and the Huynh-Feldt epsilon (with Lecoutre's correction) are then computed
+directly, the requested correction is applied with them, and
+\code{$notes} says so. The Huynh-Feldt estimate can exceed 1; it is used,
+and reported in \code{$sphericity$hf_epsilon}, capped at 1, with the
+uncapped value in \code{$sphericity$hf_epsilon_raw}. The corrected degrees
+of freedom are the uncorrected ones multiplied by epsilon, as in
+\pkg{afex}.
 
 \strong{Unbalanced subjects.} A repeated measures ANOVA needs every subject
 to appear in every within-subject cell. Subjects who do not are removed
-before fitting, and both the count and the identifiers are reported in
-\code{$subjects_dropped} and in \code{$notes}.
+before fitting, and both the count and the identifiers (in the order of the
+subject column's levels) are reported in \code{$subjects_dropped} and in
+\code{$notes}.
+
+\strong{Repeated rows.} A subject with more than one row in the same
+within-subject cell has those rows combined into one value before fitting,
+with \code{fun_aggregate} (the mean unless another function is given). The
+note says how many subject-by-cell combinations were affected and how many
+extra rows were combined away; those rows are counted in \code{$n_removed}.
+
+\strong{Column names and labels.} \pkg{afex} builds a model formula from
+the column names and wide-format column names from the within-subject
+levels, so a column name that is not a syntactic R name (\code{"subject
+id"}), or level labels such as \code{0, 4, 12}, would be mangled or parsed
+as code. \pkg{afex} is therefore given internal names (\code{Y}, \code{ID},
+\code{W1}, \code{W2}, ..., \code{B1}, ...) and level labels (\code{L01},
+\code{L02}, ... in level order), and every table, \code{$data_used},
+\code{$emmeans_object} and the plots are mapped back to your names and
+labels. \code{$model} is the \pkg{afex} fit itself and keeps the internal
+names; \code{$internal_names} gives the correspondence.
+
+\strong{Normality.} The F tests for within-subject effects depend on the
+within-subject errors: what is left of each value after its subject's mean
+and its cell's mean (within each between-subject group) are removed,
+\eqn{y_{ij} - \bar{y}_{i\cdot} - \bar{y}_{g(i)\cdot j} +
+\bar{y}_{g(i)\cdot\cdot}}{y[ij] - mean(subject i) - mean(cell j in group
+g(i)) + mean(group g(i))}. These are \code{$residuals}, and Shapiro-Wilk
+is run on them separately in each within-subject cell
+(\code{$assumptions$normality}), as \code{\link{anova_welch}} tests each
+group: the cells' variances usually differ, and pooling values of
+different spread gives a mixture that fails a normality test even when
+every cell is normal. With a single two-level within-subject factor the
+residuals are plus and minus half of each subject's centred difference, so
+both rows test the normality of the differences, which is exactly the
+assumption of the equivalent paired t-test. The Q-Q plot shows the same
+residuals standardised within each cell. Normality of the subject means,
+which the between-subject tests rely on, is not tested.
 
 \strong{A factor response.} With \code{factorize = TRUE}, a response stored
 as a factor is converted with \code{as.numeric(as.character(x))}, which
@@ -116,11 +221,27 @@ if (requireNamespace("afex", quietly = TRUE)) {
   print(fit$sphericity)
 
   # Generalised eta squared alongside partial eta squared, and the marginal
-  # means over the within-subject factor
+  # means over the within-subject factor (averaged over arm, as $notes says)
   print(fit$effect_sizes)
   print(fit$emmeans)
+
+  # A factor that was measured rather than assigned (an age group, say) is
+  # declared with `observed`, which changes generalised eta squared
+  d$age_grp <- factor(rep(rep(c("younger", "older"), 12), 3))
+  anova_rm(d, "score", subject = "id", within = "time",
+           between = c("arm", "age_grp"), observed = "age_grp",
+           plots = FALSE)$effect_sizes
 }
 
+}
+\references{
+Olejnik, S., & Algina, J. (2003). Generalized eta and omega
+  squared statistics: measures of effect size for some common research
+  designs. \emph{Psychological Methods}, 8(4), 434-447.
+
+  Lecoutre, B. (1991). A correction for the epsilon-tilde approximate test
+  in repeated measures designs with two or more independent groups.
+  \emph{Journal of Educational Statistics}, 16(4), 371-372.
 }
 \seealso{
 \code{\link{anova_welch}} for independent groups,
