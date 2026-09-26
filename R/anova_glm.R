@@ -233,10 +233,11 @@ anova_glm <- function(data, response, groups,
   }
   notes <- c(notes, .check_model_size(model))
   fam_name <- family$family
-  if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
-      grepl("^Negative Binomial", fam_name)) {
-    notes <- c(notes, .check_separation(model))
-  }
+  sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
+                  grepl("^Negative Binomial", fam_name)) {
+    .check_separation(model)
+  } else character(0)
+  notes <- c(notes, sep_note)
 
   # The default follows what the fitted model does with its dispersion, which
   # is also what decides t or z in the coefficient table: a family string
@@ -287,7 +288,14 @@ anova_glm <- function(data, response, groups,
   # A binary response cannot be overdispersed, and with frequency weights its
   # Pearson statistic grows with the weights: the check only means something
   # for counts and for proportions out of several trials.
-  binary <- fam_name == "binomial" && all(model$y %in% c(0, 1))
+  binary <- fam_name %in% c("binomial", "quasibinomial") && all(model$y %in% c(0, 1))
+  if (binary) {
+    # For 0/1 data the Pearson statistic says nothing about overdispersion (in a
+    # one-way model it is N / (N - k) whatever the data), and with frequency
+    # weights it grows with them.
+    dispersion <- NA_real_
+    notes <- c(notes, "The dispersion is reported as NA: for a 0/1 response the Pearson statistic carries no information about overdispersion, which binary data cannot show.")
+  }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
   if (fixed_family && is.finite(dispersion) && dispersion > 1.2) {
     # Under a true dispersion phi a test statistic of this family is about phi
@@ -321,7 +329,8 @@ anova_glm <- function(data, response, groups,
   }
   ci <- .coef_intervals(model, conf_level = conf_level,
                         ci_method = if (is.null(rv$matrix)) ci_method else "wald",
-                        vcov_matrix = rv$matrix, known = fitted$said)
+                        vcov_matrix = rv$matrix, known = fitted$said,
+                        separated = length(sep_note) > 0L)
   notes <- c(notes, ci$note)
 
   ## Marginal means and comparisons ------------------------------------------
@@ -583,7 +592,8 @@ anova_glm <- function(data, response, groups,
 #' identity model, where the result is \code{confint(lm())}.
 #' @noRd
 .coef_intervals <- function(model, conf_level = 0.95, ci_method = "profile",
-                            vcov_matrix = NULL, known = character(0)) {
+                            vcov_matrix = NULL, known = character(0),
+                            separated = FALSE) {
   ct <- .coef_table(model, vcov_matrix)
   notes <- character(0)
   ci <- NULL
@@ -615,6 +625,34 @@ anova_glm <- function(data, response, groups,
     ci <- cbind(ct$estimate - crit * ct$se, ct$estimate + crit * ct$se)
     rownames(ci) <- ct$term
     method_used <- "wald"
+  }
+  # Under separation (or a zero-count cell) a coefficient has run off towards
+  # infinity, and confint()'s spline extrapolates the profile into junk on
+  # both sides. The side it diverged in is open; the other end is found by
+  # profiling directly for a logistic model, and kept from the profile only
+  # when it is finite and on the right side of the estimate otherwise.
+  if (separated) {
+    fam <- stats::family(model)
+    diverged <- ct$term[is.finite(ct$se) & ct$se > 10 & ct$term %in% rownames(ci)]
+    for (tm in diverged) {
+      est <- ct$estimate[ct$term == tm]
+      up <- if (est >= 0) 1 else -1
+      if (fam$family %in% c("binomial", "quasibinomial") && fam$link == "logit") {
+        ci[tm, ] <- .separated_profile(model, tm, conf_level)
+      } else {
+        # A Wald end is as meaningless as the Wald standard error behind it.
+        far <- if (method_used == "profile") {
+          if (up > 0) ci[tm, 1L] else ci[tm, 2L]
+        } else NA_real_
+        if (!is.finite(far) || (up > 0 && far > est) || (up < 0 && far < est)) far <- NA_real_
+        ci[tm, ] <- if (up > 0) c(far, Inf) else c(-Inf, far)
+      }
+    }
+    if (length(diverged) > 0L) {
+      notes <- c(notes, sprintf(
+        "The estimate of %s has diverged (separation or a zero-count cell), so its interval is open on that side (Inf or -Inf); the finite end is found by profiling the likelihood directly, and is NA where no value on that side can be ruled out either.",
+        paste(gsub("`", "", diverged, fixed = TRUE), collapse = ", ")))
+    }
   }
   idx <- match(ct$term, rownames(ci))
   out <- data.frame(ct, conf_low = ci[idx, 1L], conf_high = ci[idx, 2L],
