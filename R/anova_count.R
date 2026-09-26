@@ -128,6 +128,8 @@ anova_count <- function(data, response, groups,
   }
   .check_conf_level(conf_level)
   .check_interaction(interaction, length(groups))
+  .check_roles(list(`the response` = response, `a grouping variable` = groups,
+                    `the exposure offset` = offset, `the weights` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -145,6 +147,10 @@ anova_count <- function(data, response, groups,
   prep <- .prepare_frame(data, cols, factors = groups, keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
+  zw <- .drop_zero_weights(d, weights)
+  d <- zw$data
+  n_removed <- prep$n_removed + zw$n_removed
+  notes <- c(notes, zw$notes)
   .check_groups(d, groups, min_levels = 2L, min_n = 1L)
 
   if (!is.null(offset)) {
@@ -154,7 +160,6 @@ anova_count <- function(data, response, groups,
     }
   }
 
-  wts <- .resolve_weights(d, weights)
   notes <- c(notes, .sparse_cell_note(d, groups))
 
   ## Build the formula, with the offset inside it -----------------------------
@@ -169,7 +174,7 @@ anova_count <- function(data, response, groups,
   # Wrapped like every other fitting call: glm() warns about numerically zero
   # fitted rates, and that belongs in $notes rather than on the console.
   got <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, stats::poisson(link = "log"), wts),
+    function() .fit_glm(fml, d, stats::poisson(link = "log"), weights),
     type = type))
   pois <- got$value
   if (inherits(pois, "error")) {
@@ -190,7 +195,7 @@ anova_count <- function(data, response, groups,
     nb <- withCallingHandlers(
       tryCatch(
         .fit_with_contrasts(
-          function() .fit_glm(fml, d, NULL, wts),
+          function() .fit_glm(fml, d, NULL, weights),
           type = type),
         error = function(e) e),
       warning = function(w) {
@@ -202,7 +207,7 @@ anova_count <- function(data, response, groups,
         "The negative binomial fit failed (%s); a quasi-Poisson model was used instead.",
         conditionMessage(nb)))
       qp <- .collect_conditions(.fit_with_contrasts(
-        function() .fit_glm(fml, d, stats::quasipoisson(), wts),
+        function() .fit_glm(fml, d, stats::quasipoisson(), weights),
         type = type))
       fit <- qp$value
       if (inherits(fit, "error")) {
@@ -221,7 +226,7 @@ anova_count <- function(data, response, groups,
     }
   } else if (chosen$model == "quasipoisson") {
     qp <- .collect_conditions(.fit_with_contrasts(
-      function() .fit_glm(fml, d, stats::quasipoisson(), wts),
+      function() .fit_glm(fml, d, stats::quasipoisson(), weights),
       type = type))
     fit <- qp$value
     if (inherits(fit, "error")) {
@@ -237,6 +242,7 @@ anova_count <- function(data, response, groups,
     notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
   }
   notes <- c(notes, .check_model_size(fit))
+  notes <- c(notes, .check_separation(fit))
 
   ## Analysis of deviance -----------------------------------------------------
   av <- .car_anova(fit, type = type, test_statistic = test_statistic)
@@ -245,26 +251,21 @@ anova_count <- function(data, response, groups,
   ## Marginal rates and pairwise incidence rate ratios ------------------------
   rv <- .robust_vcov(fit, vcov_type)
   notes <- c(notes, rv$note)
-  emm_args <- list(model = fit, specs = groups, type = "response",
-                   vcov_matrix = rv$matrix)
-  if (!is.null(offset)) emm_args$offset <- 0
-  emm <- do.call(.emmeans_grid, emm_args)
-  notes <- c(notes, emm$note)
-  if (!is.null(offset) && !is.null(emm$grid)) {
+  emm_extra <- if (!is.null(offset)) list(offset = 0) else list()
+  emm <- do.call(.emm_block, c(list(
+    model = fit, groups = groups, additive = .is_additive(interaction),
+    type = "response", vcov_matrix = rv$matrix, conf_level = conf_level,
+    adjust = adjust, posthoc = posthoc, link = "log", data = d), emm_extra))
+  notes <- c(notes, emm$notes)
+  if (!is.null(offset) && !is.null(emm$table)) {
     notes <- c(notes, sprintf(
       "Estimated marginal means are rates at %s = 1 (one unit of exposure).", offset))
   }
-  emm_tab <- .emmeans_table(emm$grid, conf_level, protect = groups)
-  notes <- c(notes, emm_tab$note)
-  ph <- if (posthoc) {
-    .emmeans_pairs(emm$grid, adjust = adjust, conf_level = conf_level,
-                   ratios = TRUE)
-  } else list(table = NULL,
-              note = .no_posthoc_note(NROW(emm_tab$table),
-                                      extra = "$effect_sizes still reports the incidence rate ratios from the model."))
-  notes <- c(notes, ph$note)
-  if (!is.null(ph$table) && "ratio" %in% names(ph$table)) {
-    names(ph$table)[names(ph$table) == "ratio"] <- "IRR"
+  if (!posthoc) {
+    notes <- c(notes, "$effect_sizes still reports the incidence rate ratios from the model.")
+  }
+  if (!is.null(emm$posthoc) && "ratio" %in% names(emm$posthoc)) {
+    names(emm$posthoc)[names(emm$posthoc) == "ratio"] <- "IRR"
   }
 
   ## Coefficient-scale incidence rate ratios ---------------------------------
@@ -280,10 +281,10 @@ anova_count <- function(data, response, groups,
 
   ## Plots --------------------------------------------------------------------
   plot_list <- list()
-  if (plots && !is.null(emm_tab$table)) {
+  if (plots && !is.null(emm$table)) {
     .say(verbose, "Building plots.")
     plot_list$emmeans <- .plot_emmeans(
-      emm_tab$table, groups, estimate = "estimate",
+      emm$table, groups, estimate = "estimate",
       lower = "conf_low", upper = "conf_high", conf_level = conf_level,
       title = sprintf("Estimated %s rate by group", response),
       ylab = sprintf("Estimated %s", response))
@@ -302,15 +303,15 @@ anova_count <- function(data, response, groups,
     model        = fit,
     anova        = av$table,
     effect_sizes = effect_sizes,
-    emmeans      = emm_tab$table,
+    emmeans      = emm$table,
     emmeans_object = emm$grid,
-    posthoc      = ph$table,
+    posthoc      = emm$posthoc,
     assumptions  = list(poisson_dispersion = dispersion,
                         model_dispersion = .dispersion(fit),
                         cell_counts = .cell_counts(d, groups)),
     plots        = plot_list,
     data_used    = d,
-    n_removed    = prep$n_removed,
+    n_removed    = n_removed,
     conf_level   = conf_level,
     notes        = notes,
     extra        = list(model_type = model_type,

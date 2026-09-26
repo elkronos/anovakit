@@ -4,17 +4,6 @@
 # (.data[[ ]]) rather than the deprecated aes_string(), and returned rather than
 # printed.
 
-#' The common theme
-#' @noRd
-.gg_theme <- function() {
-  ggplot2::theme_minimal() +
-    ggplot2::theme(
-      plot.title    = ggplot2::element_text(face = "bold"),
-      axis.text.x   = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "bottom"
-    )
-}
-
 #' Rotate x labels only when they are long or numerous
 #' @noRd
 .gg_theme_auto <- function(labels) {
@@ -96,10 +85,10 @@
       ggplot2::aes(ymin = .data[["conf_low"]], ymax = .data[["conf_high"]]),
       width = 0.2) +
     ggplot2::labs(
-      title = title %||% sprintf("Group means with %g%% confidence intervals",
-                                 round(conf_level * 100, 1)),
+      title = title %||% sprintf("Group means with %s%% confidence intervals",
+                                 .pct(conf_level)),
       x = xlab, y = ylab %||% sprintf("Mean %s", response)) +
-    .gg_theme_auto(df$label)
+    .gg_theme_auto(as.character(df$group))
 }
 
 #' Boxplot of a response by cell, labelled with the cell's own count
@@ -124,7 +113,7 @@
     ggplot2::labs(title = title %||% "Distribution of response by group",
                   subtitle = "Groups ordered by median",
                   x = xlab, y = response) +
-    .gg_theme_auto(levels(df$label))
+    .gg_theme_auto(names(counts))
 }
 
 #' Estimated marginal means, with every factor in the grid mapped
@@ -143,16 +132,43 @@
 .plot_emmeans <- function(emm, factors, estimate = "estimate",
                           lower = "conf_low", upper = "conf_high",
                           conf_level = 0.95, title = NULL, ylab = NULL) {
+  term_col <- attr(emm, "term_col")
   df <- as.data.frame(emm)
   factors <- intersect(factors, names(df))
   estimate <- .emm_col(df, estimate, factors)
   lower <- .emm_col(df, lower, factors)
   upper <- .emm_col(df, upper, factors)
   if (length(factors) == 0L || is.null(estimate)) return(NULL)
+  has_ci <- !is.null(lower) && !is.null(upper)
+  subtitle <- if (has_ci) {
+    sprintf("Error bars are %s%% confidence intervals", .pct(conf_level))
+  } else NULL
+
+  # Marginal means of an additive model, one factor at a time: one panel per
+  # factor, each showing that factor's levels.
+  if (!is.null(term_col) && term_col %in% names(df)) {
+    lvl <- rep(NA_character_, nrow(df))
+    for (g in factors) {
+      v <- as.character(df[[g]])
+      lvl[!is.na(v)] <- v[!is.na(v)]
+    }
+    df$.level <- factor(lvl, levels = unique(lvl))
+    df$.term <- factor(df[[term_col]], levels = unique(df[[term_col]]))
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = .data[[".level"]], y = .data[[estimate]])) +
+      ggplot2::geom_point(size = 2.5)
+    if (has_ci) {
+      p <- p + ggplot2::geom_errorbar(
+        ggplot2::aes(ymin = .data[[lower]], ymax = .data[[upper]]), width = 0.15)
+    }
+    return(p +
+      ggplot2::facet_wrap(ggplot2::vars(.data[[".term"]]), scales = "free_x") +
+      ggplot2::labs(title = title %||% "Estimated marginal means",
+                    subtitle = subtitle, x = NULL,
+                    y = ylab %||% "Estimated marginal mean") +
+      .gg_theme_auto(levels(df$.level)))
+  }
   xvar <- factors[1L]
   df[[xvar]] <- as.factor(df[[xvar]])
-
-  has_ci <- !is.null(lower) && !is.null(upper)
 
   if (length(factors) > 1L) {
     df$.series <- droplevels(interaction(df[factors[-1L]], drop = TRUE, sep = " : "))
@@ -178,9 +194,7 @@
   p +
     ggplot2::labs(
       title = title %||% "Estimated marginal means",
-      subtitle = if (has_ci) {
-        sprintf("Error bars are %g%% confidence intervals", round(conf_level * 100, 1))
-      } else NULL,
+      subtitle = subtitle,
       x = xvar, y = ylab %||% "Estimated marginal mean", colour = lab_colour) +
     .gg_theme_auto(levels(df[[xvar]]))
 }
@@ -208,14 +222,19 @@
 
 #' Scatterplot of response against covariate, by group
 #' @noRd
-.plot_covariate <- function(data, response, covariate, cell) {
+.plot_covariate <- function(data, response, covariate, cell, conf_level = 0.95,
+                            xlab = covariate) {
+  data <- data[, unique(c(response, covariate, cell)), drop = FALSE]
   ggplot2::ggplot(data, ggplot2::aes(x = .data[[covariate]],
                                      y = .data[[response]],
                                      colour = .data[[cell]])) +
     ggplot2::geom_point(alpha = 0.7) +
-    ggplot2::geom_smooth(method = "lm", formula = y ~ x, se = TRUE) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ x, se = TRUE,
+                         level = conf_level) +
     ggplot2::labs(title = sprintf("%s against %s by group", response, covariate),
-                  x = covariate, y = response, colour = "Group") +
+                  subtitle = sprintf("Bands are %s%% confidence intervals for each group's line",
+                                     .pct(conf_level)),
+                  x = xlab, y = response, colour = "Group") +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
                    legend.position = "bottom")
@@ -269,7 +288,9 @@
 .emm_col <- function(df, target, protect = character(0)) {
   if (is.null(target)) return(NULL)
   prefixed <- paste0("emm_", target)
-  if (prefixed %in% names(df)) return(prefixed)
+  # A grouping column may itself be called emm_estimate; it is never the
+  # statistic, so only a prefixed name that is not a grouping column counts.
+  if (prefixed %in% names(df) && !prefixed %in% protect) return(prefixed)
   if (target %in% names(df) && !target %in% protect) return(target)
   NULL
 }

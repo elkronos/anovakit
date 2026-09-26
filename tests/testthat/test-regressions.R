@@ -226,9 +226,9 @@ test_that("weights are named as a column and stay aligned when rows are dropped"
   # A predictor cannot also be the weights: caught by name, before the frame
   # is prepared and the column is coerced to a factor
   expect_error(anova_glm(fx_oneway(), "value", "group", weights = "group"),
-               "already a grouping variable")
+               "both a grouping variable and the weights")
   expect_error(anova_glm(fx_oneway(), "value", "group", weights = "value"),
-               "already the response")
+               "both the response and the weights")
   d2 <- fx_oneway(); d2$w <- as.character(seq_len(nrow(d2)))
   expect_error(anova_glm(d2, "value", "group", weights = "w"),
                "must be numeric")

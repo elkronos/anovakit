@@ -39,11 +39,15 @@ test_that("print returns its input invisibly and mentions the method", {
 
 test_that("summary prints the sections the fit actually has", {
   fit <- anova_welch(fx_oneway(), "value", "group", plots = FALSE)
-  out <- utils::capture.output(res <- summary(fit))
-  expect_identical(res, fit)
+  res <- summary(fit)
+  expect_s3_class(res, "summary.anovakit_fit")
+  expect_identical(res$fit, fit)
+  out <- utils::capture.output(print(res))
   expect_true(any(grepl("Assumption checks", out)))
   expect_true(any(grepl("Effect sizes", out)))
-  expect_true(any(grepl("Estimated marginal means", out)))
+  # Welch fits no model, so its table is of group summaries, not EMMs
+  expect_true(any(grepl("Group summaries", out)))
+  expect_false(any(grepl("Estimated marginal means", out)))
   expect_true(any(grepl("Pairwise comparisons", out)))
 })
 

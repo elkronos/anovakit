@@ -128,6 +128,7 @@ NULL
 #' print(fit)
 #' @export
 print.anovakit_fit <- function(x, digits = 4L, ...) {
+  digits <- .check_digits(digits)
   cat(x$method, "\n")
   cat(strrep("-", nchar(x$method)), "\n", sep = "")
   if (!is.null(x$call)) {
@@ -141,7 +142,7 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
                         x$n_removed)
               else ""))
   if (!is.null(x$anova) && NROW(x$anova) > 0L) {
-    cat("\nOmnibus test\n")
+    cat("\n", .omnibus_header(x$anova), "\n", sep = "")
     .print_df(x$anova, digits)
   }
   if (length(x$notes) > 0L) {
@@ -155,22 +156,54 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
   invisible(x)
 }
 
+#' The heading of the omnibus table, naming what it contains
+#'
+#' The statistic (F, likelihood-ratio or Wald chi-square), the type of sums of
+#' squares and the sphericity correction all change what the numbers mean, and
+#' none of them can be read off the table itself.
+#' @noRd
+.omnibus_header <- function(tab) {
+  bits <- c(
+    if (!is.null(attr(tab, "ss_type"))) sprintf("Type %s", attr(tab, "ss_type")),
+    attr(tab, "statistic"),
+    if (!is.null(attr(tab, "correction"))) {
+      corr <- attr(tab, "correction")
+      if (identical(corr, "none")) "no sphericity correction" else
+        sprintf("%s-corrected degrees of freedom", corr)
+    })
+  if (length(bits) == 0L) "Omnibus test" else
+    sprintf("Omnibus test (%s)", paste(bits, collapse = ", "))
+}
+
 #' Summarise an anovakit result
 #'
 #' Everything \code{print} shows, plus assumption checks, effect sizes,
-#' estimated marginal means and post-hoc comparisons.
+#' marginal means, post-hoc comparisons and whatever further tables the method
+#' produces (simple slopes, sphericity, the multivariate tests and univariate
+#' follow-ups, the canonical axes).
 #'
 #' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
 #'   \code{4}.
 #' @param ... Ignored.
-#' @return \code{object}, invisibly.
+#' @return An object of class \code{summary.anovakit_fit}, which prints the
+#'   summary. Its \code{$fit} element is \code{object}.
 #' @examples
 #' set.seed(1)
 #' d <- data.frame(g = rep(c("a", "b", "c"), each = 20), y = rnorm(60))
 #' summary(anova_welch(d, "y", "g", plots = FALSE))
 #' @export
 summary.anovakit_fit <- function(object, digits = 4L, ...) {
+  structure(list(fit = object, digits = .check_digits(digits)),
+            class = "summary.anovakit_fit")
+}
+
+#' @rdname summary.anovakit_fit
+#' @param x A \code{summary.anovakit_fit} object.
+#' @export
+print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
+  object <- x$fit
+  digits <- .check_digits(digits)
   print(object, digits = digits)
 
   if (length(object$assumptions) > 0L) {
@@ -182,11 +215,14 @@ summary.anovakit_fit <- function(object, digits = 4L, ...) {
       if (inherits(el, "htest")) {
         cat(sprintf("    %s: statistic = %s, p = %s\n", el$method,
                     format(signif(unname(el$statistic), digits)),
-                    format(signif(unname(el$p.value), digits))))
+                    format.pval(unname(el$p.value), digits = digits,
+                                eps = .Machine$double.eps)))
       } else if (is.data.frame(el)) {
         .print_df(el, digits, row.names = FALSE)
+      } else if (is.numeric(el) && length(el) == 1L) {
+        cat("    ", format(signif(el, digits)), "\n", sep = "")
       } else {
-        print(el)
+        print(el, digits = digits)
       }
     }
   }
@@ -195,15 +231,38 @@ summary.anovakit_fit <- function(object, digits = 4L, ...) {
     .print_df(object$effect_sizes, digits, row.names = FALSE)
   }
   if (!is.null(object$emmeans) && NROW(object$emmeans) > 0L) {
-    cat(sprintf("\nEstimated marginal means (%s%% intervals)\n",
-                format(object$conf_level * 100, trim = TRUE)))
+    header <- if (is.null(object$emmeans_object)) "Group summaries" else
+      "Estimated marginal means"
+    cat(sprintf("\n%s (%s%% intervals)\n", header, .pct(object$conf_level)))
     .print_df(object$emmeans, digits, row.names = FALSE)
   }
   if (!is.null(object$posthoc) && NROW(object$posthoc) > 0L) {
     cat("\nPairwise comparisons\n")
     .print_df(object$posthoc, digits, row.names = FALSE)
   }
-  invisible(object)
+  extra <- c(sphericity = "Sphericity", slopes_test = "Homogeneity of slopes",
+             simple_slopes = "Covariate slopes by group",
+             multivariate = "Multivariate tests", canonical = "Canonical axes")
+  for (nm in names(extra)) {
+    el <- object[[nm]]
+    if (is.data.frame(el) && NROW(el) > 0L) {
+      cat("\n", extra[[nm]], "\n", sep = "")
+      .print_df(el, digits, row.names = FALSE)
+    } else if (is.list(el) && is.data.frame(el$table) && NROW(el$table) > 0L) {
+      cat("\n", extra[[nm]], "\n", sep = "")
+      .print_df(el$table, digits, row.names = FALSE)
+    }
+  }
+  if (is.list(object$univariate) && length(object$univariate) > 0L) {
+    for (r in names(object$univariate)) {
+      tab <- object$univariate[[r]]$anova
+      if (is.data.frame(tab) && NROW(tab) > 0L) {
+        cat("\nUnivariate follow-up: ", r, "\n", sep = "")
+        .print_df(tab, digits, row.names = FALSE)
+      }
+    }
+  }
+  invisible(x)
 }
 
 #' Plot an anovakit result
@@ -246,13 +305,49 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
   x$plots[[as.integer(which)]]
 }
 
+#' Validate a digits argument
+#' @noRd
+.check_digits <- function(digits) {
+  if (!is.numeric(digits) || length(digits) != 1L || !is.finite(digits)) {
+    .stopf("`digits` must be a single whole number between 1 and 22.")
+  }
+  as.integer(min(max(round(digits), 1L), 22L))
+}
+
+#' A confidence level as a percentage, without spurious rounding
+#' @noRd
+.pct <- function(conf_level) {
+  format(conf_level * 100, digits = 8L, drop0trailing = TRUE, trim = TRUE)
+}
+
 #' Round the numeric columns of a data frame for printing
+#'
+#' Counts and degrees of freedom are whole numbers; rounding them to
+#' significant digits would print n = 12345 as 12340, so whole-number columns
+#' are left alone. p-value columns are formatted with \code{format.pval()},
+#' which prints a p-value below machine precision as "< 2.2e-16" rather than as
+#' zero.
 #' @noRd
 .round_df <- function(df, digits = 4L) {
   df <- as.data.frame(df)
-  num <- vapply(df, is.numeric, logical(1))
-  df[num] <- lapply(df[num], function(v) signif(v, digits))
+  for (nm in names(df)) {
+    v <- df[[nm]]
+    if (!is.numeric(v)) next
+    if (.is_p_column(nm)) {
+      df[[nm]] <- ifelse(is.na(v), NA_character_,
+                         format.pval(v, digits = digits, eps = .Machine$double.eps))
+      next
+    }
+    if (is.integer(v) || all(is.na(v) | !is.finite(v) | v == round(v))) next
+    df[[nm]] <- signif(v, digits)
+  }
   df
+}
+
+#' Is this column a p-value?
+#' @noRd
+.is_p_column <- function(nm) {
+  grepl("^p_value$|^p_adjusted$|^p_(gg|hf|value_.*)$|^p$", nm)
 }
 
 #' Print a table at the requested number of digits
@@ -262,7 +357,8 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
 #' asked for. Setting the option for the duration of the call fixes that.
 #' @noRd
 .print_df <- function(df, digits = 4L, ...) {
-  old <- options(digits = max(digits, 1L))
+  digits <- .check_digits(digits)
+  old <- options(digits = digits)
   on.exit(options(old), add = TRUE)
   print(.round_df(df, digits), ...)
   invisible(NULL)

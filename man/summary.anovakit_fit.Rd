@@ -2,9 +2,12 @@
 % Please edit documentation in R/class-anovakit.R
 \name{summary.anovakit_fit}
 \alias{summary.anovakit_fit}
+\alias{print.summary.anovakit_fit}
 \title{Summarise an anovakit result}
 \usage{
 \method{summary}{anovakit_fit}(object, digits = 4L, ...)
+
+\method{print}{summary.anovakit_fit}(x, digits = x$digits, ...)
 }
 \arguments{
 \item{object}{An \code{\link{anovakit_fit}} object.}
@@ -13,13 +16,18 @@
 \code{4}.}
 
 \item{...}{Ignored.}
+
+\item{x}{A \code{summary.anovakit_fit} object.}
 }
 \value{
-\code{object}, invisibly.
+An object of class \code{summary.anovakit_fit}, which prints the
+  summary. Its \code{$fit} element is \code{object}.
 }
 \description{
 Everything \code{print} shows, plus assumption checks, effect sizes,
-estimated marginal means and post-hoc comparisons.
+marginal means, post-hoc comparisons and whatever further tables the method
+produces (simple slopes, sphericity, the multivariate tests and univariate
+follow-ups, the canonical axes).
 }
 \examples{
 set.seed(1)

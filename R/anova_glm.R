@@ -125,6 +125,8 @@ anova_glm <- function(data, response, groups,
   .check_columns(data, groups, "Grouping column(s)")
   .check_conf_level(conf_level)
   .check_interaction(interaction, length(groups))
+  .check_roles(list(`the response` = response, `a grouping variable` = groups,
+                    `the weights` = weights))
   .check_response_for_family(data, response, family)
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
@@ -136,7 +138,22 @@ anova_glm <- function(data, response, groups,
                          keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
+  zw <- .drop_zero_weights(d, weights)
+  d <- zw$data
+  n_removed <- prep$n_removed + zw$n_removed
+  notes <- c(notes, zw$notes)
   .check_groups(d, groups, min_levels = 2L, min_n = 1L)
+  if (family$family %in% c("binomial", "quasibinomial") &&
+      (is.factor(d[[response]]) || is.character(d[[response]]))) {
+    # glm() models the probability of the second level of a factor response.
+    # A character response is not accepted by glm() at all; it becomes a
+    # factor with its levels in C-locale order, as grouping columns do.
+    if (is.character(d[[response]])) d[[response]] <- .as_group_factor(d[[response]], response)
+    d[[response]] <- droplevels(d[[response]])
+    notes <- c(notes, sprintf(
+      "Response `%s` is a factor: the model is for the probability that it equals \"%s\" (its second level), against \"%s\".",
+      response, levels(d[[response]])[2L], levels(d[[response]])[1L]))
+  }
 
   if (is.null(test_statistic)) {
     test_statistic <- if (family$family %in% c("gaussian", "quasipoisson",
@@ -148,14 +165,13 @@ anova_glm <- function(data, response, groups,
     }
   }
 
-  wts <- .resolve_weights(d, weights)
   terms_rhs <- .group_terms(groups, interaction)
   fml <- stats::reformulate(terms_rhs, response = .bq(response))
   .say(verbose, "Fitting %s with family %s.",
        paste(deparse(fml), collapse = " "), family$family)
 
   fitted <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, family, wts),
+    function() .fit_glm(fml, d, family, weights),
     type = type))
   model <- fitted$value
   if (inherits(model, "error")) {
@@ -198,26 +214,17 @@ anova_glm <- function(data, response, groups,
   notes <- c(notes, ci$note)
 
   ## Marginal means and comparisons ------------------------------------------
-  emm <- .emmeans_grid(model, groups, type = "response", vcov_matrix = rv$matrix)
-  notes <- c(notes, emm$note)
-  emm_tab <- .emmeans_table(emm$grid, conf_level, protect = groups)
-  notes <- c(notes, emm_tab$note)
-
-  ph <- list(table = NULL, note = character(0))
-  if (posthoc) {
-    n_cells <- if (is.null(emm_tab$table)) 0L else nrow(emm_tab$table)
-    if (n_cells < 2L) {
+  emm <- .emm_block(model, groups, additive = .is_additive(interaction),
+                    type = "response", vcov_matrix = rv$matrix,
+                    conf_level = conf_level, adjust = adjust, posthoc = posthoc,
+                    link = family$link, data = d)
+  notes <- c(notes, emm$notes)
+  if (posthoc && !emm$per_factor && !is.null(emm$table)) {
+    if (NROW(emm$table) < 2L) {
       notes <- c(notes, "No pairwise comparisons: fewer than two estimable cells.")
-    } else {
-      ph <- .emmeans_pairs(emm$grid, adjust = adjust, conf_level = conf_level,
-                           ratios = !identical(family$link, "identity"))
-      notes <- c(notes, ph$note)
-      if (n_cells == 2L) {
-        notes <- c(notes, "With two cells the single pairwise comparison is the omnibus test; no multiplicity adjustment was applied.")
-      }
+    } else if (NROW(emm$table) == 2L && !is.null(emm$posthoc)) {
+      notes <- c(notes, "With two cells the single pairwise comparison is the omnibus test; no multiplicity adjustment was applied.")
     }
-  } else {
-    notes <- c(notes, .no_posthoc_note(NROW(emm_tab$table)))
   }
 
   ## Plots --------------------------------------------------------------------
@@ -235,9 +242,9 @@ anova_glm <- function(data, response, groups,
       title = "Deviance residuals vs fitted", ylab = "Deviance residuals")
     plot_list$qq <- .plot_qq(stats::residuals(model, type = "deviance"),
                              title = "Normal Q-Q plot of deviance residuals")
-    if (!is.null(emm_tab$table)) {
+    if (!is.null(emm$table)) {
       plot_list$emmeans <- .plot_emmeans(
-        emm_tab$table, groups, estimate = "estimate",
+        emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = "Estimated marginal means",
         ylab = sprintf("Estimated %s", response))
@@ -251,14 +258,14 @@ anova_glm <- function(data, response, groups,
     model        = model,
     anova        = av$table,
     effect_sizes = eff,
-    emmeans      = emm_tab$table,
+    emmeans      = emm$table,
     emmeans_object = emm$grid,
-    posthoc      = ph$table,
+    posthoc      = emm$posthoc,
     assumptions  = list(dispersion = dispersion,
                         coefficients = ci$table),
     plots        = plot_list,
     data_used    = d,
-    n_removed    = prep$n_removed,
+    n_removed    = n_removed,
     conf_level   = conf_level,
     notes        = notes,
     extra        = list(

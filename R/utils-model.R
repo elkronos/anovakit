@@ -28,7 +28,16 @@
 #'   \code{car} object) and \code{note}.
 #' @noRd
 .car_anova <- function(model, type = "II", test_statistic = NULL, ...) {
-  args <- list(mod = model, type = if (type == "III") 3L else 2L)
+  # car::Anova() refuses a linear model whose residual sum of squares is below
+  # an ABSOLUTE tolerance (sqrt(.Machine$double.eps)), so a response measured in
+  # small units -- metres instead of millimetres -- loses its whole table to a
+  # false "residual sum of squares is 0". The test statistics do not depend on
+  # the units, so the model is rescaled for car and the sums of squares are
+  # rescaled back. A genuinely perfect fit (RSS tiny relative to the total) is
+  # left alone and still refused.
+  k <- .lm_rescale_factor(model)
+  mod <- if (k != 1) .rescale_lm(model, k) else model
+  args <- list(mod = mod, type = if (type == "III") 3L else 2L)
   if (!is.null(test_statistic)) args$test.statistic <- test_statistic
   args <- c(args, list(...))
   # car emits "Note: model has aliased coefficients" through message(), which
@@ -41,8 +50,40 @@
       "The Type %s ANOVA table could not be computed: %s",
       type, conditionMessage(raw))))
   }
+  if (k != 1 && "Sum Sq" %in% names(raw)) raw[["Sum Sq"]] <- raw[["Sum Sq"]] / k^2
   list(table = .tidy_anova(raw, type), raw = raw,
        note = .said_note(got$said, "car::Anova()"))
+}
+
+#' The factor that brings a small-unit linear model above car's tolerance
+#' @noRd
+.lm_rescale_factor <- function(model) {
+  if (!inherits(model, "lm") || inherits(model, "glm") || inherits(model, "mlm")) {
+    return(1)
+  }
+  r <- stats::residuals(model)
+  rss <- sum(r^2)
+  y <- stats::fitted(model) + r
+  tss <- sum((y - mean(y))^2)
+  if (!is.finite(rss) || !is.finite(tss) || rss <= 0 || tss <= 0) return(1)
+  if (rss >= 1e-4 || rss / tss < 1e-12) return(1)
+  1 / stats::sd(y)
+}
+
+#' Multiply the response of a fitted linear model by a constant
+#'
+#' Every quantity car::Anova() reads from an lm -- coefficients, residuals,
+#' fitted values, effects and the response in the model frame -- scales by k,
+#' so its F statistics and p-values are unchanged and its sums of squares
+#' scale by k^2.
+#' @noRd
+.rescale_lm <- function(model, k) {
+  model$coefficients <- model$coefficients * k
+  model$residuals <- model$residuals * k
+  model$fitted.values <- model$fitted.values * k
+  if (!is.null(model$effects)) model$effects <- model$effects * k
+  if (!is.null(model$model)) model$model[[1L]] <- model$model[[1L]] * k
+  model
 }
 
 #' Evaluate an expression, capturing anything it says instead of printing it
@@ -96,7 +137,13 @@
 #' @noRd
 .tidy_anova <- function(tab, type = NA_character_) {
   df <- as.data.frame(tab)
-  out <- data.frame(term = rownames(df), stringsAsFactors = FALSE)
+  # Non-syntactic column names reach the model formula backtick-quoted, and the
+  # term labels keep the quotes. The package forbids backticks inside column
+  # names (see .bq()), so stripping them is lossless.
+  out <- data.frame(term = gsub("`", "", rownames(df), fixed = TRUE),
+                    stringsAsFactors = FALSE)
+  stat_name <- intersect(c("F value", "F values", "LR Chisq", "Wald Chisq", "Chisq"),
+                         names(df))[1L]
   ren <- c("Sum Sq" = "sum_sq", "Df" = "df", "F value" = "statistic",
            "F values" = "statistic", "LR Chisq" = "statistic",
            "Chisq" = "statistic", "Wald Chisq" = "statistic",
@@ -111,6 +158,11 @@
   out <- out[!out$term %in% "(Intercept)", , drop = FALSE]
   row.names(out) <- NULL
   if (!is.na(type)) attr(out, "ss_type") <- type
+  if (!is.na(stat_name)) {
+    attr(out, "statistic") <- switch(stat_name,
+      "F value" = , "F values" = "F", "LR Chisq" = "likelihood-ratio chi-square",
+      "Wald Chisq" = , "Chisq" = "Wald chi-square")
+  }
   out
 }
 
@@ -138,6 +190,12 @@
   terms
 }
 
+#' Does an interaction argument give a model with no interaction terms?
+#' @noRd
+.is_additive <- function(interaction) {
+  isFALSE(interaction) || (is.numeric(interaction) && interaction == 1)
+}
+
 #' Validate the interaction argument
 #' @noRd
 .check_interaction <- function(interaction, n_groups) {
@@ -158,42 +216,63 @@
 }
 
 #' Warn when a factorial model is too rich for the data
+#'
+#' What a saturated model loses depends on the family. When the dispersion is
+#' estimated (Gaussian, Gamma, quasi families) there is no residual variance to
+#' test against, so nothing is testable. When it is fixed (binomial, Poisson,
+#' negative binomial) the likelihood-ratio and Wald tests remain valid -- a
+#' saturated log-linear model is how a G-test of independence is computed --
+#' and only goodness of fit and overdispersion become uncheckable.
+#'
+#' Aliased coefficients are reported as aliased, without guessing why: empty
+#' cells of a crossed design and collinear covariates both produce them.
 #' @noRd
 .check_model_size <- function(fit) {
   dfr <- stats::df.residual(fit)
-  np  <- length(stats::coef(fit))
+  np  <- sum(!is.na(stats::coef(fit)))
+  fixed <- !.estimates_dispersion(fit)
+  gaussian_lm <- inherits(fit, "lm") &&
+    (!inherits(fit, "glm") || identical(stats::family(fit)$family, "gaussian"))
   notes <- character(0)
   if (!is.null(dfr) && is.finite(dfr) && dfr < 1) {
-    notes <- c(notes, sprintf(
-      "The model has %d parameters and no residual degrees of freedom: it is saturated, so there is nothing left to test against. Every p-value, interval and effect size below is undefined or degenerate (partial eta squared is exactly 1 by construction). Fewer groups, a simpler interaction structure, or more data are needed. Zero prior weights count against the sample size here.",
-      np))
-  } else if (!is.null(dfr) && is.finite(dfr) && dfr < np) {
+    notes <- c(notes, if (fixed) {
+      sprintf("The model has %d parameters and no residual degrees of freedom: it is saturated. Its likelihood-ratio and Wald tests are still valid, but goodness of fit and overdispersion cannot be checked.",
+              np)
+    } else {
+      sprintf("The model has %d parameters and no residual degrees of freedom: it is saturated, so there is nothing left to test against. Every p-value, interval and effect size below is undefined or degenerate%s. Fewer groups, a simpler interaction structure, or more data are needed.",
+              np, if (gaussian_lm) " (partial eta squared is exactly 1 by construction)" else "")
+    })
+  } else if (!is.null(dfr) && is.finite(dfr) && dfr < np && !fixed) {
     notes <- c(notes, sprintf(
       "The model has %d parameters and only %d residual degrees of freedom, so it is close to saturated. Consider fewer groups, a simpler interaction structure, or more data.",
       np, dfr))
   }
   if (any(is.na(stats::coef(fit)))) {
-    bad <- names(stats::coef(fit))[is.na(stats::coef(fit))]
+    bad <- gsub("`", "", names(stats::coef(fit))[is.na(stats::coef(fit))], fixed = TRUE)
     notes <- c(notes, sprintf(
-      "%d coefficient(s) could not be estimated because the corresponding cells are empty: %s.",
+      "%d coefficient(s) are aliased and could not be estimated: %s. This happens when level combinations are empty or when predictors are collinear; the affected terms are tested with fewer degrees of freedom than their levels suggest.",
       length(bad), paste(utils::head(bad, 5L), collapse = ", ")))
   }
   notes
 }
 
-#' Resolve an optional weights column into a vector
+#' Drop rows whose prior weight is zero
 #'
-#' Weights are named as a column rather than passed through \code{...}. An
-#' expression evaluated in the caller is evaluated against the \emph{original}
-#' frame, so as soon as one row is dropped for missing values the weights no
-#' longer line up with the model frame and \code{glm()} errors on the length
-#' mismatch -- or, worse, does not.
+#' A zero-weight row contributes nothing to the likelihood, but it still
+#' counts as an observation for anything that counts rows: the sandwich
+#' covariance divides by it (so every robust standard error shrinks), the
+#' information criteria and the omega squared sample size include it, and a
+#' group whose rows all have weight zero passes the check that every group has
+#' data. Removing those rows up front makes every downstream count agree with
+#' the fit. They are counted in \code{$n_removed}, like any other row that is
+#' not in \code{$data_used}.
 #'
 #' @param data the prepared (complete-case) frame.
 #' @param weights a single column name, or \code{NULL}.
+#' @return list with \code{data}, \code{n_removed} and \code{notes}.
 #' @noRd
-.resolve_weights <- function(data, weights) {
-  if (is.null(weights)) return(NULL)
+.drop_zero_weights <- function(data, weights) {
+  if (is.null(weights)) return(list(data = data, n_removed = 0L, notes = character(0)))
   .check_weights_column(data, weights)
   w <- data[[weights]]
   # Non-finite weights are dropped with their rows by .prepare_frame(), so by
@@ -210,7 +289,13 @@
     .stopf("Only %d observation has a non-zero weight in `%s`; a model cannot be fitted on it.",
            pos, weights)
   }
-  w
+  zero <- w == 0
+  if (!any(zero)) return(list(data = data, n_removed = 0L, notes = character(0)))
+  out <- data[!zero, , drop = FALSE]
+  row.names(out) <- NULL
+  list(data = out, n_removed = sum(zero), notes = sprintf(
+    "Dropped %d row(s) whose weight in `%s` is zero: they contribute nothing to the fit, and keeping them would make row counts, robust standard errors and information criteria disagree with it.",
+    sum(zero), weights))
 }
 
 #' Validate a weights column on the data as supplied
@@ -300,8 +385,12 @@
   est <- est[keep]; se <- se[keep]
   stat <- est / se
   use_t <- .estimates_dispersion(model)
+  dfr <- stats::df.residual(model)
   p <- if (use_t) {
-    2 * stats::pt(-abs(stat), df = stats::df.residual(model))
+    # A saturated model has no residual degrees of freedom; pt(df = 0) warns
+    # "NaNs produced" to the console. There is no inference to report.
+    if (is.null(dfr) || !is.finite(dfr) || dfr < 1) rep(NA_real_, length(stat))
+    else 2 * stats::pt(-abs(stat), df = dfr)
   } else {
     2 * stats::pnorm(-abs(stat))
   }
@@ -311,30 +400,78 @@
              stringsAsFactors = FALSE, row.names = NULL)
 }
 
-#' Fit a GLM with prior weights that cannot be shadowed by a data column
+#' An environment that holds only the analysed frame
 #'
-#' \code{glm()} looks \code{weights} up in \code{data} first, so a column
-#' called \code{wts} would capture a local variable of that name. Adding the
-#' weights to the frame under a generated name and referring to that name
-#' removes the ambiguity entirely.
+#' A formula remembers the environment it was created in. Created inside an
+#' analysis function, that is the function's frame, which holds the caller's
+#' raw \code{data}: the fitted model then drags the whole input along when it
+#' is saved, and anything that re-evaluates the model's call there --
+#' \pkg{emmeans} rebuilding the data for an offset model, for one -- finds the
+#' raw input instead of the rows that were analysed. Fitting in a small
+#' environment that binds \code{data_used} to the analysed frame avoids both.
+#' Its parent is the stats namespace, so \code{offset()} and \code{log()} in a
+#' formula still resolve.
+#' @noRd
+.model_env <- function(data) {
+  env <- new.env(parent = asNamespace("stats"))
+  env$data_used <- data
+  env
+}
+
+#' A family as a call that reads well and re-evaluates anywhere
+#' @noRd
+.family_call <- function(family) {
+  std <- c("binomial", "quasibinomial", "poisson", "quasipoisson", "gaussian",
+           "Gamma", "inverse.gaussian")
+  if (family$family %in% std) {
+    return(call(family$family, link = family$link))
+  }
+  NULL
+}
+
+#' Fit a linear model whose call and formula refer to the analysed frame
+#' @noRd
+.fit_lm <- function(fml, data) {
+  env <- .model_env(data)
+  environment(fml) <- env
+  eval(bquote(stats::lm(formula = .(fml), data = data_used)), env)
+}
+
+#' Fit a GLM (or a negative binomial GLM) on the analysed frame
+#'
+#' The prior weights are named by their column, so they are subsetted with the
+#' data and cannot be shadowed by a local variable. The stored call refers to
+#' \code{data_used}, the frame the model was fitted on, so
+#' \code{update(fit$model, data = fit$data_used)} refits it.
 #'
 #' @param fml model formula.
 #' @param data the prepared frame.
 #' @param family a family object, or \code{NULL} for \code{MASS::glm.nb}.
-#' @param wts numeric weights, or \code{NULL}.
+#' @param weights name of the prior-weights column in \code{data}, or
+#'   \code{NULL}.
 #' @noRd
-.fit_glm <- function(fml, data, family = NULL, wts = NULL) {
-  if (is.null(wts)) {
-    if (is.null(family)) return(MASS::glm.nb(fml, data = data))
-    return(stats::glm(fml, data = data, family = family))
-  }
-  wt_name <- .safe_name(data, ".prior_weights")
-  data[[wt_name]] <- wts
-  call <- if (is.null(family)) {
-    bquote(MASS::glm.nb(.(fml), data = data, weights = .(as.name(wt_name))))
+.fit_glm <- function(fml, data, family = NULL, weights = NULL) {
+  env <- .model_env(data)
+  environment(fml) <- env
+  wsym <- if (is.null(weights)) NULL else as.name(weights)
+  if (is.null(family)) {
+    call <- if (is.null(wsym)) {
+      bquote(MASS::glm.nb(formula = .(fml), data = data_used))
+    } else {
+      bquote(MASS::glm.nb(formula = .(fml), data = data_used, weights = .(wsym)))
+    }
   } else {
-    bquote(stats::glm(.(fml), data = data, family = family,
-                      weights = .(as.name(wt_name))))
+    fam <- .family_call(family)
+    if (is.null(fam)) {
+      env$family_used <- family
+      fam <- as.name("family_used")
+    }
+    call <- if (is.null(wsym)) {
+      bquote(stats::glm(formula = .(fml), family = .(fam), data = data_used))
+    } else {
+      bquote(stats::glm(formula = .(fml), family = .(fam), data = data_used,
+                        weights = .(wsym)))
+    }
   }
-  eval(call)
+  eval(call, env)
 }

@@ -2,6 +2,7 @@
 
 S3method(plot,anovakit_fit)
 S3method(print,anovakit_fit)
+S3method(print,summary.anovakit_fit)
 S3method(summary,anovakit_fit)
 export(anova_ancova)
 export(anova_bin)
