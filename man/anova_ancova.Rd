@@ -12,6 +12,7 @@ anova_ancova(
   center_covariates = TRUE,
   force_interaction = NULL,
   homogeneity_alpha = 0.05,
+  interaction = TRUE,
   type = c("III", "II"),
   conf_level = 0.95,
   vcov_type = "model",
@@ -36,19 +37,28 @@ Default \code{TRUE}. See Details.}
 
 \item{force_interaction}{Logical or \code{NULL}. \code{NULL} (default) lets
 the slopes test decide; \code{TRUE} always fits the covariate-by-group
-interaction; \code{FALSE} always fits the additive model.}
+interaction; \code{FALSE} always fits the additive model. See Details for
+what the test-based choice costs.}
 
 \item{homogeneity_alpha}{Numeric in (0, 1). Significance level for the slopes
 test. Default \code{0.05}.}
 
+\item{interaction}{How the grouping variables combine: \code{TRUE} (the
+default, their full factorial), \code{FALSE} (additive), or a whole number
+giving the highest order of interaction among them. It has no effect with
+a single grouping variable. The covariate slopes are allowed to differ
+across every grouping term this includes. See Details.}
+
 \item{type}{Character. \code{"III"} (default) or \code{"II"} sums of squares.
 The model is fitted under sum-to-zero contrasts when \code{"III"}.}
 
-\item{conf_level}{Numeric in (0, 1). Level for every interval returned.
-Default \code{0.95}.}
+\item{conf_level}{Numeric in (0, 1). Level for every interval returned,
+including the bands of the covariate plot. Default \code{0.95}.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
-(\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.}
+(\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
+An HC type reaches \code{$anova} (as Wald F tests), \code{$emmeans},
+\code{$posthoc} and \code{$simple_slopes}; see Details.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
 comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
@@ -70,13 +80,21 @@ Default \code{FALSE}.}
 \value{
 An \code{\link{anovakit_fit}} object, with five extra components:
   \code{$slopes_test} (the homogeneity-of-slopes comparison, also in
-  \code{$assumptions$slopes}), \code{$simple_slopes} (per-group covariate
-  slopes from \code{\link[emmeans]{emtrends}}, \code{NULL} when the additive
-  model is used), \code{$covariate_means} (the means subtracted when
-  centring, so a slope can be read back at the original scale), and
+  \code{$assumptions$slopes}); \code{$simple_slopes} (the slope of each
+  covariate in each cell of the grouping structure, from
+  \code{\link[emmeans]{emtrends}}, with intervals at \code{conf_level} and
+  the covariance chosen by \code{vcov_type}; \code{NULL} when the additive
+  model is used); \code{$covariate_means} (the mean of each covariate over
+  the analysed rows, returned whether or not the covariates were centred:
+  they are the values subtracted when \code{center_covariates = TRUE}, and
+  the point at which \code{$emmeans} are evaluated either way); and
   \code{$model_additive} and \code{$model_interaction}, both candidate fits,
-  so the one that was not chosen is still available. \code{$assumptions} also
-  holds \code{normality} (Shapiro-Wilk on the residuals) and \code{levene}.
+  so the one that was not chosen is still available. \code{$assumptions}
+  also holds \code{normality} (Shapiro-Wilk on the residuals) and
+  \code{levene} (Levene's test on the residuals across the cells).
+  \code{$data_used} holds the analysed columns and the cell factor, with the
+  covariates centred when \code{center_covariates = TRUE}. The covariate
+  plot shows each covariate on its original scale.
 }
 \description{
 Compares the mean of a numeric response across groups while adjusting for one
@@ -86,28 +104,84 @@ III sums of squares with partial eta squared, and returns covariate-adjusted
 estimated marginal means.
 }
 \details{
-\strong{Covariates are centred.} Every covariate is mean-centred before the
-model is fitted. This matters most when the covariate-by-group interaction is
-in the model and \code{type = "III"}: that Type III row tests the group
-difference \emph{at covariate = 0}, which for an uncentred covariate may be a
-point nowhere near the data, and the p-value can be anything. On the example
-below -- a baseline distributed around 100 -- the same data gives p = 0.35
-uncentred against p = 5.5e-21 centred. In the additive model the group row is
-the same either
-way; what centring buys there is that the intercept and \code{$emmeans} are
-read at the covariate mean rather than at zero. Set
-\code{center_covariates = FALSE} only if the covariate's own zero is the
-point you want.
+\strong{Grouping structure.} With two or more grouping variables the default,
+\code{interaction = TRUE}, fits their full factorial -- \code{y ~ x + A * B}
+-- which is what a factorial ANCOVA is. \code{interaction = FALSE} enters
+them additively and a whole number keeps interactions up to that order, as
+in \code{\link{anova_glm}}. The structure chosen is the group part of both
+candidate models below. Under the full factorial \code{$emmeans} and
+\code{$posthoc} compare the cells, and a cell with no data is left out with a
+note; with the grouping variables entered additively they are reported for
+each factor separately, averaged over the others.
 
-\strong{Homogeneity of slopes.} The interaction between each covariate and
-the grouping factor is tested against the additive model. If the slopes
-differ, the interaction model is used and a note explains that the group
-effect is now a comparison at one point on the covariate rather than a
-constant difference, and that \code{$simple_slopes} is the thing to read.
-Because the model is selected from a test on the same data, the subsequent
-p-values are mildly optimistic; use \code{force_interaction} to fix the model
-in advance and avoid this. \code{$notes} always reports which model was
-fitted and why.
+\strong{Covariates are centred.} Every covariate is mean-centred before the
+model is fitted. That moves the intercept and, when the covariate-by-group
+terms are in the model and \code{type = "III"}, the group row of the ANOVA
+table: that row tests the group difference \emph{at covariate = 0}, which for
+an uncentred covariate may be a point nowhere near the data, and the p-value
+can be anything. On the example below -- a baseline distributed around 100
+-- the same data gives p = 0.35 uncentred against p = 5.5e-21 centred. In the
+additive model, and under Type II, the group row is the same either way.
+\code{$emmeans}, \code{$posthoc} and \code{$simple_slopes} do not depend on
+centring at all: they are always evaluated with every covariate held at its
+mean, including a covariate with only two values (a 0/1 indicator, say),
+which is held at its mean rather than averaged over its two values. Set
+\code{center_covariates = FALSE} only if the covariate's own zero is the
+point you want the intercept (and the Type III group row) to refer to. When
+the covariate mean lies outside the range a group was observed over, that
+group's adjusted mean is an extrapolation along the fitted slope, and
+\code{$notes} names the group.
+
+A covariate that is constant, that is determined by the grouping variables
+(constant within every group, such as a group-level attribute), or that is
+an exact linear combination of the grouping variables and the other
+covariates is refused with an error naming it: its effect cannot be
+separated from the group effect, so there is nothing to adjust for.
+
+\strong{Homogeneity of slopes.} The two candidate models are the grouping
+structure with the covariates entered additively, and the same model plus
+the product of every covariate with every grouping term in it, so that under
+the full factorial each cell has its own slope. They are compared by one
+nested F test, joint over all covariates: heterogeneity in any one covariate
+retains the slope terms for all of them. \code{homogeneity_alpha} is its
+level. The test is reported as not computable (\code{NA}) when the
+covariate-by-group terms add nothing estimable, or when the model without
+them already fits the data exactly. If the slopes differ, the interaction
+model is used, and a note explains that the group effect is then a
+comparison at one point on the covariate rather than a constant difference,
+and that \code{$simple_slopes} is the thing to read.
+
+Choosing the model with a test on the same data has a cost, in both
+directions. When the slopes really differ but the test misses the
+difference, the adjusted comparisons of the additive model are biased by the
+slope difference times the difference in covariate means. That vanishes on
+average when the groups are randomised but not otherwise, and the test often
+lacks the power to
+find a slope difference large enough to matter. In simulations with three
+groups of 20, slopes 0.5, 1 and 1.5, and covariate means at -1, 0 and 1
+within-group SDs, the default pipeline rejected a true null of equal
+adjusted means for the group row about 11--13\% of the time at the 5\% level
+(about 34\% with 10 per group and means at -2, 0 and 2), against about 5\%
+with \code{force_interaction = TRUE}; always fitting the additive model
+(\code{force_interaction = FALSE}) was worse still. Randomised groups were
+not affected. So when the additive model is used and the covariate means
+differ between groups by more than half a pooled within-group SD,
+\code{$notes} says so. Conversely, when the test retains the interaction, the p-values do
+not allow for that choice and can also be too small. \code{force_interaction
+= TRUE} avoids the selection step: with centred covariates and \code{type =
+"III"}, the group row is then a valid comparison of the groups at the
+covariate mean whether or not the slopes differ, which makes it the safer
+choice when the groups were not randomised. \code{$notes} always reports
+which model was fitted and why.
+
+\strong{Robust standard errors.} With \code{vcov_type} other than
+\code{"model"}, the F tests in \code{$anova} are Wald F tests
+(\code{car::Anova(vcov. = )}) built from the heteroscedasticity-consistent
+covariance, on the model's residual degrees of freedom, so that table has no
+sums of squares. \code{$emmeans}, \code{$posthoc} and \code{$simple_slopes}
+use the same covariance. \code{$effect_sizes} are still computed from the
+model-based sums of squares, which the covariance does not change, and the
+homogeneity-of-slopes test stays the model-based F test.
 }
 \examples{
 set.seed(7)
@@ -139,6 +213,11 @@ int$anova$p_value[int$anova$term == "grp"]
 unc <- anova_ancova(d, "score", "grp", "baseline", force_interaction = TRUE,
                     center_covariates = FALSE, plots = FALSE)
 unc$anova$p_value[unc$anova$term == "grp"]
+
+# Two grouping variables: their interaction is part of the model
+d$site <- factor(rep(c("north", "south"), times = n / 2))
+two <- anova_ancova(d, "score", c("grp", "site"), "baseline", plots = FALSE)
+two$anova
 
 }
 \seealso{
