@@ -1,9 +1,10 @@
 # anova_manova(): multivariate analysis of variance and covariance.
 #
 # The multivariate table is checked against stats::manova for all four
-# statistics. Mardia's tests, Box's M and the canonical discriminant analysis
-# are implemented here rather than delegated, so each is checked against a
-# direct computation from its definition.
+# statistics (a one-way design, where Type I, II and III coincide; the
+# multi-factor Type II/III cases are in test-fixes-manova.R). Mardia's tests,
+# Box's M and the canonical discriminant analysis are implemented here rather
+# than delegated, so each is checked against an independent implementation.
 
 test_that("the multivariate test reproduces stats::manova for every statistic", {
   d <- fx_multivariate()
@@ -40,24 +41,15 @@ test_that("estimated marginal means come from emmeans, not from raw means", {
     stats::sd(v) / sqrt(length(v))))))
 })
 
-test_that("Box's M matches a direct computation", {
+test_that("Box's M matches an independent implementation (rstatix::box_m)", {
   d <- fx_multivariate()
   fit <- anova_manova(d, c("score1", "score2"), "g", plots = FALSE)
 
-  Y <- as.matrix(d[, c("score1", "score2")])
-  g <- d$g
-  p <- ncol(Y); k <- nlevels(g); N <- nrow(Y)
-  ns <- as.integer(table(g))
-  covs <- lapply(levels(g), function(l) stats::cov(Y[g == l, , drop = FALSE]))
-  pooled <- Reduce(`+`, Map(function(S, n) (n - 1) * S, covs, ns)) / (N - k)
-  M <- (N - k) * as.numeric(determinant(pooled, logarithm = TRUE)$modulus) -
-    sum((ns - 1) * vapply(covs, function(S)
-      as.numeric(determinant(S, logarithm = TRUE)$modulus), numeric(1)))
-  c1 <- (sum(1 / (ns - 1)) - 1 / (N - k)) *
-    (2 * p^2 + 3 * p - 1) / (6 * (p + 1) * (k - 1))
-
-  expect_equal(fit$assumptions$box_m$statistic, M * (1 - c1))
-  expect_equal(fit$assumptions$box_m$df, (k - 1) * p * (p + 1) / 2)
+  # rstatix::box_m(d[, c("score1", "score2")], d$g) on this fixture. rstatix
+  # is not a dependency, so its values are pasted in rather than recomputed.
+  expect_equal(fit$assumptions$box_m$statistic, 9.91179139028051, tolerance = 1e-10)
+  expect_equal(fit$assumptions$box_m$p_value, 0.128416162751328, tolerance = 1e-10)
+  expect_equal(fit$assumptions$box_m$df, 6)
 })
 
 test_that("Mardia's tests are computed and have the right degrees of freedom", {
@@ -102,11 +94,16 @@ test_that("canonical discriminant analysis is computed and is consistent", {
              decreasing = TRUE)
   expect_equal(fit$canonical$eigenvalue, ev[seq_len(nrow(fit$canonical))])
 
-  # Wilks' lambda is the product of 1/(1 + eigenvalue).
+  # Wilks' lambda is the product of 1/(1 + eigenvalue), over the fit's own
+  # eigenvalues (every nonzero one is kept here).
   wilks <- as.data.frame(summary(
     stats::manova(cbind(score1, score2) ~ g, data = d),
     test = "Wilks")$stats)[["g", "Wilks"]]
-  expect_equal(prod(1 / (1 + ev)), wilks)
+  expect_equal(nrow(fit$canonical), 2L)
+  expect_equal(prod(1 / (1 + fit$canonical$eigenvalue)), wilks)
+  expect_equal(sum(fit$canonical$prop_variance), 1)
+  expect_equal(fit$canonical$canonical_r,
+               sqrt(fit$canonical$eigenvalue / (1 + fit$canonical$eigenvalue)))
 
   expect_s3_class(fit$plots$canonical, "ggplot")
 })
@@ -118,7 +115,14 @@ test_that("effect sizes are per response, floored, and free of residual rows", {
 
   expect_setequal(fit$effect_sizes$response, c("score1", "score2"))
   expect_false("Residuals" %in% fit$effect_sizes$term)
-  expect_true(all(fit$effect_sizes$omega_sq >= 0))
+  expect_true("partial_omega_sq" %in% names(fit$effect_sizes))
+  expect_true(all(fit$effect_sizes$partial_omega_sq >= 0))
+  # Partial omega squared, df (MS - MSE) / (df MS + (N - df) MSE)
+  a <- stats::anova(stats::lm(score2 ~ g, data = d))
+  om <- a$Df[1] * (a$`Mean Sq`[1] - a$`Mean Sq`[2]) /
+    (a$Df[1] * a$`Mean Sq`[1] + (nrow(d) - a$Df[1]) * a$`Mean Sq`[2])
+  expect_equal(fit$effect_sizes$partial_omega_sq[fit$effect_sizes$response == "score2"],
+               om)
 
   ref <- stats::anova(stats::lm(score1 ~ g, data = d))
   expected <- ref$`Sum Sq`[1] / sum(ref$`Sum Sq`)
@@ -166,7 +170,7 @@ test_that("per-response pairwise comparisons are returned", {
 test_that("input validation names the problem", {
   d <- fx_multivariate()
   expect_error(anova_manova(d, c("score1", "g"), "g"),
-               "cannot be both a response and a predictor")
+               "both a response and a grouping variable")
   expect_error(anova_manova(d, c("score1", "nope"), "g"), "not found in `data`")
   expect_error(anova_manova(d, c("score1", "score2"), "g", test = "Bogus"))
 })

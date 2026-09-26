@@ -170,25 +170,56 @@
 #' Implemented directly rather than taken from a package, so that multivariate
 #' normality can be assessed without adding a dependency.
 #'
-#' @param Y numeric matrix, rows are observations.
-#' @return data.frame with one row per test, or \code{NULL} if \code{Y} is too
-#'   small or singular.
+#' Both statistics are functions of the Mahalanobis forms
+#' \eqn{d_{ij} = y_i' S^{-1} y_j} (ML covariance, divisor \eqn{n}): skewness
+#' \eqn{b_1 = \sum_{ij} d_{ij}^3 / n^2} and kurtosis
+#' \eqn{b_2 = \sum_i d_{ii}^2 / n}. The \eqn{n \times n} matrix of forms is
+#' never built: with whitened scores \eqn{Z} (so that \eqn{d_{ij} = z_i'z_j}),
+#' \eqn{b_1 = \sum_{abc} (\sum_i z_{ia} z_{ib} z_{ic})^2 / n^2}, which takes
+#' \eqn{O(n p^3)} time and \eqn{O(n p)} memory. The forms do not depend on the
+#' scale of the columns, so the columns are standardised first, which keeps
+#' responses on very different scales from making \eqn{S} look singular.
+#'
+#' Applied to model residuals, the statistics carry no information when the
+#' residual degrees of freedom equal the number of columns (the forms are then
+#' a fixed function of the design), and close to it they are dominated by the
+#' design; the test is skipped, with a note, unless the residual degrees of
+#' freedom exceed \code{p} by at least \code{margin}.
+#'
+#' @param Y numeric matrix, rows are observations (typically residuals).
+#' @param df_resid residual degrees of freedom of the model that produced
+#'   \code{Y}, or \code{NULL} for raw data (\code{n - 1}).
+#' @param margin how far \code{df_resid} must exceed the number of columns.
+#' @return list with \code{table} (data.frame with one row per test, or
+#'   \code{NULL}) and \code{note}.
 #' @references Mardia, K. V. (1970). Measures of multivariate skewness and
 #'   kurtosis with applications. \emph{Biometrika}, 57(3), 519-530.
 #' @noRd
-.mardia_test <- function(Y) {
+.mardia_test <- function(Y, df_resid = NULL, margin = 10L) {
   Y <- as.matrix(Y)
   Y <- Y[stats::complete.cases(Y), , drop = FALSE]
   n <- nrow(Y); p <- ncol(Y)
-  if (n < p + 1L || n < 4L) return(NULL)
-  Yc <- scale(Y, center = TRUE, scale = FALSE)
+  dfr <- if (is.null(df_resid)) n - 1L else df_resid
+  if (n < 4L || !is.finite(dfr) || dfr < p + margin) {
+    return(list(table = NULL, note = sprintf(
+      "Mardia's tests were not computed: the residuals have %s degree(s) of freedom for %d responses, and at least %d are needed. At %d they would not depend on the data at all, and close to it they are dominated by the design.",
+      format(dfr), p, p + margin, p)))
+  }
+  singular <- list(table = NULL, note = "Mardia's tests were not computed: the residual covariance matrix is singular (the responses are collinear).")
+  Yc <- sweep(Y, 2L, colMeans(Y), "-")
+  s <- sqrt(colSums(Yc^2) / n)
+  if (any(!is.finite(s) | s <= 0)) return(singular)
+  Yc <- sweep(Yc, 2L, s, "/")                  # the forms are scale-invariant
   S  <- crossprod(Yc) / n                      # ML covariance, Mardia's divisor
-  Si <- tryCatch(solve(S), error = function(e) NULL)
-  if (is.null(Si)) return(NULL)
+  ev <- eigen((S + t(S)) / 2, symmetric = TRUE)
+  if (min(ev$values) <= max(ev$values) * 1e-12) return(singular)
+  # Whitened scores: Z Z' = Yc S^-1 Yc', the matrix of Mahalanobis forms.
+  Z <- Yc %*% ev$vectors %*% diag(1 / sqrt(ev$values), p)
 
-  D  <- Yc %*% Si %*% t(Yc)                    # n x n matrix of Mahalanobis forms
-  b1 <- sum(D^3) / (n^2)
-  b2 <- sum(diag(D)^2) / n
+  b1 <- 0
+  for (a in seq_len(p)) b1 <- b1 + sum(crossprod(Z, Z * Z[, a])^2)
+  b1 <- b1 / n^2
+  b2 <- sum(rowSums(Z^2)^2) / n
 
   skew_stat <- n * b1 / 6
   skew_df   <- p * (p + 1) * (p + 2) / 6
@@ -197,13 +228,13 @@
   kurt_stat <- (b2 - p * (p + 2)) / sqrt(8 * p * (p + 2) / n)
   kurt_p    <- 2 * stats::pnorm(-abs(kurt_stat))
 
-  data.frame(
+  list(table = data.frame(
     test      = c("Mardia skewness", "Mardia kurtosis"),
     statistic = c(skew_stat, kurt_stat),
     df        = c(skew_df, NA_real_),
     p_value   = c(skew_p, kurt_p),
     stringsAsFactors = FALSE
-  )
+  ), note = character(0))
 }
 
 #' Box's M test for homogeneity of covariance matrices
@@ -249,78 +280,103 @@
 
 #' Canonical discriminant analysis from hypothesis and error SSCP matrices
 #'
-#' Solves the generalised eigenproblem for \code{solve(E) \%*\% H} and projects
-#' the centred responses onto the leading discriminant axes.
+#' Solves the generalised eigenproblem \eqn{H v = \lambda E v} and projects
+#' the centred responses onto the leading discriminant axes. The problem is
+#' solved on responses scaled to unit error variance
+#' (\eqn{D^{-1} E D^{-1}} and \eqn{D^{-1} H D^{-1}}, with \eqn{D} the square
+#' roots of \code{diag(E)}), which leaves the eigenvalues unchanged and keeps
+#' responses on very different scales from making \code{E} look singular; the
+#' eigenvectors are transformed back.
 #'
-#' @param Y numeric matrix of responses. For a MANCOVA this must be the
-#'   \emph{residuals} of the responses on the covariates, so that the scores
-#'   live in the same adjusted space as \code{H} and \code{E}. Projecting the
-#'   raw responses onto eigenvectors derived from an adjusted model produces
-#'   scores that discriminate far worse than the eigenvalue printed beside
-#'   them, and structure coefficients that can have the wrong sign.
+#' @param Y numeric matrix of responses. It must live in the same space as
+#'   \code{H} and \code{E}: with covariates, or with other terms in the model,
+#'   their fitted effects must already have been removed, so that the
+#'   deviations of \code{Y} from its means within the levels of the described
+#'   term are the model residuals. Projecting the raw responses onto
+#'   eigenvectors derived from an adjusted model produces scores that
+#'   discriminate far worse than the eigenvalue printed beside them.
 #' @param H hypothesis SSCP matrix.
 #' @param E error SSCP matrix.
 #' @param df_h degrees of freedom of the hypothesis term.
 #' @param df_e residual degrees of freedom, used to scale the axes to unit
-#'   pooled within-group variance, which is the convention that makes the
-#'   spread of the group centroids on the plot mean what it appears to mean.
-#' @param group optional factor, used for the pooled within-group structure
-#'   coefficients that CDA conventionally reports.
-#' @return list with \code{scores}, \code{canonical} and \code{structure}, or
-#'   \code{NULL} on failure.
+#'   pooled within-group variance (\eqn{v'Ev / df_e = 1}), which is the
+#'   convention that makes the spread of the group centroids on the plot mean
+#'   what it appears to mean.
+#' @param group optional factor of the described term's levels, returned with
+#'   the scores for plotting.
+#' @return list with \code{scores}, \code{group}, \code{canonical} (axis,
+#'   eigenvalue, canonical correlation, proportion of the term's between-group
+#'   variation) and \code{structure} (a \code{response} column and one column
+#'   per axis: the pooled within-group correlations between each response and
+#'   each axis, \eqn{diag(E)^{-1/2} E v / \sqrt{v'Ev}}, SAS's "pooled within
+#'   canonical structure"); or, on failure, a list whose \code{canonical} is
+#'   \code{NULL} and whose \code{reason} says why.
 #' @noRd
 .canonical_discriminant <- function(Y, H, E, df_h, df_e = NULL, group = NULL) {
   Y <- as.matrix(Y)
-  Einv <- tryCatch(solve(E), error = function(e) NULL)
-  if (is.null(Einv)) return(NULL)
-  ev <- tryCatch(eigen(Einv %*% H, symmetric = FALSE), error = function(e) NULL)
-  if (is.null(ev)) return(NULL)
-  vals <- Re(ev$values)
-  vecs <- Re(ev$vectors)
-  ord <- order(vals, decreasing = TRUE)
-  vals <- vals[ord]; vecs <- vecs[, ord, drop = FALSE]
-  keep <- min(df_h, ncol(Y), sum(vals > .Machine$double.eps^0.5))
-  if (keep < 1L) return(NULL)
-  vals <- vals[seq_len(keep)]
-  vecs <- vecs[, seq_len(keep), drop = FALSE]
-
-  Yc <- scale(Y, center = TRUE, scale = FALSE)
-  scores <- Yc %*% vecs
-
-  # Unit pooled within-group variance: v' E v / df_e is the within-group
-  # variance of the axis, so dividing by its square root gives unit scale.
-  wsd <- sqrt(pmax(diag(t(vecs) %*% E %*% vecs), 0) /
-                (if (is.null(df_e) || !is.finite(df_e) || df_e <= 0)
-                  max(nrow(Y) - 1L, 1L) else df_e))
-  wsd[!is.finite(wsd) | wsd == 0] <- 1
-  scores <- sweep(scores, 2L, wsd, "/")
-  colnames(scores) <- paste0("Can", seq_len(keep))
-
-  # Pooled within-group correlations between responses and axes: the quantity
-  # conventionally called the structure coefficient.
-  struct <- if (!is.null(group)) {
-    g <- droplevels(as.factor(group))
-    resid_within <- function(M) {
-      M <- as.matrix(M)
-      for (j in seq_len(ncol(M))) M[, j] <- M[, j] - stats::ave(M[, j], g)
-      M
-    }
-    suppressWarnings(stats::cor(resid_within(Y), resid_within(scores)))
-  } else {
-    suppressWarnings(stats::cor(Y, scores))
+  fail <- function(reason) list(canonical = NULL, reason = reason)
+  if (is.null(H) || is.null(E)) {
+    return(fail("its hypothesis or error matrix is unavailable"))
   }
+  if (!is.finite(df_h) || df_h < 1) {
+    return(fail("the term has no estimable degrees of freedom"))
+  }
+  s <- sqrt(diag(E))
+  if (any(!is.finite(s) | s <= 0)) return(fail("the error matrix is singular"))
+  Es <- E / outer(s, s)
+  Hs <- H / outer(s, s)
+  ee <- eigen((Es + t(Es)) / 2, symmetric = TRUE)
+  if (min(ee$values) <= max(ee$values) * 1e-12) {
+    return(fail("the error matrix is singular"))
+  }
+  # Symmetric square root of the scaled error matrix, and its inverse.
+  Es_half  <- ee$vectors %*% (t(ee$vectors) * sqrt(ee$values))
+  Es_ihalf <- ee$vectors %*% (t(ee$vectors) / sqrt(ee$values))
+  M <- Es_ihalf %*% Hs %*% Es_ihalf
+  ev <- eigen((M + t(M)) / 2, symmetric = TRUE)
+  vals <- ev$values
+  keep <- min(df_h, ncol(Y), sum(vals > .Machine$double.eps^0.5))
+  if (keep < 1L) return(fail("the term does not separate the groups on any axis"))
+  vals <- vals[seq_len(keep)]
+  W <- ev$vectors[, seq_len(keep), drop = FALSE]
+  # Structure coefficients diag(E)^-1/2 E v / sqrt(v'Ev), which for these
+  # eigenvectors is Es^1/2 w. The sign of an eigenvector is arbitrary: make
+  # each axis's largest structure coefficient positive, so the orientation of
+  # the plot is reproducible.
+  struct <- Es_half %*% W
+  big <- max.col(t(abs(struct)), ties.method = "first")
+  flip <- sign(struct[cbind(big, seq_len(keep))])
+  flip[flip == 0] <- 1
+  W <- sweep(W, 2L, flip, "*")
+  struct <- sweep(struct, 2L, flip, "*")
+  # Discriminant coefficients on the original scale, normalised to v'Ev = 1.
+  V <- (Es_ihalf %*% W) / s
+
+  dfe <- if (is.null(df_e) || !is.finite(df_e) || df_e <= 0) {
+    max(nrow(Y) - 1L, 1L)
+  } else df_e
+  Yc <- sweep(Y, 2L, colMeans(Y), "-")
+  # v'Ev / df_e is the pooled within-group variance of an axis, so with
+  # v'Ev = 1 multiplying by sqrt(df_e) gives unit pooled within-group variance.
+  scores <- (Yc %*% V) * sqrt(dfe)
+  axes <- paste0("Can", seq_len(keep))
+  colnames(scores) <- axes
+  colnames(struct) <- axes
+  rn <- colnames(Y) %||% rownames(E) %||% paste0("y", seq_len(ncol(Y)))
 
   list(
     scores = scores,
     group = if (is.null(group)) NULL else droplevels(as.factor(group)),
     canonical = data.frame(
-      axis = colnames(scores),
+      axis = axes,
       eigenvalue = vals,
       canonical_r = sqrt(vals / (1 + vals)),
       prop_variance = vals / sum(vals),
       stringsAsFactors = FALSE
     ),
-    structure = as.data.frame(struct)
+    structure = data.frame(response = rn, struct, stringsAsFactors = FALSE,
+                           row.names = NULL, check.names = FALSE),
+    reason = character(0)
   )
 }
 
