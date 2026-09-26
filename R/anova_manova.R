@@ -537,40 +537,6 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   )
 }
 
-#' Coefficient names that a model produces more than once
-#' @noRd
-.dup_coef_names <- function(fit) {
-  co <- stats::coef(fit)
-  nm <- if (is.matrix(co)) rownames(co) else names(co)
-  unique(nm[duplicated(nm)])
-}
-
-#' Give every grouping factor contrasts whose column labels cannot collide
-#'
-#' The contrasts are the ones the fit would have used anyway -- sum-to-zero
-#' under Type III, the session default otherwise, polynomial for an ordered
-#' factor -- with their column labels wrapped in brackets, so a coefficient
-#' reads \code{dose[1]} rather than \code{dose1}. No estimate changes.
-#' @noRd
-.bracket_group_contrasts <- function(d, groups, type) {
-  opts <- if (identical(type, "III")) {
-    c("contr.sum", "contr.poly")
-  } else {
-    getOption("contrasts", c("contr.treatment", "contr.poly"))
-  }
-  for (g in groups) {
-    f <- d[[g]]
-    fun <- if (is.ordered(f)) opts[[2L]] else opts[[1L]]
-    M <- match.fun(fun)(levels(f))
-    cn <- colnames(M)
-    if (is.null(cn)) cn <- seq_len(ncol(M))
-    colnames(M) <- paste0("[", cn, "]")
-    stats::contrasts(f, ncol(M)) <- M
-    d[[g]] <- f
-  }
-  d
-}
-
 #' Hypothesis and error SSCP matrices of the Type II or III multivariate tests
 #'
 #' \code{car::Manova()} is used whenever it accepts the model. It refuses a

@@ -414,7 +414,11 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   }
 
   ## Marginal means ----------------------------------------------------------
-  emm <- .rm_emmeans_grid(fit, unname(map$to_internal[specs]))
+  # The emmeans model is passed explicitly: left to afex_options("emmeans_model")
+  # a session setting could switch the comparisons to the pooled-error
+  # univariate model, with different standard errors and degrees of freedom.
+  emm <- .emmeans_grid(fit, unname(map$to_internal[specs]), type = "link",
+                       model = "multivariate")
   notes <- c(notes, .rm_unmap_text(emm$note, map$to_user))
   grid <- emm$grid
   if (!is.null(grid)) {
@@ -1053,34 +1057,6 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   z <- e / cell_sd
   z[!is.finite(z)] <- NA_real_
   list(residuals = e, fitted = y - e, standardised = z, cell = cell)
-}
-
-#' Marginal means from afex's multivariate model
-#'
-#' The emmeans model is passed explicitly: left to afex_options("emmeans_model")
-#' a session setting could switch the comparisons to the pooled-error
-#' univariate model, with different standard errors and degrees of freedom.
-#' (\code{.emmeans_grid()} cannot carry it: its first argument is itself
-#' called \code{model}.) Global emm_options() are cleared as everywhere else.
-#' @noRd
-.rm_emmeans_grid <- function(fit, specs) {
-  old <- .emm_options_guard()
-  on.exit(options(emmeans = old), add = TRUE)
-  got <- .collect_conditions(emmeans::emmeans(
-    fit, specs = .formula(NULL, specs, quote_terms = TRUE),
-    model = "multivariate", cov.keep = character(0)))
-  grid <- got$value
-  if (inherits(grid, "error")) {
-    msg <- conditionMessage(grid)
-    if (grepl("rg.limit", msg, fixed = TRUE)) {
-      return(list(grid = NULL, note = paste(
-        "Estimated marginal means were not computed: the reference grid has more cells than emmeans allows by default.",
-        "Raise the limit with emmeans::emm_options(rg.limit = ...) before calling, or set posthoc = FALSE and plots = FALSE.")))
-    }
-    return(list(grid = NULL, note = sprintf(
-      "Estimated marginal means could not be computed: %s", msg)))
-  }
-  list(grid = grid, note = .said_note(got$said, "emmeans"))
 }
 
 #' Give an emmeans grid built on the internal names the user's names and labels
