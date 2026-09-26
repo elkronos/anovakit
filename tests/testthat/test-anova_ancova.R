@@ -43,7 +43,11 @@ test_that("effect sizes carry no residual row and no value of exactly 0.5", {
   expect_false(any(abs(fit$effect_sizes$partial_eta_sq - 0.5) < 1e-12))
   expect_true(all(fit$effect_sizes$partial_eta_sq >= 0 &
                     fit$effect_sizes$partial_eta_sq <= 1))
-  expect_true(all(fit$effect_sizes$omega_sq >= 0))
+  # The column is partial_omega_sq; asserting on a column that does not exist
+  # (all(NULL >= 0) is TRUE) could never fail.
+  expect_true("partial_omega_sq" %in% names(fit$effect_sizes))
+  expect_true(all(fit$effect_sizes$partial_omega_sq >= 0 &
+                    fit$effect_sizes$partial_omega_sq <= 1))
 })
 
 test_that("partial eta squared matches its definition", {
@@ -102,13 +106,16 @@ test_that("adjusted means are model based, not raw group means", {
                                 unname(tapply(d$dv, d$iv, mean)))))
 })
 
-test_that("columns not used in the model survive into data_used", {
+test_that("data_used holds the analysed columns only, like every other function", {
   d <- fx_ancova()
   d$subject_id <- paste0("s", seq_len(nrow(d)))
   d$unused_all_na <- NA_real_
   fit <- anova_ancova(d, "dv", "iv", "cov", plots = FALSE)
 
-  expect_true(all(c("subject_id", "unused_all_na") %in% names(fit$data_used)))
+  # $data_used is "the rows and columns the model was fitted on": the response,
+  # the groups, the covariates and the derived cell factor, nothing else.
+  expect_false(any(c("subject_id", "unused_all_na") %in% names(fit$data_used)))
+  expect_true(all(c("dv", "iv", "cov") %in% names(fit$data_used)))
   # A column full of NA that the model never touches must not delete every row.
   expect_identical(fit$n_removed, 0L)
   expect_equal(nrow(fit$data_used), nrow(d))
@@ -117,22 +124,33 @@ test_that("columns not used in the model survive into data_used", {
 test_that("Levene's test stays aligned when rows are dropped", {
   d <- fx_ancova()
   d$cov[c(3, 9, 40)] <- NA
-  fit <- anova_ancova(d, "dv", "iv", "cov", plots = FALSE)
+  fit <- anova_ancova(d, "dv", "iv", "cov", force_interaction = FALSE,
+                      plots = FALSE)
 
   expect_identical(fit$n_removed, 3L)
   expect_false(is.null(fit$assumptions$levene))
   expect_equal(fit$assumptions$levene$df1 + fit$assumptions$levene$df2,
                nrow(fit$data_used) - 1)
+  # The degrees of freedom add up whatever the pairing of residuals and
+  # groups, so compare the statistic itself with car on the complete rows.
+  keep <- stats::complete.cases(d)
+  ref_model <- stats::lm(dv ~ cov + iv, data = d[keep, ])
+  ref <- car::leveneTest(stats::residuals(ref_model) ~ d$iv[keep])
+  expect_equal(fit$assumptions$levene$statistic, ref[["F value"]][1])
+  expect_equal(fit$assumptions$levene$p_value, ref[["Pr(>F)"]][1])
 })
 
 test_that("input validation names the problem", {
   d <- fx_ancova()
   expect_error(anova_ancova(d, "dv", "iv", "not_there"), "not found in `data`")
-  expect_error(anova_ancova(d, "dv", "iv", "iv"), "must be numeric")
+  d$label <- as.character(d$iv)
+  expect_error(anova_ancova(d, "dv", "iv", "label"), "must be numeric")
+  expect_error(anova_ancova(d, "dv", "iv", "iv"),
+               "given as both a grouping variable and a covariate")
   expect_error(anova_ancova(d, "dv", "iv", "cov", homogeneity_alpha = 0),
                "strictly between 0 and 1")
   expect_error(anova_ancova(d, "dv", c("iv", "cov"), "cov"),
-               "cannot be both a group and a covariate")
+               "given as both a grouping variable and a covariate")
 })
 
 test_that("nothing is written to stdout and no deprecation warnings fire", {
