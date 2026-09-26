@@ -811,12 +811,17 @@ test_that("McFadden's R squared is finite and correct for non-Gaussian fits", {
   expect_equal(mc, as.numeric(1 - stats::logLik(ref) / stats::logLik(null)))
   expect_true(is.finite(mc))
 
-  # With an offset in the formula and prior weights, the null model must carry
-  # both, or the reference likelihood is not comparable
+  # With prior weights, the null model must carry them too, or the reference
+  # likelihood is not comparable. (anova_glm() has no offset argument, so the
+  # null model never needs one.)
   cd <- fx_counts()
-  cd$expo <- withr::with_seed(5, stats::runif(nrow(cd), 0.5, 2))
-  cf <- anova_count(cd, "count", "g1", offset = "expo", plots = FALSE)
-  expect_true(is.finite(cf$dispersion))
+  cd$w <- withr::with_seed(5, sample(1:3, nrow(cd), replace = TRUE))
+  cf <- anova_glm(cd, "count", "g1", family = "poisson", weights = "w",
+                  plots = FALSE)
+  full <- stats::glm(count ~ g1, family = stats::poisson(), data = cd, weights = w)
+  null_w <- stats::glm(count ~ 1, family = stats::poisson(), data = cd, weights = w)
+  expect_equal(cf$effect_sizes$estimate[cf$effect_sizes$measure == "mcfadden_r2"],
+               as.numeric(1 - stats::logLik(full) / stats::logLik(null_w)))
 
   # A quasi family has no likelihood: NA, not an error
   qf <- anova_glm(fx_counts(), "count", "g1", family = "quasipoisson",
