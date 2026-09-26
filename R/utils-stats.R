@@ -53,6 +53,9 @@
       n         = nm$n,        # the number the test actually used, not length(v)
       statistic = if (is.null(nm$test)) NA_real_ else unname(nm$test$statistic),
       p_value   = if (is.null(nm$test)) NA_real_ else unname(nm$test$p.value),
+      # Why a group has no test (too few or too many values, or no variation);
+      # an NA with no reason reads as a failure.
+      note      = if (length(nm$note) == 0L) NA_character_ else nm$note,
       stringsAsFactors = FALSE
     )
   })
@@ -118,7 +121,7 @@
   ss <- eff[["Sum Sq"]]
   df <- if ("Df" %in% names(eff)) eff[["Df"]] else rep(NA_real_, length(ss))
   out <- data.frame(
-    term           = rownames(eff),
+    term           = gsub("`", "", rownames(eff), fixed = TRUE),
     df             = as.numeric(df),
     sum_sq         = as.numeric(ss),
     partial_eta_sq = as.numeric(ss / (ss + ss_error)),
@@ -132,7 +135,7 @@
     om  <- (out$df * (ms - mse)) / (out$df * ms + (n_obs - out$df) * mse)
     out$partial_omega_sq <- pmax(0, pmin(1, om))
     if (any(om < 0, na.rm = TRUE)) {
-      attr(out, "omega_floored") <- rownames(eff)[which(om < 0)]
+      attr(out, "omega_floored") <- out$term[which(om < 0)]
     }
   }
   out
@@ -321,50 +324,84 @@
   )
 }
 
-#' Detect complete or quasi-complete separation in a binomial GLM
+#' Detect separation in a binary GLM, or an all-zero cell in a count GLM
 #'
-#' Wald statistics collapse under separation: the odds ratio explodes, the
-#' interval covers everything, and the p-value approaches 1. \code{glm()}
-#' reports \code{converged = TRUE} regardless, so this has to be checked
-#' explicitly rather than inferred from the fit.
+#' Wald statistics collapse on the boundary of the parameter space: the odds
+#' ratio or rate ratio explodes, the interval covers everything, and the
+#' p-value approaches 1. \code{glm()} reports \code{converged = TRUE}
+#' regardless, so this has to be checked explicitly rather than inferred from
+#' the fit.
 #'
-#' The test is on the fitted model, not on the design. A homogeneous cell of a
-#' crossed grouping is \emph{not} evidence of separation when the model is
-#' additive: that cell's linear predictor is estimable from the others, and a
-#' cell-based rule flags close to half of all clean additive fits. Separation is
-#' therefore identified from the coefficients themselves — one that has run away
-#' on the log-odds scale together with a standard error that has run away with
-#' it — and from fitted probabilities that have reached the numerical boundary.
-#' The offending coefficients are named, since it is the coefficients, not the
-#' cells, that are unidentified.
+#' The check is made on the fitted linear predictor of each distinct cell of
+#' the design, not on the coefficients. A coefficient depends on the coding: under
+#' sum-to-zero contrasts the divergence of one homogeneous level is spread
+#' across the intercept and every deviation coefficient, none of which need
+#' look extreme on its own. A cell's linear predictor and its standard error do
+#' not depend on the coding. A cell is flagged when its linear predictor has
+#' run away (beyond +/-10 on the logit scale, or below -10 on the log scale)
+#' together with its standard error (above 10). A homogeneous cell of an
+#' additive model whose predictor is estimable from the other cells has a
+#' moderate standard error and is not flagged, and neither is a rare but
+#' well-determined event rate in a large sample.
 #'
-#' @param fit a fitted binomial GLM.
+#' @param fit a fitted binomial, Poisson or negative binomial GLM.
 #' @return a character note, or \code{character(0)}.
 #' @noRd
 .check_separation <- function(fit) {
+  fam <- tryCatch(stats::family(fit)$family, error = function(e) "")
+  is_count <- inherits(fit, "negbin") ||
+    fam %in% c("poisson", "quasipoisson") || grepl("^Negative Binomial", fam)
   co <- stats::coef(fit)
-  se <- suppressWarnings(sqrt(diag(stats::vcov(fit))))
-  keep <- intersect(names(co), names(se))
-  co <- co[keep]; se <- se[keep]
+  ok <- !is.na(co)
+  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
+  V <- tryCatch(suppressWarnings(stats::vcov(fit)), error = function(e) NULL)
+  if (is.null(X) || is.null(V) || !any(ok)) return(character(0))
+  keep <- intersect(names(co)[ok], intersect(colnames(X), colnames(V)))
+  X <- X[, keep, drop = FALSE]
+  V <- V[keep, keep, drop = FALSE]
+  key <- do.call(paste, c(as.data.frame(X), list(sep = "\r")))
+  first <- !duplicated(key)
+  Xu <- X[first, , drop = FALSE]
+  eta <- drop(Xu %*% co[keep])
+  se_eta <- sqrt(pmax(rowSums((Xu %*% V) * Xu), 0))
+  flag <- is.finite(eta) & is.finite(se_eta) & se_eta > 10 &
+    (if (is_count) eta < -10 else abs(eta) > 10)
+  if (!any(flag)) return(character(0))
 
-  runaway <- names(co)[is.finite(co) & is.finite(se) &
-                         abs(co) > 10 & se > 10]
-  mu <- stats::fitted(fit)
-  boundary <- sum(mu < 1e-10 | mu > 1 - 1e-10, na.rm = TRUE)
+  mf <- tryCatch(stats::model.frame(fit), error = function(e) NULL)
+  cells <- if (!is.null(mf)) {
+    facs <- names(mf)[-1L][vapply(mf[-1L], is.factor, logical(1))]
+    if (length(facs) > 0L) {
+      sub <- mf[first, facs, drop = FALSE][flag, , drop = FALSE]
+      apply(sub, 1L, function(r) paste(sprintf("%s = %s", facs, r), collapse = ", "))
+    } else character(0)
+  } else character(0)
+  where <- if (length(cells) > 0L) .abbrev(unname(cells), 5L) else
+    sprintf("%d cell(s) of the design", sum(flag))
 
-  if (length(runaway) == 0L && boundary == 0L) return(character(0))
-
-  detail <- if (length(runaway) > 0L) {
+  co_ok <- co[keep]
+  se_co <- sqrt(pmax(diag(V), 0))
+  runaway <- setdiff(names(co_ok)[abs(co_ok) > 10 & se_co > 10], "(Intercept)")
+  coefs <- if (length(runaway) > 0L) {
     sprintf(" The affected coefficient(s): %s.",
-            paste(setdiff(runaway, "(Intercept)"), collapse = ", "))
-  } else {
-    sprintf(" %d fitted probabilit%s numerically 0 or 1.",
-            boundary, if (boundary == 1L) "y is" else "ies are")
+            paste(gsub("`", "", runaway, fixed = TRUE), collapse = ", "))
+  } else ""
+
+  if (is_count) {
+    return(paste0(
+      "No events were observed in ", where, ", so the fitted rate there is ",
+      "numerically zero.", coefs, " A rate ratio involving such a cell is not ",
+      "identified: it will be near zero or enormous, its interval unbounded on one ",
+      "side, and its Wald p-value near 1 no matter how large the difference is. ",
+      "The likelihood-ratio omnibus test remains usable. Consider collapsing the ",
+      "level, or an exact or penalised method for the affected comparisons."))
   }
   paste0(
-    "Complete or quasi-complete separation detected.", detail,
+    "Complete or quasi-complete separation detected: the fitted probability is ",
+    "numerically 0 or 1 in ", where, ".", coefs,
     " An affected odds ratio is not identified: it will be enormous, its ",
     "interval will be unbounded on one side, and its Wald p-value will be near 1 ",
-    "no matter how strong the association is. Consider a penalised fit such as ",
-    "logistf::logistf(), or collapsing the offending level.")
+    "no matter how strong the association is. With events this sparse the ",
+    "likelihood-ratio omnibus test is also liberal. Consider a penalised fit such ",
+    "as logistf::logistf(), or collapsing the offending level.")
 }

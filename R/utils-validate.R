@@ -171,15 +171,32 @@
 #'   alone, so an unrelated column full of \code{NA} never removes a row.
 #' @return list with \code{data}, \code{n_removed} and \code{notes}.
 #' @noRd
-.prepare_frame <- function(data, cols, factors = character(0), keep_all = TRUE) {
+.prepare_frame <- function(data, cols, factors = character(0), keep_all = TRUE,
+                           keep_infinite = character(0),
+                           quiet_factors = character(0)) {
   cols <- unique(cols)
   sub <- data[, cols, drop = FALSE]
   keep <- stats::complete.cases(sub)
 
-  # Inf and -Inf survive complete.cases() but cannot be modelled. Treat them as
-  # missing rather than letting them reach a variance or a link function.
-  n_infinite <- 0L
+  # A factor can carry NA as an explicit level (factor(x, exclude = NULL), or
+  # addNA()). complete.cases() sees a valid code and keeps the row, but every
+  # model and test downstream treats the value as missing and drops it without
+  # counting it. Treat it as missing here, where it is counted and reported.
+  n_na_level <- 0L
   for (cn in cols) {
+    v <- sub[[cn]]
+    if (is.factor(v) && anyNA(levels(v))) {
+      bad <- is.na(levels(v))[as.integer(v)] %in% TRUE
+      n_na_level <- n_na_level + sum(bad & keep)
+      keep <- keep & !bad
+    }
+  }
+
+  # Inf and -Inf survive complete.cases() but cannot be modelled. Treat them as
+  # missing rather than letting them reach a variance or a link function. A
+  # rank-based analysis can use them, so a caller may exempt columns.
+  n_infinite <- 0L
+  for (cn in setdiff(cols, keep_infinite)) {
     v <- sub[[cn]]
     if (is.numeric(v)) {
       bad <- is.finite(v) == FALSE & !is.na(v)
@@ -188,16 +205,29 @@
     }
   }
   n_removed <- sum(!keep)
-  out <- data[keep, if (keep_all) seq_along(data) else match(cols, names(data)),
-              drop = FALSE]
+  if (keep_all) {
+    # Columns without a name cannot be carried into a model frame: lm() fails
+    # on them with "attempt to use zero-length variable name".
+    named <- !is.na(names(data)) & nzchar(names(data))
+    out_cols <- which(named | names(data) %in% cols)
+  } else {
+    out_cols <- match(cols, names(data))
+  }
+  out <- data[keep, out_cols, drop = FALSE]
   row.names(out) <- NULL
 
   notes <- character(0)
   if (n_removed > 0L) {
+    what <- c("missing", if (n_infinite > 0L) "infinite")
     notes <- c(notes, sprintf(
-      "Dropped %d row(s) with missing%s values in: %s.",
-      n_removed, if (n_infinite > 0L) " or infinite" else "",
+      "Dropped %d row(s) with %s values in: %s.",
+      n_removed, paste(what, collapse = " or "),
       paste(cols, collapse = ", ")))
+    if (n_na_level > 0L) {
+      notes <- c(notes, sprintf(
+        "%d of them had NA as an explicit factor level, which is treated as missing. Recode it to a named level to keep those rows.",
+        n_na_level))
+    }
   }
   if (nrow(out) == 0L) {
     .stopf("No complete cases remain after removing rows with missing values in: %s.",
@@ -207,25 +237,57 @@
   for (f in factors) {
     if (!is.factor(out[[f]])) {
       n_lev <- length(unique(out[[f]]))
-      if (is.numeric(out[[f]]) && n_lev > 20L) {
+      if (is.numeric(out[[f]]) && n_lev > 20L && !f %in% quiet_factors) {
         notes <- c(notes, sprintf(
           "Grouping variable `%s` is numeric with %d distinct values and was converted to a factor. If it is a covariate rather than a group, this is not the function you want.",
           f, n_lev))
       }
-      if (is.character(out[[f]])) {
-        # factor() orders character levels by the session's collation, so the
-        # reference level of a character column depends on the locale. Sort in
-        # the C locale so the same data gives the same reference everywhere.
-        out[[f]] <- factor(out[[f]],
-                           levels = sort(unique(out[[f]]), method = "radix"))
-      } else {
-        out[[f]] <- factor(out[[f]])
-      }
+      out[[f]] <- .as_group_factor(out[[f]], f)
     }
     out[[f]] <- droplevels(out[[f]])
   }
 
   list(data = out, n_removed = n_removed, notes = notes)
+}
+
+#' Turn a grouping column into a factor whose levels are its distinct values
+#'
+#' \code{factor()} builds levels from \code{as.character()} of the values. Two
+#' distinct values that print the same -- two instants in the repeated hour at
+#' the end of daylight saving time, or two doubles equal to 15 significant
+#' digits -- would then be merged into one group without a word. Levels are
+#' built from the distinct values instead, and labelled with a representation
+#' that keeps them apart.
+#'
+#' Character levels are sorted in the C locale, so the reference level of a
+#' character column does not depend on the session's collation. Strings read
+#' in a UTF-8 session are often marked with an "unknown" encoding, which the
+#' radix sort refuses when they are not ASCII, so a UTF-8 copy is sorted and
+#' the original strings are used as the levels.
+#' @noRd
+.as_group_factor <- function(x, name = "") {
+  if (is.character(x)) {
+    lev <- unique(x[!is.na(x)])
+    lev <- lev[order(enc2utf8(lev), method = "radix")]
+    return(factor(x, levels = lev))
+  }
+  if (is.logical(x)) return(factor(x, levels = c(FALSE, TRUE)[c(FALSE, TRUE) %in% x]))
+  u <- sort(unique(x[!is.na(x)]))
+  lab <- as.character(u)
+  if (anyDuplicated(lab)) {
+    lab <- if (inherits(u, "POSIXt")) {
+      format(u, "%Y-%m-%d %H:%M:%OS6 %z")
+    } else if (is.numeric(u)) {
+      format(u, digits = 17L, trim = TRUE)
+    } else {
+      lab
+    }
+  }
+  if (anyDuplicated(lab)) {
+    .stopf("Grouping variable `%s` has distinct values that cannot be told apart once printed (%s). Convert it to character or factor yourself.",
+           name, .abbrev(unique(lab[duplicated(lab)])))
+  }
+  factor(match(x, u), levels = seq_along(u), labels = lab)
 }
 
 #' Check that grouping variables are usable
@@ -270,7 +332,16 @@
     return(droplevels(as.factor(data[[groups]])))
   }
   f <- lapply(groups, function(g) droplevels(as.factor(data[[g]])))
-  droplevels(do.call(interaction, c(f, list(drop = TRUE, sep = sep))))
+  cell <- droplevels(do.call(interaction, c(f, list(drop = TRUE, sep = sep))))
+  # interaction() labels a cell by pasting its levels, so a:"b : c" and
+  # "a : b":c get the same label and would be merged into one group. Check the
+  # labels against the combinations of level codes they are meant to represent.
+  codes <- do.call(paste, c(lapply(f, as.integer), list(sep = "\r")))
+  if (length(unique(codes)) != nlevels(cell)) {
+    .stopf("The levels of %s produce the same label for different combinations when joined with \"%s\", so distinct groups would be merged. Rename the levels that contain \"%s\".",
+           paste(sprintf("`%s`", groups), collapse = ", "), sep, trimws(sep))
+  }
+  cell
 }
 
 #' Attach the combined cell factor under a non-colliding name
@@ -347,11 +418,19 @@
     .stopf("Response `%s` is a %d-column matrix. A successes/failures matrix response is not supported; supply the outcome as one column per row, with `weights` naming the trial counts if the data are aggregated.",
            response, ncol(y))
   }
-  if (fam == "binomial") {
+  if (fam %in% c("binomial", "quasibinomial")) {
     ok <- is.numeric(y) || is.logical(y) || is.factor(y) || is.character(y)
     if (!ok) {
-      .stopf("Response `%s` must be numeric, logical or a factor for a binomial family; it is %s.",
-             response, paste(class(y), collapse = "/"))
+      .stopf("Response `%s` must be numeric, logical, character or a factor for a %s family; it is %s.",
+             response, fam, paste(class(y), collapse = "/"))
+    }
+    if (is.factor(y) || is.character(y)) {
+      lv <- if (is.factor(y)) levels(droplevels(y)) else
+        sort(unique(y[!is.na(y)]), method = "radix")
+      if (length(lv) != 2L) {
+        .stopf("Response `%s` has %d observed level(s); a %s model of a factor response needs exactly two. Recode it to a two-level factor, or 0/1, first.",
+               response, length(lv), fam)
+      }
     }
     return(invisible(TRUE))
   }
@@ -385,4 +464,41 @@
                df)
   row.names(out) <- NULL
   out
+}
+
+#' Refuse a column that plays two roles in one analysis
+#'
+#' A response that is also a grouping variable, or a subject identifier that is
+#' also a between-subjects factor, produces an analysis that is either
+#' meaningless or silently different from the one asked for. Every function
+#' calls this once, with every role it takes.
+#'
+#' Two names are reserved: \code{car::Anova()} and \code{summary.manova()} label
+#' the error row \code{Residuals} and the intercept \code{(Intercept)}, so a
+#' column of either name makes their tables ambiguous.
+#'
+#' @param roles named list; each element is the column name(s) for one role,
+#'   and its name is how that role is described in the message.
+#' @noRd
+.check_roles <- function(roles) {
+  roles <- roles[!vapply(roles, is.null, logical(1))]
+  seen <- character(0)
+  owner <- character(0)
+  for (r in names(roles)) {
+    for (col in unique(roles[[r]])) {
+      hit <- match(col, seen)
+      if (!is.na(hit)) {
+        .stopf("Column `%s` is given as both %s and %s; a column can play only one role.",
+               col, owner[hit], r)
+      }
+      seen <- c(seen, col)
+      owner <- c(owner, r)
+    }
+  }
+  reserved <- intersect(seen, c("Residuals", "(Intercept)"))
+  if (length(reserved) > 0L) {
+    .stopf("Column name(s) %s are reserved: the analysis tables use them for the error and intercept rows. Rename the column.",
+           paste(sprintf("`%s`", reserved), collapse = ", "))
+  }
+  invisible(TRUE)
 }

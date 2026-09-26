@@ -113,6 +113,8 @@ anova_bin <- function(data, response, groups,
   .check_columns(data, groups, "Grouping column(s)")
   .check_conf_level(conf_level)
   .check_interaction(interaction, length(groups))
+  .check_roles(list(`the response` = response, `a grouping variable` = groups,
+                    `the weights` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -123,9 +125,12 @@ anova_bin <- function(data, response, groups,
                          keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
+  zw <- .drop_zero_weights(d, weights)
+  d <- zw$data
+  n_removed <- prep$n_removed + zw$n_removed
+  notes <- c(notes, zw$notes)
   .check_groups(d, groups, min_levels = 2L, min_n = 1L)
 
-  wts <- .resolve_weights(d, weights)
   resp <- .prep_binary(d[[response]], response, success)
   d[[response]] <- resp$values
   success <- resp$success
@@ -141,7 +146,7 @@ anova_bin <- function(data, response, groups,
   fml <- stats::reformulate(terms_rhs, response = .bq(response))
   .say(verbose, "Fitting %s", paste(deparse(fml), collapse = " "))
   fitted <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, stats::binomial(), wts),
+    function() .fit_glm(fml, d, stats::binomial(), weights),
     type = type))
   model <- fitted$value
   if (inherits(model, "error")) {
@@ -191,18 +196,14 @@ anova_bin <- function(data, response, groups,
   notes <- c(notes, eff$note)
 
   ## Marginal probabilities and pairwise odds ratios -------------------------
-  emm <- .emmeans_grid(model, groups, type = "response",
-                       vcov_matrix = rv$matrix)
-  notes <- c(notes, emm$note)
-  emm_tab <- .emmeans_table(emm$grid, conf_level, protect = groups)
-  notes <- c(notes, emm_tab$note)
-  ph <- if (posthoc) {
-    .emmeans_pairs(emm$grid, adjust = adjust, conf_level = conf_level,
-                   ratios = TRUE)
-  } else list(table = NULL,
-              note = .no_posthoc_note(NROW(emm_tab$table),
-                                      extra = "$effect_sizes still reports the odds ratios from the model."))
-  notes <- c(notes, ph$note)
+  emm <- .emm_block(model, groups, additive = .is_additive(interaction),
+                    type = "response", vcov_matrix = rv$matrix,
+                    conf_level = conf_level, adjust = adjust, posthoc = posthoc,
+                    link = "logit", data = d)
+  notes <- c(notes, emm$notes)
+  if (!posthoc) {
+    notes <- c(notes, "$effect_sizes still reports the odds ratios from the model.")
+  }
 
   ## Proportions and plot ----------------------------------------------------
   added <- .add_cell(d, groups)
@@ -213,9 +214,9 @@ anova_bin <- function(data, response, groups,
     plot_list$proportions <- .plot_proportions(
       prop_tab, added$cell, response, success,
       xlab = paste(groups, collapse = " : "))
-    if (!is.null(emm_tab$table)) {
+    if (!is.null(emm$table)) {
       plot_list$emmeans <- .plot_emmeans(
-        emm_tab$table, groups, estimate = "estimate",
+        emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = sprintf("Estimated probability of %s = %s", response, success),
         ylab = "Probability")
@@ -228,14 +229,14 @@ anova_bin <- function(data, response, groups,
     model        = model,
     anova        = av$table,
     effect_sizes = eff$table,
-    emmeans      = emm_tab$table,
+    emmeans      = emm$table,
     emmeans_object = emm$grid,
-    posthoc      = ph$table,
+    posthoc      = emm$posthoc,
     assumptions  = list(dispersion = .dispersion(model),
                         proportions = prop_tab),
     plots        = plot_list,
     data_used    = d,
-    n_removed    = prep$n_removed,
+    n_removed    = n_removed,
     conf_level   = conf_level,
     notes        = notes,
     extra        = list(model_stats = model_stats)
