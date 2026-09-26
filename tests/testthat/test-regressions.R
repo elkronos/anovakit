@@ -632,29 +632,32 @@ test_that("third-party warnings and messages reach $notes, not the console", {
   expect_false(is.null(a$anova))
 })
 
-test_that("afex's own warnings are captured rather than printed", {
+test_that("repeated subject-by-cell rows are aggregated without printing", {
   skip_if_not_installed("afex")
   d <- fx_repeated()
   d2 <- rbind(d, d[d$id %in% levels(d$id)[1L], ])
 
-  # Without fun_aggregate, afex warns that it is aggregating. The warning must
-  # reach $notes and not the console.
+  # anova_rm() now aggregates repeated rows itself (with fun_aggregate, the
+  # mean by default) before calling afex, so afex has nothing to warn about.
+  # Nothing may reach the console, and $notes must say what was done.
   expect_silent(loud <- anova_rm(d2, "score", subject = "id", within = "time",
                                  between = "arm", plots = FALSE))
-  said <- grep("aov_ez\\(\\) reported", loud$notes, value = TRUE)
-  expect_length(said, 1L)
-  expect_match(said, "aggregating data")
-  expect_false(grepl("\n", said, fixed = TRUE))   # flattened to one line
+  expect_false(any(grepl("aov_ez\\(\\) reported", loud$notes)))
+  agg <- grep("aggregated into one value", loud$notes, value = TRUE)
+  expect_length(agg, 1L)
+  expect_match(agg, "the mean \\(the default")
+  expect_false(grepl("\n", agg, fixed = TRUE))   # one line
 
-  # With fun_aggregate given, afex says nothing, so neither does $notes
   expect_silent(quiet <- anova_rm(d2, "score", subject = "id", within = "time",
                                   between = "arm", plots = FALSE,
                                   fun_aggregate = mean))
   expect_false(any(grepl("aov_ez\\(\\) reported", quiet$notes)))
+  expect_true(any(grepl("aggregated into one value with `mean`", quiet$notes,
+                        fixed = TRUE)))
 
   # The package's own account of the aggregation is there either way
   for (f in list(loud, quiet)) {
-    expect_true(any(grepl("afex aggregated", f$notes)))
+    expect_true(any(grepl("aggregated", f$notes)))
     expect_identical(nrow(f$data_used) + f$n_removed, nrow(d2))
   }
 })
