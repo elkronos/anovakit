@@ -349,10 +349,10 @@ anova_rm <- function(data, response, subject, within, between = NULL,
     df1 <- base$num_df[idx]
     df2 <- base$den_df[idx]
     sph_tab$hf_epsilon <- pmin(1, sph_tab$hf_epsilon_raw)
-    sph_tab$p_gg <- stats::pf(f_stat, df1 * sph_tab$gg_epsilon,
-                              df2 * sph_tab$gg_epsilon, lower.tail = FALSE)
-    sph_tab$p_hf <- stats::pf(f_stat, df1 * sph_tab$hf_epsilon,
-                              df2 * sph_tab$hf_epsilon, lower.tail = FALSE)
+    sph_tab$p_gg <- .rm_pf(f_stat, df1 * sph_tab$gg_epsilon,
+                           df2 * sph_tab$gg_epsilon)
+    sph_tab$p_hf <- .rm_pf(f_stat, df1 * sph_tab$hf_epsilon,
+                           df2 * sph_tab$hf_epsilon)
     sph_tab$term_user <- base$term[idx]
   }
   notes <- c(notes, .rm_sphericity_notes(sph, sph_tab, correction))
@@ -991,8 +991,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
     out$num_df[i] <- base$num_df[i] * e
     out$den_df[i] <- base$den_df[i] * e
     out$mse[i] <- base$mse[i] / e
-    out$p_value[i] <- stats::pf(base$statistic[i], out$num_df[i], out$den_df[i],
-                                lower.tail = FALSE)
+    out$p_value[i] <- .rm_pf(base$statistic[i], out$num_df[i], out$den_df[i])
     out$p_value[idx[!ok]] <- NA_real_
   }
   row.names(out) <- NULL
@@ -1116,4 +1115,19 @@ anova_rm <- function(data, response, subject, within, between = NULL,
       paste(sprintf("\"%s\"", unique(c(specs, averaged))), collapse = ", ")))
   }
   txt
+}
+
+#' Upper-tail F probability that is NA, not a warning, when undefined
+#'
+#' With no error variance an epsilon is 0/0, and \code{pf()} given NaN or
+#' non-positive degrees of freedom warns "NaNs produced" to the console. The
+#' $notes already explain the degenerate design; the p-value is simply NA.
+#' @noRd
+.rm_pf <- function(q, df1, df2) {
+  n <- max(length(q), length(df1), length(df2))
+  q <- rep_len(q, n); df1 <- rep_len(df1, n); df2 <- rep_len(df2, n)
+  ok <- !is.na(q) & is.finite(df1) & is.finite(df2) & df1 > 0 & df2 > 0
+  out <- rep(NA_real_, n)
+  out[ok] <- stats::pf(q[ok], df1[ok], df2[ok], lower.tail = FALSE)
+  out
 }

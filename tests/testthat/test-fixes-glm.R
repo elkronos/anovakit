@@ -326,10 +326,9 @@ test_that("F155: a group whose weights are all zero is not a group", {
 test_that("F156: separation and unbounded profile intervals are noted", {
   d <- glm_all_ones()
   fit <- anova_glm(d, "y", "g", family = "binomial", plots = FALSE)
-  # independent reference: the profile of gc never closes above
-  ref <- suppressWarnings(suppressMessages(stats::confint(
-    stats::glm(y ~ g, family = stats::binomial(), data = d))))
-  expect_true(is.na(ref["gc", 2]))
+  # stats::confint() is no reference here: depending on the platform its
+  # spline returns NA or an extrapolated number for the side that never closes.
+  # The finite end is checked against the deviance in the separation test below.
   # open above (Inf, not NA or a spline extrapolation), with a finite lower end
   expect_identical(fit$assumptions$coefficients$conf_high[
     fit$assumptions$coefficients$term == "gc"], Inf)

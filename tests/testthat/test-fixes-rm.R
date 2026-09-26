@@ -478,7 +478,8 @@ test_that("a design with no error df or no error variance says so (F130)", {
 
   d2 <- expand.grid(id = factor(1:6), time = factor(c("t1", "t2", "t3")))
   d2$y <- as.numeric(d2$id) + as.numeric(d2$time)       # y = subject + time
-  f2 <- anova_rm(d2, "y", "id", "time", plots = FALSE)
+  # the degenerate design is explained in $notes, never by a console warning
+  expect_no_warning(f2 <- anova_rm(d2, "y", "id", "time", plots = FALSE))
   # stats::aov gives the same degenerate within-subject error stratum
   a <- summary(stats::aov(y ~ time + Error(id / time), data = d2))
   expect_equal(a[["Error: id:time"]][[1]]["Residuals", "Sum Sq"], 0,
