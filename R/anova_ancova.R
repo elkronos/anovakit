@@ -257,7 +257,21 @@ anova_ancova <- function(data, response, groups, covariates,
 
   g_terms <- .group_terms(groups, interaction)
   cv_terms <- .bq(covariates)
-  .check_covariates_identified(d, covariates, g_terms)
+  # More coefficients than rows cannot be estimated, and a model matrix far
+  # wider than the data takes lm() minutes to pivot; refuse it up front.
+  n_coef <- 1 + length(covariates) + .n_group_coefs(d, groups, interaction)
+  if (n_coef > nrow(d)) {
+    .stopf("The model needs %s coefficients but there are only %d rows, so it cannot be estimated: %s. Use interaction = FALSE (or a lower interaction order), fewer grouping variables, or fewer levels.",
+           format(n_coef, big.mark = ","), nrow(d),
+           if (length(groups) > 1L && !.is_additive(interaction)) {
+             sprintf("the interactions of %s alone have %s level combinations",
+                     paste(sprintf("`%s`", groups), collapse = ", "),
+                     format(prod(vapply(groups, function(g)
+                       nlevels(droplevels(as.factor(d[[g]]))), numeric(1))),
+                       big.mark = ","))
+           } else "each level of a grouping variable needs its own coefficient")
+  }
+  .check_covariates_identified(d, covariates, groups, interaction)
 
   ## Homogeneity of slopes ---------------------------------------------------
   # The slopes may differ across every grouping term in the model: under the
@@ -450,6 +464,7 @@ anova_ancova <- function(data, response, groups, covariates,
         title = "Covariate-adjusted marginal means",
         ylab = sprintf("Adjusted %s", response))
     }
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
   .new_fit(
@@ -486,8 +501,19 @@ anova_ancova <- function(data, response, groups, covariates,
 #' may be a group contrast rather than the covariate, and the Type III table,
 #' the adjusted means and the comparisons all degrade without saying why.
 #' @noRd
-.check_covariates_identified <- function(d, covariates, g_terms) {
-  G <- stats::model.matrix(stats::reformulate(g_terms), data = d)
+.check_covariates_identified <- function(d, covariates, groups, interaction) {
+  # The grouping terms are hierarchical, so their column space is spanned by
+  # the indicators of the observed cells of the highest-order terms alone: one
+  # block of at most n disjoint indicators per term. The model matrix itself
+  # can have far more columns than rows (three 22-level factors give 10648),
+  # and a pivoting QR on that takes minutes.
+  order_max <- if (length(groups) == 1L || isFALSE(interaction)) 1L else
+    if (isTRUE(interaction)) length(groups) else min(as.integer(interaction), length(groups))
+  top <- utils::combn(groups, order_max, simplify = FALSE)
+  G <- do.call(cbind, lapply(top, function(v) {
+    cell <- base::interaction(d[v], drop = TRUE, lex.order = TRUE)
+    outer(as.integer(cell), seq_len(nlevels(cell)), "==") + 0
+  }))
   C <- as.matrix(d[covariates])
   # The same tolerance lm() uses to declare a column aliased.
   rk <- function(M) qr(M, tol = 1e-7)$rank

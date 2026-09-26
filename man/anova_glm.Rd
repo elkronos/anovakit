@@ -95,7 +95,12 @@ subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Rows with weight zero contribute nothing to
 the fit; they are dropped before fitting and counted in
-\code{$n_removed}.}
+\code{$n_removed}. Whole-number weights (some above 1) on a count or 0/1
+response are read as frequency weights, each row standing for that many
+identical observations: the robust covariance (\code{vcov_type}) and, for
+the Poisson families, the residual degrees of freedom are then those of
+the data expanded to one row per observation. Other weights (precision
+weights, or the trials behind a proportion) keep each row as one unit.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}

@@ -73,7 +73,15 @@ way and return the same S3 class, \code{\link{anovakit_fit}}.
   \item Prior weights, where a function accepts them, are named as a column
     rather than passed as a vector, so they are subsetted with the data.
     Rows with a weight of zero contribute nothing and are dropped (and
-    counted in \code{$n_removed}).
+    counted in \code{$n_removed}). Whole-number weights on a count or 0/1
+    response are frequency weights: robust standard errors and residual
+    degrees of freedom are then those of the data expanded to one row per
+    observation.
+  \item \code{vcov_type}, where a function accepts it, asks for
+    heteroscedasticity-consistent (sandwich) standard errors. Where the
+    sandwich is degenerate -- fitted values on the boundary (separation, a
+    group with no events) or a cell with a single row -- the model-based
+    covariance is used instead, with a note.
   \item A column may play only one role (response, group, covariate,
     weights, offset, subject); the names \code{Residuals} and
     \code{(Intercept)} are reserved.
@@ -99,7 +107,10 @@ Every \code{$posthoc} table reports the unadjusted p-value in
 per-comparison intervals; those of the \pkg{emmeans}-based functions are
 adjusted (simultaneous) intervals, and a note says when \pkg{emmeans} had
 to use a different adjustment for them (it cannot turn a step-down method
-such as Holm into intervals, and uses Bonferroni instead).
+such as Holm into intervals, and uses Bonferroni instead). Tukey, Dunnett
+and Sidak p-values are computed to a limited precision (\code{ptukey()}'s
+upper tail is good to about 1e-14), so \code{print()} shows those below
+1e-10 (1e-12 for Sidak) as a bound; the stored values are unchanged.
 }
 
 \seealso{

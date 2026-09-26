@@ -126,8 +126,11 @@
   if (length(idx) == 0L) return(df)
 
   # Columns that are staying put: anything not being renamed, protected
-  # grouping columns included.
-  fixed <- nm[-idx]
+  # grouping columns included. A protected name is reserved even when this
+  # table does not hold it: the per-factor tables of an additive model are
+  # stacked with every grouping column, and a statistic called like another
+  # factor would be written over by that factor's placeholder.
+  fixed <- union(nm[-idx], protect)
   displaced <- character(0)
   new <- nm
   for (i in idx) {
@@ -382,14 +385,18 @@
       attr(table, "per_factor") <- TRUE
       attr(table, "term_col") <- term_col
     }
-    notes <- c(notes, sprintf(
-      "The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `%s`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead.",
-      term_col %||% "term"))
+    if (!is.null(table)) {
+      notes <- c(notes, sprintf(
+        "The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `%s`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead.",
+        term_col))
+    }
     k <- vapply(grids, function(gr) if (is.null(gr)) 0L else nrow(summary(gr)), integer(1))
     n_comp <- sum(choose(k, 2L))
     ph <- NULL
     if (!posthoc) {
       notes <- c(notes, .no_posthoc_note(n_comparisons = n_comp, each = n_each))
+    } else if (is.null(table)) {
+      notes <- c(notes, .no_emm_posthoc_note())
     } else if (n_comp * n_each > max_comparisons) {
       notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
     } else {
@@ -457,6 +464,8 @@
   ph <- NULL
   if (!posthoc) {
     notes <- c(notes, .no_posthoc_note(n_cells, each = n_each))
+  } else if (is.null(table)) {
+    notes <- c(notes, .no_emm_posthoc_note())
   } else if (n_cells >= 2L && n_comp * n_each > max_comparisons) {
     notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
   } else if (n_cells >= 2L) {
@@ -472,6 +481,21 @@
   }
   list(grid = e$grid, table = table, posthoc = ph, notes = unique(notes),
        per_factor = FALSE)
+}
+
+#' The notes for comparisons and a plot that need marginal means which could
+#' not be computed
+#'
+#' Without them a NULL \code{$posthoc} or a missing \code{$plots$emmeans}
+#' looks the same as one that was never requested.
+#' @noRd
+.no_emm_posthoc_note <- function() {
+  "Pairwise comparisons were not computed because the estimated marginal means they are built on could not be computed."
+}
+
+#' @noRd
+.no_emm_plot_note <- function() {
+  "The plot of estimated marginal means was skipped because the marginal means could not be computed."
 }
 
 #' The note for comparisons skipped because there would be too many
@@ -514,15 +538,19 @@
 #' fitted values on the boundary of the parameter space (separation in a
 #' binary model, an all-zero group in a count model), where the sandwich
 #' collapses towards zero and reports astronomically small p-values; and an
-#' observation with leverage 1 (a single-observation cell), where HC2 to HC4
-#' divide by zero. Frequency weights are a fourth, which the function cannot
-#' detect: it says what the sandwich assumes instead.
+#' observation with leverage 1 (a single-observation cell), whose residual is
+#' zero, so HC0 and HC1 give its cell a zero standard error and HC2 to HC4
+#' divide by zero. Frequency weights need a different meat, not a fallback:
+#' the caller says when the weights are frequencies, and the sandwich is then
+#' computed per observation (see \code{.freq_sandwich()}).
 #'
 #' @param model a fitted model.
 #' @param vcov_type \code{"model"} or an HC type such as \code{"HC0"}.
+#' @param freq_weights whether the prior weights count identical
+#'   observations; the sandwich is then that of the expanded data.
 #' @return list with \code{matrix} (or \code{NULL}) and \code{note}.
 #' @noRd
-.robust_vcov <- function(model, vcov_type = "model") {
+.robust_vcov <- function(model, vcov_type = "model", freq_weights = FALSE) {
   if (identical(vcov_type, "model")) {
     return(list(matrix = NULL, note = character(0)))
   }
@@ -551,7 +579,23 @@
         vcov_type)))
     }
   }
-  got <- .collect_conditions(sandwich::vcovHC(model, type = vcov_type))
+  # A row with leverage 1 is alone in its group or cell, so its residual is
+  # zero by construction. Every HC type estimates that row's variance from its
+  # residual: HC0 and HC1 give the cell a standard error of zero (an interval
+  # of zero width), and HC2 to HC4 divide zero by zero.
+  h <- tryCatch(stats::hatvalues(model), error = function(e) numeric(0))
+  n_lev1 <- sum(h > 1 - 1e-8, na.rm = TRUE)
+  if (n_lev1 > 0L) {
+    return(list(matrix = NULL, note = sprintf(
+      "Robust standard errors (%s) were not used: %d %s leverage 1 (the model fits %s exactly, as it does a group or cell with a single %s), so %s residual is zero by construction and the sandwich would give the parameters %s a standard error of zero (HC0, HC1) or none at all (HC2 to HC4). Model-based standard errors were used instead.",
+      vcov_type, n_lev1, if (n_lev1 == 1L) "row has" else "rows have",
+      if (n_lev1 == 1L) "it" else "them",
+      if (freq_weights) "row" else "observation",
+      if (n_lev1 == 1L) "its" else "their",
+      if (n_lev1 == 1L) "it determines" else "they determine")))
+  }
+  got <- .collect_conditions(if (freq_weights) .freq_sandwich(model, vcov_type) else
+    sandwich::vcovHC(model, type = vcov_type))
   V <- got$value
   if (inherits(V, "error")) {
     return(list(matrix = NULL, note = sprintf(
@@ -559,22 +603,71 @@
       vcov_type, conditionMessage(V))))
   }
   if (!all(is.finite(V))) {
-    h <- tryCatch(stats::hatvalues(model), error = function(e) numeric(0))
     return(list(matrix = NULL, note = sprintf(
-      "Robust covariance (%s) is undefined here: %d observation(s) have leverage 1 (a group or cell with a single observation), and %s divides by 1 - leverage. Model-based standard errors were used instead; HC0 and HC1 do not have this problem.",
-      vcov_type, sum(h > 1 - 1e-8), vcov_type)))
+      "Robust covariance (%s) could not be computed (it has non-finite entries); model-based standard errors were used instead.",
+      vcov_type)))
   }
   notes <- .said_note(got$said, "sandwich::vcovHC()")
   w <- tryCatch(stats::weights(model, type = "prior"), error = function(e) NULL)
   if (is.null(w) && !is.null(model$prior.weights)) w <- model$prior.weights
-  if (!is.null(w) && any(w != 1)) {
-    notes <- c(notes, "Robust standard errors treat each row as one independent unit. That is right when a row is one binomial observation of several trials, or when the weights are sampling weights; it is wrong when the weights count identical rows (frequency weights), which it treats as single units with inflated scores. For frequency-weighted data, expand to one row per observation or use vcov_type = \"model\".")
+  if (freq_weights) {
+    notes <- c(notes, sprintf(
+      "The robust covariance (%s) treats each of the %s observations the frequency weights represent as a unit, as it would on the data expanded to one row per observation; computed row by row it would count each row as one unit with an inflated score, and overstate the standard errors.",
+      vcov_type, format(sum(w), big.mark = ",", scientific = FALSE)))
+  } else if (!is.null(w) && any(w != 1)) {
+    notes <- c(notes, "Robust standard errors treat each row as one independent unit, which is right for sampling or precision weights and for a row that is one binomial observation of several trials. If the weights instead count identical observations, expand the data to one row per observation first.")
   }
   if (!inherits(model, "glm") ||
       identical(tryCatch(stats::family(model)$family, error = function(e) ""), "gaussian")) {
     notes <- c(notes, "Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative, and for a one-way design anova_welch() is better calibrated.")
   }
   list(matrix = V, note = notes)
+}
+
+#' Heteroscedasticity-consistent covariance under frequency weights
+#'
+#' A row with frequency weight w stands for w identical observations. Each of
+#' them has the score u = r / w, where r is the row's score, and the leverage
+#' h / w, where h is the row's hat value; the sandwich of the expanded data sums
+#' w u^2 x x' (with the HC corrections on the per-observation leverage and the
+#' observation count), where sandwich::vcovHC() would sum r^2 x x' = w^2 u^2 x x'
+#' and so overstate the variance by a factor of about the typical weight. The
+#' bread is the same either way, and the dispersion cancels as it does in
+#' sandwich.
+#' @param model a fitted \code{lm} or \code{glm} with whole-number prior weights.
+#' @param type one of \code{"HC0"} to \code{"HC4"}.
+#' @noRd
+.freq_sandwich <- function(model, type) {
+  X <- stats::model.matrix(model)
+  keep <- !is.na(stats::coef(model))
+  X <- X[, keep, drop = FALSE]
+  if (inherits(model, "glm")) {
+    w <- model$prior.weights
+    ww <- stats::weights(model, type = "working")
+    r <- as.vector(stats::residuals(model, type = "working")) * ww
+  } else {
+    w <- stats::weights(model)
+    if (is.null(w)) w <- rep(1, nrow(X))
+    ww <- w
+    r <- as.vector(stats::residuals(model)) * w
+  }
+  cu <- solve(crossprod(X * sqrt(ww)))
+  h <- rowSums((X %*% cu) * X) * ww / w
+  u2 <- (r / w)^2
+  n <- sum(w)
+  k <- ncol(X)
+  if (type %in% c("HC2", "HC3", "HC4") && any(h > 1 - sqrt(.Machine$double.eps))) {
+    return(matrix(NA_real_, k, k, dimnames = list(colnames(X), colnames(X))))
+  }
+  omega <- switch(type,
+    HC0 = u2,
+    HC1 = u2 * n / (n - k),
+    HC2 = u2 / (1 - h),
+    HC3 = u2 / (1 - h)^2,
+    HC4 = u2 / (1 - h)^pmin(4, n * h / k))
+  V <- cu %*% crossprod(X * sqrt(w * omega)) %*% cu
+  dimnames(V) <- list(colnames(X), colnames(X))
+  V
 }
 
 #' Valid heteroscedasticity-consistent covariance types

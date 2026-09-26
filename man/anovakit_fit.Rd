@@ -23,8 +23,10 @@ convenience.
     \code{$internal_names}), and the \code{htest} returned by
     \code{\link[stats]{oneway.test}} or \code{\link[stats]{kruskal.test}}
     from \code{\link{anova_welch}} and \code{\link{anova_kw}}, which fit no
-    model. A fitted \code{lm} or \code{glm} refers to the analysed rows, so
-    \code{update(fit$model, data = fit$data_used)} refits it.}
+    model. The call of a fitted \code{lm} or \code{glm} reaches the
+    analysed rows from anywhere, so \code{update()}, \code{step()} and
+    \code{lmtest::lrtest()} work on it directly: for instance
+    \code{update(fit$model, . ~ 1)}.}
   \item{anova}{Data frame. The omnibus test table. Its attributes record
     the type of sums of squares, the test statistic and (in
     \code{anova_rm}) the sphericity correction; \code{print()} shows them.}
@@ -100,8 +102,9 @@ residuals in the row order of \code{$data_used}) and
 \code{$canonical_term}, \code{$slopes_test} (with covariates),
 \code{$covariate_means} and \code{$test}; \code{\link{anova_count}} adds
 \code{$model_type}, \code{$dispersion} and \code{$model_dispersion};
-\code{\link{anova_bin}} and \code{\link{anova_glm}} add
-\code{$model_stats}. Each is documented on the function that produces it.
+\code{\link{anova_bin}} adds \code{$model_stats}; \code{\link{anova_glm}}
+adds \code{$model_stats} and \code{$family}. Each is documented on the
+function that produces it.
 }
 
 \seealso{

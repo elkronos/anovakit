@@ -93,7 +93,11 @@
 #'   weights. Given as a column name rather than a vector so that it is
 #'   subsetted with the data: a vector supplied by the caller is evaluated
 #'   against the original frame and silently misaligns as soon as one row is
-#'   dropped for missing values.
+#'   dropped for missing values. Whole-number weights (some above 1) are read
+#'   as frequency weights, each row standing for that many identical
+#'   observations, and the robust covariance (\code{vcov_type}) is then that
+#'   of the data expanded to one row per observation; other weights are
+#'   treated as sampling weights, with each row as one unit.
 #'
 #' @return An \code{\link{anovakit_fit}} object. Besides the standard
 #'   components:
@@ -247,7 +251,10 @@ anova_bin <- function(data, response, groups,
   notes <- c(notes, sep_note)
 
   ## Analysis of deviance ----------------------------------------------------
-  rv <- .robust_vcov(model, vcov_type)
+  # Whole-number weights on a 0/1 response count identical observations; the
+  # robust covariance is then that of the expanded data.
+  freq_rows <- .frequency_weights(d, weights)
+  rv <- .robust_vcov(model, vcov_type, freq_weights = freq_rows)
   notes <- c(notes, rv$note)
   robust_wald <- !is.null(rv$matrix) && identical(test_statistic, "Wald")
   av <- .car_anova(model, type = type, test_statistic = test_statistic,
@@ -267,7 +274,7 @@ anova_bin <- function(data, response, groups,
     notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
   }
   rv_trt <- if (is.null(rv$matrix) || !tf$refit) rv$matrix else
-    .robust_vcov(trt, vcov_type)$matrix
+    .robust_vcov(trt, vcov_type, freq_weights = freq_rows)$matrix
   eff <- .odds_ratios(trt, conf_level = conf_level, ci_method = ci_method,
                       vcov_matrix = rv_trt, separated = length(sep_note) > 0L)
   notes <- c(notes, eff$note)
@@ -304,6 +311,7 @@ anova_bin <- function(data, response, groups,
         title = sprintf("Estimated probability of %s = %s", response, success),
         ylab = "Probability")
     }
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
   .new_fit(
@@ -633,16 +641,26 @@ anova_bin <- function(data, response, groups,
 #'
 #' The profile deviance at a fixed value b of the coefficient is the deviance
 #' of the model refitted with b times its column as an offset. The interval
-#' holds every b whose profile deviance is within qchisq(conf_level, 1) of the
-#' minimum. In the direction the estimate diverged the profile never rises that
-#' far, so that end is infinite; the other end is found by stepping away from
-#' the estimate until the profile crosses the cut-off and then solving for the
-#' crossing.
+#' holds every b whose profile deviance, divided by the dispersion, is within
+#' \code{cutoff} of the minimum. In the direction the estimate diverged the
+#' profile never rises that far, so that end is infinite; the other end is
+#' found by stepping away from the estimate until the profile crosses the
+#' cut-off and then solving for the crossing.
 #'
-#' @return the two ends on the log-odds scale: +/-Inf for an open end, NA for a
-#'   finite end that cannot be found.
+#' A logistic model is refitted by a monotone Newton descent (see
+#' \code{.logit_profile_deviance()}); any other GLM by \code{glm.fit()}, whose
+#' IRLS starts from the data rather than from the diverged fit.
+#'
+#' @param cutoff the squared critical value: \code{qchisq(conf_level, 1)}
+#'   for a fixed dispersion, the squared t quantile when it is estimated.
+#' @param dispersion what the deviance is divided by: 1 for a fixed
+#'   dispersion, the Pearson estimate otherwise, as \code{profile.glm()} does.
+#' @return the two ends on the linear-predictor scale: +/-Inf for an open end,
+#'   NA for a finite end that cannot be found.
 #' @noRd
-.separated_profile <- function(model, term, conf_level) {
+.separated_profile <- function(model, term, conf_level,
+                               cutoff = stats::qchisq(conf_level, 1),
+                               dispersion = 1) {
   X <- stats::model.matrix(model)
   co <- stats::coef(model)
   keep <- names(co)[!is.na(co)]
@@ -652,13 +670,23 @@ anova_bin <- function(data, response, groups,
   y <- model$y
   w <- model$prior.weights
   off0 <- if (is.null(model$offset)) 0 else model$offset
-  crit <- stats::qchisq(conf_level, 1)
   Xo <- X[, -j, drop = FALSE]
   start <- unname(co[keep][-j])
-  dmin <- .logit_deviance(drop(X %*% co[keep]) + off0, y, w)
-  gap <- function(b) {
-    .logit_profile_deviance(Xo, y, w, off0 + b * X[, j], start) - dmin - crit
+  fam <- stats::family(model)
+  logit <- fam$family %in% c("binomial", "quasibinomial") && fam$link == "logit"
+  if (logit) {
+    dmin <- .logit_deviance(drop(X %*% co[keep]) + off0, y, w)
+    dev_at <- function(off) .logit_profile_deviance(Xo, y, w, off, start)
+  } else {
+    dmin <- stats::deviance(model)
+    dev_at <- function(off) {
+      f <- tryCatch(suppressWarnings(stats::glm.fit(
+        Xo, y, weights = w, offset = off, family = fam,
+        control = stats::glm.control(maxit = 100L))), error = function(e) NULL)
+      if (is.null(f) || !isTRUE(f$converged)) NA_real_ else f$deviance
+    }
   }
+  gap <- function(b) (dev_at(off0 + b * X[, j]) - dmin) / dispersion - cutoff
   find_end <- function(dir) {
     prev <- est
     step <- 0.5

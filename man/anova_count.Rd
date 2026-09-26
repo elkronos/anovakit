@@ -85,7 +85,9 @@ of cells is large; \code{$notes} records that they were skipped. Default
 
 \item{weights}{Optional character. Name of a numeric column of prior
 weights, which multiply each row's log-likelihood as frequency weights
-would (see Details). Given as a column name rather than a vector so that
+would (see Details). With whole-number weights the robust covariance
+(\code{vcov_type}) is that of the data expanded to one row per
+observation. Given as a column name rather than a vector so that
 it is subsetted with the data: a vector supplied by the caller is
 evaluated against the original frame and silently misaligns as soon as
 one row is dropped for missing values.}

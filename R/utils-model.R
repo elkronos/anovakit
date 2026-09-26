@@ -217,6 +217,26 @@
   terms
 }
 
+#' Number of model coefficients the grouping terms need
+#'
+#' Counted from the levels, without building the model matrix: every term
+#' contributes the product of its factors' (levels - 1), whatever the
+#' contrasts. Three 22-level factors in a full factorial need 10647 on top of
+#' the intercept, and \code{lm()} spends minutes pivoting a model matrix that
+#' wide however few rows there are.
+#' @noRd
+.n_group_coefs <- function(d, groups, interaction = FALSE) {
+  k <- vapply(groups, function(g) nlevels(droplevels(as.factor(d[[g]]))) - 1,
+              numeric(1))
+  order_max <- if (length(groups) == 1L || isFALSE(interaction)) 1L else
+    if (isTRUE(interaction)) length(groups) else
+      min(as.integer(interaction), length(groups))
+  sum(vapply(seq_len(order_max), function(m) {
+    # combn() on the indices: given a single number it would count up to it.
+    sum(utils::combn(seq_along(k), m, FUN = function(i) prod(k[i])))
+  }, numeric(1)))
+}
+
 #' Does an interaction argument give a model with no interaction terms?
 #' @noRd
 .is_additive <- function(interaction) {
@@ -445,6 +465,18 @@
   env
 }
 
+#' A reference to an object of a model environment that evaluates anywhere
+#'
+#' \code{update()}, \code{lmtest::lrtest()}, \code{step()} and
+#' \code{MASS::stepAIC()} re-evaluate a model's call in the caller's frame,
+#' where a bare \code{data_used} does not exist. A call to \code{get()} that
+#' carries the environment itself finds it from any frame, so those functions
+#' work on \code{fit$model} as they would on a model the user fitted.
+#' @noRd
+.env_ref <- function(env, name = "data_used") {
+  call("get", name, envir = env)
+}
+
 #' A family as a call that reads well and re-evaluates anywhere
 #' @noRd
 .family_call <- function(family) {
@@ -461,15 +493,15 @@
 .fit_lm <- function(fml, data) {
   env <- .model_env(data)
   environment(fml) <- env
-  eval(bquote(stats::lm(formula = .(fml), data = data_used)), env)
+  eval(bquote(stats::lm(formula = .(fml), data = .(.env_ref(env)))), env)
 }
 
 #' Fit a GLM (or a negative binomial GLM) on the analysed frame
 #'
 #' The prior weights are named by their column, so they are subsetted with the
-#' data and cannot be shadowed by a local variable. The stored call refers to
-#' \code{data_used}, the frame the model was fitted on, so
-#' \code{update(fit$model, data = fit$data_used)} refits it.
+#' data and cannot be shadowed by a local variable. The stored call reaches
+#' the frame the model was fitted on through \code{.env_ref()}, so
+#' \code{update(fit$model, . ~ . - g)} refits it from anywhere.
 #'
 #' @param fml model formula.
 #' @param data the prepared frame.
@@ -481,22 +513,23 @@
   env <- .model_env(data)
   environment(fml) <- env
   wsym <- if (is.null(weights)) NULL else as.name(weights)
+  dref <- .env_ref(env)
   if (is.null(family)) {
     call <- if (is.null(wsym)) {
-      bquote(MASS::glm.nb(formula = .(fml), data = data_used))
+      bquote(MASS::glm.nb(formula = .(fml), data = .(dref)))
     } else {
-      bquote(MASS::glm.nb(formula = .(fml), data = data_used, weights = .(wsym)))
+      bquote(MASS::glm.nb(formula = .(fml), data = .(dref), weights = .(wsym)))
     }
   } else {
     fam <- .family_call(family)
     if (is.null(fam)) {
       env$family_used <- family
-      fam <- as.name("family_used")
+      fam <- .env_ref(env, "family_used")
     }
     call <- if (is.null(wsym)) {
-      bquote(stats::glm(formula = .(fml), family = .(fam), data = data_used))
+      bquote(stats::glm(formula = .(fml), family = .(fam), data = .(dref)))
     } else {
-      bquote(stats::glm(formula = .(fml), family = .(fam), data = data_used,
+      bquote(stats::glm(formula = .(fml), family = .(fam), data = .(dref),
                         weights = .(wsym)))
     }
   }

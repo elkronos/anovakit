@@ -434,6 +434,8 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   n_comp <- if (n_cells >= 2L) choose(n_cells, 2L) else 0
   ph <- if (!posthoc) {
     list(table = NULL, note = .no_posthoc_note(n_cells))
+  } else if (is.null(emm_tab$table)) {
+    list(table = NULL, note = .no_emm_posthoc_note())
   } else if (n_comp > 5000) {
     list(table = NULL, note = .too_many_note(n_comp, 5000L))
   } else if (n_cells >= 2L) {
@@ -466,6 +468,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
         title = "Estimated marginal means",
         ylab = sprintf("Estimated %s", response))
     }
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
   anova_tab$term_int <- NULL

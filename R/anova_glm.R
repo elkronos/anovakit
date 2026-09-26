@@ -93,7 +93,12 @@
 #'   against the original frame and silently misaligns as soon as one row is
 #'   dropped for missing values. Rows with weight zero contribute nothing to
 #'   the fit; they are dropped before fitting and counted in
-#'   \code{$n_removed}.
+#'   \code{$n_removed}. Whole-number weights (some above 1) on a count or 0/1
+#'   response are read as frequency weights, each row standing for that many
+#'   identical observations: the robust covariance (\code{vcov_type}) and, for
+#'   the Poisson families, the residual degrees of freedom are then those of
+#'   the data expanded to one row per observation. Other weights (precision
+#'   weights, or the trials behind a proportion) keep each row as one unit.
 #'
 #' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
@@ -187,7 +192,9 @@ anova_glm <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the weights` = weights))
-  .check_response_for_family(data, response, family)
+  # The column's type is checked on the input; the levels and values only on
+  # the rows that are analysed, after missing values and zero weights are gone.
+  .check_response_for_family(data, response, family, values = FALSE)
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -203,16 +210,20 @@ anova_glm <- function(data, response, groups,
   n_removed <- prep$n_removed + zw$n_removed
   notes <- c(notes, zw$notes)
   .check_groups(d, groups, min_levels = 2L, min_n = 1L)
+  .check_response_for_family(d, response, family)
   if (family$family %in% c("binomial", "quasibinomial") &&
       (is.factor(d[[response]]) || is.character(d[[response]]))) {
     # glm() models the probability of the second level of a factor response.
     # A character response is not accepted by glm() at all; it becomes a
     # factor with its levels in C-locale order, as grouping columns do.
-    if (is.character(d[[response]])) d[[response]] <- .as_group_factor(d[[response]], response)
+    was_char <- is.character(d[[response]])
+    if (was_char) d[[response]] <- .as_group_factor(d[[response]], response)
     d[[response]] <- droplevels(d[[response]])
     notes <- c(notes, sprintf(
-      "Response `%s` is a factor: the model is for the probability that it equals \"%s\" (its second level), against \"%s\".",
-      response, levels(d[[response]])[2L], levels(d[[response]])[1L]))
+      "Response `%s` is %s: the model is for the probability that it equals \"%s\" (its second level), against \"%s\".",
+      response,
+      if (was_char) "a character column, taken as a factor with its values in sorted order" else "a factor",
+      levels(d[[response]])[2L], levels(d[[response]])[1L]))
   }
 
   terms_rhs <- .group_terms(groups, interaction)
@@ -259,7 +270,14 @@ anova_glm <- function(data, response, groups,
   }
 
   ## Robust covariance --------------------------------------------------------
-  rv <- .robust_vcov(model, vcov_type)
+  # Whole-number weights on a count or 0/1 response count identical
+  # observations; the robust covariance is then that of the expanded data.
+  # Other weights (precision weights, trials behind a proportion) keep the
+  # row as the unit.
+  freq_rows <- .frequency_weights(d, weights) && (
+    !is.null(freq_n) || grepl("^Negative Binomial", fam_name) ||
+      (fam_name %in% c("binomial", "quasibinomial") && all(model$y %in% c(0, 1))))
+  rv <- .robust_vcov(model, vcov_type, freq_weights = freq_rows)
   notes <- c(notes, rv$note)
 
   ## Analysis of deviance -----------------------------------------------------
@@ -350,9 +368,7 @@ anova_glm <- function(data, response, groups,
       "With the %s link the pairwise comparisons are differences between the marginal means on the response scale; only log and logit links give ratios.",
       family$link))
   }
-  if (posthoc && is.null(emm$table)) {
-    notes <- c(notes, "Pairwise comparisons were not computed because the estimated marginal means they are built on could not be computed.")
-  } else if (posthoc && !emm$per_factor && !is.null(emm$grid)) {
+  if (posthoc && !is.null(emm$table) && !emm$per_factor && !is.null(emm$grid)) {
     if (NROW(emm$table) < 2L) {
       notes <- c(notes, "No pairwise comparisons: fewer than two estimable cells.")
     } else if (NROW(emm$table) == 2L && !is.null(emm$posthoc)) {
@@ -383,9 +399,8 @@ anova_glm <- function(data, response, groups,
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = "Estimated marginal means",
         ylab = sprintf("Estimated %s", response))
-    } else {
-      notes <- c(notes, "The plot of estimated marginal means was skipped because the marginal means could not be computed.")
     }
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
   .new_fit(
@@ -590,9 +605,17 @@ anova_glm <- function(data, response, groups,
   ct <- .coef_table(model, vcov_matrix)
   notes <- character(0)
   ci <- NULL
+  open <- character(0)
   crit <- .coef_crit(model, conf_level)
+  # A diverged coefficient cannot be profiled by stats::profile() -- in a
+  # Poisson model the attempt fails for every coefficient -- and gets its own
+  # direct profile below, so it is left out here.
+  diverged <- if (separated) {
+    ct$term[is.finite(ct$se) & ct$se > 10]
+  } else character(0)
   if (ci_method == "profile" && is.finite(crit)) {
-    got <- .collect_conditions(.profile_ci(model, conf_level, crit))
+    got <- .collect_conditions(.profile_ci(model, conf_level, crit,
+                                           skip = diverged))
     tried <- got$value
     if (inherits(tried, "error")) {
       notes <- c(notes, sprintf(
@@ -606,11 +629,6 @@ anova_glm <- function(data, response, groups,
       est <- stats::coef(model)
       open <- rownames(ci)[!is.na(est[rownames(ci)]) &
                              (is.na(ci[, 1L]) | is.na(ci[, 2L]))]
-      if (length(open) > 0L) {
-        notes <- c(notes, sprintf(
-          "The profile-likelihood interval of %s is unbounded on at least one side (NA): the profile never reaches the cutoff there, which happens when an estimate runs off to the boundary of the parameter space (see any separation note), and the Wald test of such a coefficient is unreliable too.",
-          paste(gsub("`", "", open, fixed = TRUE), collapse = ", ")))
-      }
     }
   }
   method_used <- "profile"
@@ -622,30 +640,30 @@ anova_glm <- function(data, response, groups,
   # Under separation (or a zero-count cell) a coefficient has run off towards
   # infinity, and confint()'s spline extrapolates the profile into junk on
   # both sides. The side it diverged in is open; the other end is found by
-  # profiling directly for a logistic model, and kept from the profile only
-  # when it is finite and on the right side of the estimate otherwise.
+  # profiling the likelihood directly.
   if (separated) {
-    fam <- stats::family(model)
-    diverged <- ct$term[is.finite(ct$se) & ct$se > 10 & ct$term %in% rownames(ci)]
+    diverged <- intersect(diverged, rownames(ci))
     for (tm in diverged) {
-      est <- ct$estimate[ct$term == tm]
-      up <- if (est >= 0) 1 else -1
-      if (fam$family %in% c("binomial", "quasibinomial") && fam$link == "logit") {
-        ci[tm, ] <- .separated_profile(model, tm, conf_level)
-      } else {
-        # A Wald end is as meaningless as the Wald standard error behind it.
-        far <- if (method_used == "profile") {
-          if (up > 0) ci[tm, 1L] else ci[tm, 2L]
-        } else NA_real_
-        if (!is.finite(far) || (up > 0 && far > est) || (up < 0 && far < est)) far <- NA_real_
-        ci[tm, ] <- if (up > 0) c(far, Inf) else c(-Inf, far)
-      }
+      # A Wald end is as meaningless as the Wald standard error behind it, and
+      # confint()'s spline through a diverged profile is junk: both ends come
+      # from profiling the likelihood directly, with the cutoff and dispersion
+      # the other coefficients' profile intervals use.
+      disp <- if (.estimates_dispersion(model)) summary(model)$dispersion else 1
+      ci[tm, ] <- .separated_profile(model, tm, conf_level, cutoff = crit^2,
+                                     dispersion = disp)
     }
     if (length(diverged) > 0L) {
       notes <- c(notes, sprintf(
-        "The estimate of %s has diverged (separation or a zero-count cell), so its interval is open on that side (Inf or -Inf); the finite end is found by profiling the likelihood directly, and is NA where no value on that side can be ruled out either.",
-        paste(gsub("`", "", diverged, fixed = TRUE), collapse = ", ")))
+        "The estimate of %s has diverged (separation or a zero-count cell), so its interval is open on that side (Inf or -Inf). The finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate%s.",
+        paste(gsub("`", "", diverged, fixed = TRUE), collapse = ", "),
+        if (anyNA(ci[diverged, ])) "; it is NA where that search failed" else ""))
     }
+    open <- setdiff(open, diverged)
+  }
+  if (length(open) > 0L) {
+    notes <- c(notes, sprintf(
+      "The profile-likelihood interval of %s is unbounded on at least one side (NA): the profile never reaches the cutoff there, which happens when an estimate runs off to the boundary of the parameter space (see any separation note), and the Wald test of such a coefficient is unreliable too.",
+      paste(gsub("`", "", open, fixed = TRUE), collapse = ", ")))
   }
   idx <- match(ct$term, rownames(ci))
   out <- data.frame(ct, conf_low = ci[idx, 1L], conf_high = ci[idx, 2L],
@@ -665,16 +683,19 @@ anova_glm <- function(data, response, groups,
 #' \code{alpha = (1 - conf_level) / 4}, as \code{confint()} does, which for
 #' an estimated dispersion carries it out to \code{qt(1 - alpha / 2)} and so
 #' past the t cutoff.
+#' @param skip coefficients not to profile (left NA).
 #' @return a two-column matrix with one row per coefficient.
 #' @noRd
-.profile_ci <- function(model, conf_level, crit) {
+.profile_ci <- function(model, conf_level, crit, skip = character(0)) {
   if (getRversion() < "4.4.0" && !requireNamespace("MASS", quietly = TRUE)) {
     .stopf("profile-likelihood intervals for a GLM need the MASS package.")
   }
-  prof <- stats::profile(model, alpha = (1 - conf_level) / 4)
   pn <- names(stats::coef(model))
   ci <- matrix(NA_real_, nrow = length(pn), ncol = 2L,
                dimnames = list(pn, c("lower", "upper")))
+  which <- which(!is.na(stats::coef(model)) & !pn %in% skip)
+  if (length(which) == 0L) return(ci)
+  prof <- stats::profile(model, which = which, alpha = (1 - conf_level) / 4)
   for (nm in intersect(names(prof), pn)) {
     pro <- prof[[nm]]
     if (is.null(pro) || NROW(pro) < 2L) next

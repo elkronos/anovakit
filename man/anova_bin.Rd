@@ -81,7 +81,11 @@ of cells is large; \code{$notes} records that they were skipped. Default
 weights. Given as a column name rather than a vector so that it is
 subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
-dropped for missing values.}
+dropped for missing values. Whole-number weights (some above 1) are read
+as frequency weights, each row standing for that many identical
+observations, and the robust covariance (\code{vcov_type}) is then that
+of the data expanded to one row per observation; other weights are
+treated as sampling weights, with each row as one unit.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
