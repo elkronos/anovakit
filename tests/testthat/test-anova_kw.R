@@ -1,9 +1,9 @@
 # anova_kw(): Kruskal-Wallis with Dunn post-hoc comparisons.
 #
 # The omnibus test is checked against stats::kruskal.test. Dunn's test is
-# implemented in this package rather than delegated, so it is checked against a
-# hand computation of the tie-corrected statistic, including on data with heavy
-# ties where the correction matters.
+# implemented in this package rather than delegated, so it is checked against
+# values from rstatix::dunn_test() and scikit_posthocs.posthoc_dunn(), including
+# on data with heavy ties where the correction matters.
 
 test_that("the omnibus test reproduces stats::kruskal.test exactly", {
   d <- fx_oneway()
@@ -15,40 +15,43 @@ test_that("the omnibus test reproduces stats::kruskal.test exactly", {
   expect_equal(fit$anova$p_value, unname(ref$p.value))
 })
 
-test_that("Dunn's z statistics match the closed-form definition", {
+test_that("Dunn's z statistics match rstatix and scikit_posthocs", {
+  # Reference values, recorded because neither is a dependency:
+  #   rstatix::dunn_test(fx_oneway(), value ~ group, p.adjust.method = "none")
+  #   scikit_posthocs.posthoc_dunn(d, "value", "group") gives the same p.
+  # rstatix reports group2 minus group1; this package group1 minus group2.
   d <- fx_oneway()
-  fit <- anova_kw(d, "value", "group", plots = FALSE)
+  fit <- anova_kw(d, "value", "group", adjust = "none", plots = FALSE)
 
-  x <- d$value; g <- droplevels(factor(d$group))
-  N <- length(x); r <- rank(x)
-  ns <- table(g); rbar <- tapply(r, g, mean)
-  ties <- table(x)
-  sigma <- N * (N + 1) / 12 - sum(ties^3 - ties) / (12 * (N - 1))
-  pairs <- utils::combn(levels(g), 2L, simplify = FALSE)
-  z <- vapply(pairs, function(p) {
-    (rbar[[p[1]]] - rbar[[p[2]]]) /
-      sqrt(sigma * (1 / ns[[p[1]]] + 1 / ns[[p[2]]]))
-  }, numeric(1))
-
-  expect_equal(fit$posthoc$z, z)
-  expect_equal(fit$posthoc$p_value, 2 * stats::pnorm(-abs(z)))
+  expect_equal(fit$posthoc$z, -c(4.16584609464, -2.47225445803, -6.63810055267),
+               tolerance = 1e-9)
+  expect_equal(fit$posthoc$p_value,
+               c(3.10199929443e-05, 1.34263911514e-02, 3.17751084406e-11),
+               tolerance = 1e-9)
+  expect_equal(fit$posthoc$p_value, 2 * stats::pnorm(-abs(fit$posthoc$z)))
 })
 
 test_that("the tie correction is applied", {
+  # Sixty draws from 1:5: heavily tied. References as above, with
+  # p.adjust.method = "holm" for the adjusted values; scikit_posthocs agrees.
   d <- withr::with_seed(42, data.frame(
     g = factor(rep(c("a", "b", "c"), each = 20)),
     y = sample(1:5, 60, replace = TRUE)))
-  fit <- anova_kw(d, "y", "g", plots = FALSE)
+  fit <- anova_kw(d, "y", "g", adjust = "holm", plots = FALSE)
 
-  N <- nrow(d); r <- rank(d$y)
-  ns <- table(d$g); rbar <- tapply(r, d$g, mean)
-  ties <- table(d$y)
-  sigma_tied <- N * (N + 1) / 12 - sum(ties^3 - ties) / (12 * (N - 1))
-  sigma_naive <- N * (N + 1) / 12
+  expect_equal(fit$posthoc$z, -c(2.188227984013, 0.647156786761, -1.541071197252),
+               tolerance = 1e-9)
+  expect_equal(fit$posthoc$p_value,
+               c(0.0286529996612, 0.5175304758187, 0.1232994589587),
+               tolerance = 1e-9)
+  expect_equal(fit$posthoc$p_adjusted,
+               c(0.0859589989835, 0.5175304758187, 0.246598917917),
+               tolerance = 1e-9)
 
-  expect_lt(sigma_tied, sigma_naive)   # there really are ties here
-  z <- (rbar[["a"]] - rbar[["b"]]) / sqrt(sigma_tied * (1 / ns[["a"]] + 1 / ns[["b"]]))
-  expect_equal(fit$posthoc$z[1], z)
+  # Without the tie correction the first z would be smaller in magnitude.
+  N <- nrow(d); rbar <- tapply(rank(d$y), d$g, mean)
+  z_naive <- (rbar[["a"]] - rbar[["b"]]) / sqrt(N * (N + 1) / 12 * (2 / 20))
+  expect_lt(abs(z_naive), abs(fit$posthoc$z[1]))
 })
 
 test_that("epsilon squared matches its definition", {
@@ -57,6 +60,17 @@ test_that("epsilon squared matches its definition", {
   H <- unname(stats::kruskal.test(value ~ group, data = d)$statistic)
   n <- nrow(d)
   expect_equal(fit$effect_sizes$estimate[1], H / ((n^2 - 1) / (n + 1)))
+})
+
+test_that("eta squared H matches rstatix::kruskal_effsize", {
+  # rstatix::kruskal_effsize(d, y ~ g)$effsize on the tie-heavy data
+  d <- withr::with_seed(42, data.frame(
+    g = factor(rep(c("a", "b", "c"), each = 20)),
+    y = sample(1:5, 60, replace = TRUE)))
+  fit <- anova_kw(d, "y", "g", plots = FALSE)
+  expect_identical(fit$effect_sizes$measure, c("epsilon_squared", "eta_squared_H"))
+  expect_equal(fit$effect_sizes$estimate[2], 0.0535912754581, tolerance = 1e-10)
+  expect_identical(sign(fit$posthoc$mean_rank_diff), sign(fit$posthoc$z))
 })
 
 test_that("six observations are enough: the optional diagnostic is optional", {

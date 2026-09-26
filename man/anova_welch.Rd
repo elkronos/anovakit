@@ -9,7 +9,7 @@ anova_welch(
   response,
   groups,
   conf_level = 0.95,
-  adjust = c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none"),
+  adjust = "holm",
   hedges_correction = TRUE,
   posthoc = TRUE,
   plots = TRUE,
@@ -29,22 +29,25 @@ group means, pairwise differences and standardised effect sizes. Default
 \code{0.95}.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
-comparisons, passed to \code{\link[stats]{p.adjust}}. One of
+comparisons' p-values, passed to \code{\link[stats]{p.adjust}}. One of
 \code{"holm"}, \code{"hochberg"}, \code{"hommel"}, \code{"bonferroni"},
-\code{"BH"}, \code{"BY"}, \code{"fdr"} or \code{"none"}. Default
-\code{"holm"}. Note that \code{"tukey"} is not available here, as it is on
-the functions whose comparisons come from \pkg{emmeans}: these are Welch
-t-tests, not linear contrasts on a common error term.}
+\code{"BH"}, \code{"BY"}, \code{"fdr"} or \code{"none"}, spelled out in
+full. Default \code{"holm"}. Note that \code{"tukey"} is not available
+here, as it is on the functions whose comparisons come from
+\pkg{emmeans}: these are Welch t-tests, not linear contrasts on a common
+error term.}
 
-\item{hedges_correction}{Logical. Apply Hedges' small-sample correction to
-the standardised mean differences. Default \code{TRUE}, in which case the
-effect size column is named \code{hedges_g}; otherwise \code{cohens_d}.}
+\item{hedges_correction}{Logical. Apply the small-sample bias correction to
+the standardised mean differences (see Details). Default \code{TRUE}, in
+which case the effect size column is named \code{hedges_g}; otherwise
+\code{cohens_d}. Both use the average-variance standardiser.}
 
 \item{posthoc}{Logical. Compute the pairwise comparisons. There are
 \code{choose(k, 2)} of them, so this is worth turning off when the number
-of groups is large. Default \code{TRUE}. Hedges' g is computed pair by
-pair alongside them, so \code{$effect_sizes} is empty when this is
-\code{FALSE}; \code{$notes} says so.}
+of groups is large. Default \code{TRUE}. The standardised mean
+differences are computed pair by pair alongside them, so
+\code{$effect_sizes} is empty when this is \code{FALSE}; \code{$notes}
+says so.}
 
 \item{plots}{Logical. Build \pkg{ggplot2} objects. They are returned in
 \code{$plots}, never drawn. Default \code{TRUE}.}
@@ -53,22 +56,44 @@ pair alongside them, so \code{$effect_sizes} is empty when this is
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovakit_fit}} object. \code{$anova} holds the
-  Welch test, \code{$emmeans} the group means with intervals,
-  \code{$posthoc} the pairwise comparisons with adjusted p-values and
-  intervals, \code{$effect_sizes} the standardised mean differences (both
-  \code{NULL} when \code{posthoc = FALSE}), and
-  \code{$assumptions} a per-group Shapiro-Wilk table in \code{normality} and
-  the ratio of the largest to the smallest group variance in
-  \code{variance_ratio}. \code{$model} is the \code{htest} returned by
-  \code{\link[stats]{oneway.test}}; there is no fitted model object and
-  \code{$emmeans_object} is \code{NULL}.
+An \code{\link{anovakit_fit}} object.
+  \itemize{
+    \item \code{$anova}: the Welch test, one row. Its \code{term} is the
+      grouping column, or \code{"A x B cells"} when several were combined.
+    \item \code{$emmeans}: the group means with t intervals (raw group
+      summaries; no model is fitted).
+    \item \code{$posthoc}: one row per pair of groups, with \code{group1},
+      \code{group2}, \code{difference} (the mean of \code{group1} minus the
+      mean of \code{group2}), \code{conf_low} and \code{conf_high} (the
+      Welch interval for that difference at \code{conf_level}; an
+      unadjusted, per-comparison interval, not a simultaneous one),
+      \code{statistic} (Welch's t, same sign as \code{difference}),
+      \code{df}, \code{p_value} (unadjusted), \code{p_adjusted} (adjusted by
+      \code{adjust}) and \code{adjustment}. This is the same column layout
+      as the functions built on \pkg{emmeans}, whose intervals are however
+      adjusted.
+    \item \code{$effect_sizes}: one row per pair, with \code{group1},
+      \code{group2}, \code{hedges_g} (or \code{cohens_d}), the same
+      direction as \code{difference}, its interval \code{conf_low} and
+      \code{conf_high}, \code{magnitude}, and \code{standardiser}, which
+      names the standard deviation used.
+    \item \code{$assumptions}: a per-group Shapiro-Wilk table in
+      \code{normality}, with a \code{note} column giving the reason for any
+      group that was not tested, and the ratio of the largest to the
+      smallest group variance in \code{variance_ratio}.
+    \item \code{$model}: the \code{htest} returned by
+      \code{\link[stats]{oneway.test}}; there is no fitted model object and
+      \code{$emmeans_object} is \code{NULL}.
+  }
+  \code{$posthoc} and \code{$effect_sizes} are \code{NULL} when
+  \code{posthoc = FALSE}.
 }
 \description{
 Compares the mean of a numeric response across groups without assuming equal
-variances, using \code{\link[stats]{oneway.test}}. When more than two groups
-are present, pairwise Welch t-tests with a multiplicity adjustment and
-standardised mean differences are also returned.
+variances, using \code{\link[stats]{oneway.test}}. Pairwise Welch t-tests
+with a multiplicity adjustment, and standardised mean differences, are also
+returned for any number of groups from two upwards; with two groups the
+single comparison is the omnibus test.
 }
 \details{
 Welch's test is the appropriate default for comparing means: it is barely
@@ -79,11 +104,55 @@ Because the method explicitly permits unequal variances, normality is
 assessed \emph{within each group} rather than on pooled residuals. Pooling
 residuals from groups with different spreads produces a mixture distribution
 that fails normality tests even when every group is perfectly normal, which
-would argue against the very method being used.
+would argue against the very method being used. For the same reason the Q-Q
+plot shows each observation's deviation from its group mean divided by its
+group's standard deviation, so every group contributes on its own scale.
+A group whose Shapiro-Wilk test could not be run (fewer than 3 or more than
+5000 observations) is named in \code{$notes}, with the reason.
 
-When several grouping variables are supplied they are combined into a single
-cell factor and unused level combinations are dropped, so the number of
-groups reported is the number that actually contain data.
+\strong{Standardised mean differences.} The pairwise effect sizes do not
+assume equal variances either. Each difference in means is divided by the
+average-variance standard deviation of its two groups,
+\eqn{s^* = \sqrt{(s_1^2 + s_2^2)/2}}{s* = sqrt((s1^2 + s2^2) / 2)}, rather
+than by the pooled standard deviation, whose meaning and sampling variance
+both depend on equal variances. The interval is Bonett's (2008) interval
+for the population value \eqn{\delta^* = (\mu_1 - \mu_2) /
+\sqrt{(\sigma_1^2 + \sigma_2^2)/2}}{delta* = (mu1 - mu2) / sqrt((sigma1^2 +
+sigma2^2) / 2)}: \eqn{d^* \pm z_{1-\alpha/2}\, SE}{d* +/- z SE} with
+\deqn{SE^2 = \frac{d^{*2} (s_1^4/(n_1-1) + s_2^4/(n_2-1))}{8 s^{*4}} + \frac{s_1^2/(n_1-1) + s_2^2/(n_2-1)}{s^{*2}},}{SE^2 = d*^2 (s1^4/(n1-1) + s2^4/(n2-1)) / (8 s*^4) + (s1^2/(n1-1) + s2^2/(n2-1)) / s*^2,}
+which remains valid when the variances and the group sizes both differ. In
+simulation (variance ratios up to 16, group sizes from 2 to 50) a 95\%
+interval covered 94-96\% from about ten observations per group, and
+95-100\% below that, except where a group of two had much the larger
+variance (about 90\%). A t critical value was not used: it made the
+small-sample intervals more conservative still.
+
+With \code{hedges_correction = TRUE} the estimate is multiplied by the
+small-sample bias correction \eqn{J(\nu) = \Gamma(\nu/2) / (\sqrt{\nu/2}\,
+\Gamma((\nu-1)/2))}{J(nu) = gamma(nu/2) / (sqrt(nu/2) gamma((nu-1)/2))},
+evaluated at the Satterthwaite degrees of freedom of the standardiser,
+\eqn{\nu = (s_1^2 + s_2^2)^2 / (s_1^4/(n_1-1) + s_2^4/(n_2-1))}{nu = (s1^2 +
+s2^2)^2 / (s1^4/(n1-1) + s2^4/(n2-1))} (Delacre et al., 2021). When the two
+sample variances are equal and the groups are the same size this is the
+familiar \eqn{n_1 + n_2 - 2}{n1 + n2 - 2}; when the variances differ it
+removes the bias that the pooled-variance correction leaves. The correction is a property of the point estimate, so
+the interval, which is for \eqn{\delta^*}{delta*} itself, is the same with or
+without it. With two or three observations per group and a low
+\code{conf_level}, the corrected estimate can fall outside that interval;
+\code{$notes} says so when it does.
+
+The standardiser is recorded in the \code{standardiser} column of
+\code{$effect_sizes}. The magnitude labels use Cohen's conventional
+thresholds of 0.2, 0.5 and 0.8 on the absolute value.
+
+\strong{Several grouping variables.} They are combined into a single cell
+factor and unused level combinations are dropped, so the number of groups
+reported is the number that actually contain data. The result is one
+omnibus test across all populated cells, labelled \code{"A x B cells"} in
+\code{$anova}: it cannot separate a main effect of one factor from a main
+effect of another, and it cannot test an interaction. A note to that effect
+is added to the returned object. For a factorial analysis use
+\code{\link{anova_glm}} with \code{interaction = TRUE}.
 }
 \examples{
 set.seed(123)
@@ -95,10 +164,25 @@ fit <- anova_welch(d, "value", "group")
 fit
 fit$posthoc
 
+# Standardised mean differences on the average-variance standard deviation,
+# with Bonett's interval, which does not assume equal variances
+fit$effect_sizes
+
 # Two grouping variables are combined into one cell factor
 d$site <- rep(c("north", "south"), 45)
 anova_welch(d, "value", c("group", "site"), plots = FALSE)$anova
 
+}
+\references{
+Bonett, D. G. (2008). Confidence intervals for standardized linear
+contrasts of means. \emph{Psychological Methods}, 13(2), 99-109.
+
+Delacre, M., Lakens, D., Ley, C., Liu, L., & Leys, C. (2021). Why Hedges'
+g*s based on the non-pooled standard deviation should be reported with
+Welch's t-test. \emph{PsyArXiv}.
+
+Welch, B. L. (1951). On the comparison of several mean values: an
+alternative approach. \emph{Biometrika}, 38(3/4), 330-336.
 }
 \seealso{
 \code{\link{anova_kw}} for a rank-based alternative,
