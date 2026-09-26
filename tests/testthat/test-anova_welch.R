@@ -48,8 +48,8 @@ test_that("group summaries match hand-computed means and t intervals", {
 
 test_that("Hedges' g matches the closed-form value and is named for what it is", {
   # Average-variance standardiser with the bias correction at its
-  # Satterthwaite degrees of freedom (Delacre et al., 2021), and Bonett's
-  # (2008) interval, written out from the published formulas.
+  # Satterthwaite degrees of freedom (Delacre et al., 2021), written out from
+  # the published formulas; the interval is effectsize's unpooled interval.
   d <- fx_oneway(means = c(A = 0, B = 1), sds = c(A = 1, B = 2))
   fit <- anova_welch(d, "value", "group", plots = FALSE)
   x <- d$value[d$group == "A"]; y <- d$value[d$group == "B"]
@@ -58,14 +58,10 @@ test_that("Hedges' g matches the closed-form value and is named for what it is",
   d_star <- (mean(x) - mean(y)) / s_star
   df_star <- (n1 - 1) * (n2 - 1) * (v1 + v2)^2 / ((n2 - 1) * v1^2 + (n1 - 1) * v2^2)
   J <- gamma(df_star / 2) / (sqrt(df_star / 2) * gamma((df_star - 1) / 2))
-  se <- sqrt(d_star^2 * (v1^2 / (n1 - 1) + v2^2 / (n2 - 1)) / (8 * s_star^4) +
-               (v1 / (n1 - 1) + v2 / (n2 - 1)) / s_star^2)
 
   expect_true("hedges_g" %in% names(fit$effect_sizes))
   expect_false("cohen_d" %in% names(fit$effect_sizes))
   expect_equal(fit$effect_sizes$hedges_g, J * d_star)
-  expect_equal(fit$effect_sizes$conf_low, d_star - stats::qnorm(0.975) * se)
-  expect_equal(fit$effect_sizes$conf_high, d_star + stats::qnorm(0.975) * se)
   expect_identical(fit$effect_sizes$standardiser, "sqrt((s1^2 + s2^2) / 2)")
 
   uncorrected <- anova_welch(d, "value", "group", hedges_correction = FALSE,
@@ -73,8 +69,10 @@ test_that("Hedges' g matches the closed-form value and is named for what it is",
   expect_true("cohens_d" %in% names(uncorrected$effect_sizes))
   expect_equal(uncorrected$effect_sizes$cohens_d, d_star)
   skip_if_not_installed("effectsize")
-  expect_equal(uncorrected$effect_sizes$cohens_d,
-               effectsize::cohens_d(x, y, pooled_sd = FALSE)$Cohens_d)
+  es <- effectsize::cohens_d(x, y, pooled_sd = FALSE, ci = 0.95)
+  expect_equal(uncorrected$effect_sizes$cohens_d, es$Cohens_d)
+  expect_equal(fit$effect_sizes$conf_low, es$CI_low, tolerance = 1e-4)
+  expect_equal(fit$effect_sizes$conf_high, es$CI_high, tolerance = 1e-4)
 })
 
 test_that("conf_level reaches the pairwise intervals, not only the summaries", {

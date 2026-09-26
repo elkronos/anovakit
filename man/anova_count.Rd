@@ -63,7 +63,11 @@ residuals, so the table becomes a quasi-likelihood F test while
 Default \code{0.95}.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
-(\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.}
+(\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
+the \pkg{sandwich} package. They reach the coefficient table, the
+marginal means and the comparisons; the omnibus table uses them only with
+\code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+deviances. \code{$notes} says which applies.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
 comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},

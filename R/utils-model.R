@@ -27,7 +27,8 @@
 #' @return list with \code{table} (a tidied data.frame), \code{raw} (the
 #'   \code{car} object) and \code{note}.
 #' @noRd
-.car_anova <- function(model, type = "II", test_statistic = NULL, ...) {
+.car_anova <- function(model, type = "II", test_statistic = NULL,
+                       vcov_matrix = NULL, ...) {
   # car::Anova() refuses a linear model whose residual sum of squares is below
   # an ABSOLUTE tolerance (sqrt(.Machine$double.eps)), so a response measured in
   # small units -- metres instead of millimetres -- loses its whole table to a
@@ -39,6 +40,9 @@
   mod <- if (k != 1) .rescale_lm(model, k) else model
   args <- list(mod = mod, type = if (type == "III") 3L else 2L)
   if (!is.null(test_statistic)) args$test.statistic <- test_statistic
+  # A covariance for the coefficients rescales with them (by k^2), so Wald
+  # tests built from it are unchanged by the rescaling too.
+  if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix * k^2
   args <- c(args, list(...))
   # car emits "Note: model has aliased coefficients" through message(), which
   # suppressWarnings() does not catch. The package promises not to write to the
@@ -51,8 +55,31 @@
       type, conditionMessage(raw))))
   }
   if (k != 1 && "Sum Sq" %in% names(raw)) raw[["Sum Sq"]] <- raw[["Sum Sq"]] / k^2
+  said <- got$said
+  if (!is.null(vcov_matrix)) {
+    # With a user-supplied covariance car's lm method names its F column "F"
+    # and announces the covariance by deparsing it into a message.
+    if ("F" %in% names(raw)) names(raw)[names(raw) == "F"] <- "F value"
+    said <- said[!grepl("^Coefficient covariances computed by", said)]
+  }
   list(table = .tidy_anova(raw, type), raw = raw,
-       note = .said_note(got$said, "car::Anova()"))
+       note = .said_note(said, "car::Anova()"))
+}
+
+#' Say whether the omnibus test uses a robust covariance
+#'
+#' Likelihood-ratio and F tests compare deviances or residual sums of squares
+#' and cannot use a sandwich covariance; a Wald test can. With robust standard
+#' errors requested the reader needs to know which kind the table holds.
+#' @noRd
+.omnibus_vcov_note <- function(test_statistic, vcov_type, robust_used) {
+  if (robust_used) {
+    return(sprintf("The omnibus Wald test uses the robust (%s) covariance, as the coefficient table, the marginal means and the comparisons do.",
+                   vcov_type))
+  }
+  sprintf("The omnibus %s test compares deviances, so it rests on the model-based variance; the robust (%s) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\".",
+          if (identical(test_statistic, "F")) "F" else "likelihood-ratio",
+          vcov_type)
 }
 
 #' The factor that brings a small-unit linear model above car's tolerance
@@ -514,4 +541,41 @@
     d[[g]] <- f
   }
   d
+}
+
+#' Put an analysis-of-deviance table on the observations behind frequency weights
+#'
+#' car::Anova() refits reduced models, whose residual degrees of freedom glm()
+#' counts in rows, so it is given the fit as glm() made it. Every statistic that
+#' car scales by an estimated dispersion (all of them for a quasi family, the F
+#' test for any family) is then too small by the factor rows / observations:
+#' the dispersion is the Pearson statistic divided by the residual degrees of
+#' freedom. The statistics are multiplied back, and F tests are referred to the
+#' observation-based residual degrees of freedom. The result equals car's table
+#' on the data expanded to one row per observation.
+#'
+#' @param av the result of \code{.car_anova()}.
+#' @param df_row,df_obs residual degrees of freedom in rows and in observations.
+#' @param dispersion_based does the table's statistic use an estimated
+#'   dispersion?
+#' @noRd
+.freq_weight_anova <- function(av, df_row, df_obs, dispersion_based) {
+  tab <- av$table
+  if (is.null(tab) || !dispersion_based || !is.finite(df_row) || df_row < 1 ||
+      !is.finite(df_obs) || df_obs < 1) {
+    return(av)
+  }
+  k <- df_obs / df_row
+  eff <- tab$term != "Residuals"
+  tab$statistic[eff] <- tab$statistic[eff] * k
+  if (identical(attr(tab, "statistic"), "F")) {
+    tab$p_value[eff] <- stats::pf(tab$statistic[eff], tab$df[eff], df_obs,
+                                  lower.tail = FALSE)
+    tab$df[!eff] <- df_obs
+  } else {
+    tab$p_value[eff] <- stats::pchisq(tab$statistic[eff], tab$df[eff],
+                                      lower.tail = FALSE)
+  }
+  av$table <- tab
+  av
 }

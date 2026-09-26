@@ -654,8 +654,8 @@ test_that("third-party warnings and messages reach $notes, not the console", {
   d <- fx_binary()
   d$w <- withr::with_seed(41, stats::runif(nrow(d), 0.5, 2))
   expect_silent(fit <- anova_bin(d, "y", "g", weights = "w", plots = FALSE))
-  expect_true(any(grepl("stats::glm\\(\\) reported", fit$notes)))
-  expect_true(any(grepl("non-integer", fit$notes)))
+  # Asserted by source, not by glm()'s own wording, which is glm()'s to change
+  expect_true(any(grepl("^stats::glm\\(\\) reported: .+", fit$notes)))
 
   # An aliased design makes car::Anova() emit a message()
   ali <- fx_twoway()
@@ -787,7 +787,8 @@ test_that("no fitting or marginal-means call leaks a condition to the console", 
   })
   expect_silent(af <- anova_ancova(a, "y", "g", "x", plots = FALSE,
                                    posthoc = FALSE))
-  expect_true(any(grepl("perfect fit", af$notes)))
+  # summary.lm()'s warning, relayed by emmeans: asserted by source, not wording
+  expect_true(any(grepl("^emmeans reported: .+", af$notes)))
 })
 
 test_that("the ancova model-choice note is emitted once and is true", {
@@ -1010,7 +1011,7 @@ test_that("emtrends does not write to the console either", {
                     score = c(2, 4, 6, 3, 5, 7))
   expect_silent(fit <- anova_ancova(sat, "score", "g", "base",
                                     force_interaction = TRUE, plots = FALSE))
-  expect_true(any(grepl("perfect fit", fit$notes)))
+  expect_true(any(grepl("^emmeans::emtrends\\(\\) reported: .+", fit$notes)))
 })
 
 test_that("a runaway negative binomial theta is reported as non-convergence", {

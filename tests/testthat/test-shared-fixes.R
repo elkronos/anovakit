@@ -402,3 +402,110 @@ test_that("an empty-string group gets a box-plot label, not NA", {
   expect_identical(length(labs), 3L)
   expect_true(any(startsWith(labs, "\n(n = 6)")))
 })
+
+# Robust covariance in the omnibus table (F013) --------------------------------
+
+test_that("a robust Wald omnibus test uses the robust covariance in bin and count", {
+  skip_if_not_installed("sandwich")
+  d <- fx_binary()
+  fb <- anova_bin(d, "y", "g", test_statistic = "Wald", vcov_type = "HC3",
+                  plots = FALSE)
+  m <- stats::glm(y ~ g, data = d, family = binomial)
+  ref <- suppressMessages(car::Anova(m, test.statistic = "Wald", vcov. = sandwich::vcovHC(m, "HC3")))
+  expect_equal(fb$anova$statistic, ref[["Chisq"]])
+  expect_true(any(grepl("omnibus Wald test uses the robust", fb$notes)))
+  lr <- anova_bin(d, "y", "g", vcov_type = "HC3", plots = FALSE)
+  expect_true(any(grepl("rests on the model-based variance", lr$notes)))
+
+  cnt <- fx_counts()
+  fc <- anova_count(cnt, "count", "g1", model = "poisson", test_statistic = "Wald",
+                    vcov_type = "HC3", plots = FALSE)
+  mc <- stats::glm(count ~ g1, data = cnt, family = poisson)
+  rc <- suppressMessages(car::Anova(mc, test.statistic = "Wald", vcov. = sandwich::vcovHC(mc, "HC3")))
+  expect_equal(fc$anova$statistic, rc[["Chisq"]])
+})
+
+test_that("robust ANCOVA F tests survive a response in small units", {
+  skip_if_not_installed("sandwich")
+  d <- fx_ancova()
+  big <- anova_ancova(d, "dv", "iv", "cov", vcov_type = "HC3", plots = FALSE)
+  d$dv <- d$dv * 1e-5
+  small <- anova_ancova(d, "dv", "iv", "cov", vcov_type = "HC3", plots = FALSE)
+  expect_equal(small$anova$statistic, big$anova$statistic)
+  expect_false(any(grepl("could not be computed", small$notes)))
+})
+
+# Frequency weights, overdispersion notes, separation naming -------------------
+
+freq_table <- function() {
+  withr::with_seed(31, {
+    long <- data.frame(g = factor(rep(c("A", "B"), each = 400)))
+    long$y <- stats::rpois(800, rep(c(3, 4.2), each = 400))
+    tab <- stats::aggregate(list(n = rep(1, 800)), by = list(g = long$g, y = long$y),
+                            FUN = sum)
+    list(long = long, tab = tab)
+  })
+}
+
+test_that("a quasi-Poisson fit on a frequency table equals the expanded data", {
+  ft <- freq_table()
+  e <- anova_count(ft$long, "y", "g", model = "quasipoisson", plots = FALSE)
+  t <- anova_count(ft$tab, "y", "g", model = "quasipoisson", weights = "n",
+                   plots = FALSE)
+  expect_equal(t$anova$statistic, e$anova$statistic, tolerance = 1e-8)
+  expect_equal(t$anova$p_value, e$anova$p_value, tolerance = 1e-8)
+  expect_equal(t$effect_sizes$conf_low, e$effect_sizes$conf_low, tolerance = 1e-8)
+  expect_equal(t$posthoc$se, e$posthoc$se, tolerance = 1e-8)
+  g <- anova_glm(ft$tab, "y", "g", family = "quasipoisson", weights = "n",
+                 plots = FALSE)
+  ge <- anova_glm(ft$long, "y", "g", family = "quasipoisson", plots = FALSE)
+  expect_equal(g$anova$p_value, ge$anova$p_value, tolerance = 1e-8)
+  expect_equal(g$assumptions$coefficients$conf_high,
+               ge$assumptions$coefficients$conf_high, tolerance = 1e-6)
+})
+
+test_that("chance-level dispersion above 1 does not produce an overdispersion note", {
+  withr::local_seed(4)
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 30)))
+  d$y <- stats::rpois(90, 5)
+  fit <- anova_count(d, "y", "g", plots = FALSE)
+  phi <- fit$dispersion
+  p <- stats::pchisq(phi * 87, 87, lower.tail = FALSE)
+  expect_gt(phi, 1)
+  expect_gt(p, 0.05)
+  expect_false(any(grepl("inflated", fit$notes)))
+  gl <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
+  expect_false(any(grepl("^Pearson dispersion is", gl$notes)))
+})
+
+test_that("a Type III separation note names cells, not sum-coded coefficients", {
+  fit <- anova_bin(fx_separated(), "y", "g", type = "III", plots = FALSE)
+  note <- grep("separation", fit$notes, value = TRUE)
+  expect_match(note, "g = c")
+  expect_false(grepl("g1|g2", note))
+})
+
+test_that("robust SEs fall back for a small separated group too (F153)", {
+  skip_if_not_installed("sandwich")
+  withr::local_seed(8)
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), c(50, 50, 5))))
+  d$y <- c(stats::rbinom(50, 1, 0.3), stats::rbinom(50, 1, 0.5), rep(1, 5))
+  fit <- anova_bin(d, "y", "g", vcov_type = "HC3", plots = FALSE)
+  m <- stats::glm(y ~ g, data = d, family = binomial)
+  # model-based SEs, as the separation note in the same result says
+  expect_equal(fit$effect_sizes$se_log_or,
+               unname(sqrt(diag(stats::vcov(m)))[-1]), tolerance = 1e-6)
+  expect_true(any(grepl("boundary", fit$notes)))
+  expect_true(all(fit$posthoc$p_adjusted > 1e-6))
+
+  cnt <- data.frame(g = factor(rep(c("A", "B", "C"), c(30, 30, 5))))
+  cnt$y <- c(stats::rpois(30, 3), stats::rpois(30, 5), rep(0, 5))
+  fc <- anova_count(cnt, "y", "g", model = "poisson", vcov_type = "HC3", plots = FALSE)
+  expect_true(any(grepl("boundary", fc$notes)))
+  expect_true(all(fc$effect_sizes$p_value > 1e-6))
+})
+
+test_that("p-values in notes read as sentences", {
+  expect_identical(anovakit:::.fmt_p(1e-300), "p < 2.2e-16")
+  expect_identical(anovakit:::.fmt_p(0.0123), "p = 0.012")
+})

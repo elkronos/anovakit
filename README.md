@@ -68,20 +68,21 @@ fit
 
 fit$effect_sizes[, 1:6]
 #>   group1 group2   hedges_g     conf_low  conf_high magnitude
-#> 1      A      B -1.2374221 -1.816972293 -0.6905873     large
-#> 2      A      C  0.5138686 -0.003010914  1.0463482    medium
-#> 3      B      C  1.9279766  1.313108635  2.6035866     large
+#> 1      A      B -1.2374221 -1.804332292 -0.6941522     large
+#> 2      A      C  0.5138686  0.003040726  1.0353311    medium
+#> 3      B      C  1.9279766  1.314162066  2.5895992     large
 
 summary(fit)     # adds assumptions, effect sizes, marginal means, comparisons
 plot(fit, "means")
 ```
 
 The standardised differences are Hedges' g on the average of the two group
-variances, `sqrt((s1^2 + s2^2) / 2)` (the `standardiser` column says so), with
-Bonett's interval, which stays valid when the variances differ -- the situation
-Welch's test exists for. It is slightly conservative: for A against C the Welch
-difference just reaches significance (p = 0.049) while the standardised
-interval just includes zero.
+variances, `sqrt((s1^2 + s2^2) / 2)` (the `standardiser` column says so). The
+interval comes from Welch's own statistic, the noncentral t on Welch's degrees
+of freedom, so it stays valid when the variances differ -- the situation
+Welch's test exists for -- and agrees with the test in the same row: for A
+against C the Welch difference just reaches significance (p = 0.049) and the
+standardised interval just excludes zero.
 
 ## What every result contains
 

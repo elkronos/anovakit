@@ -231,8 +231,19 @@ anova_glm <- function(data, response, groups,
   if (!isTRUE(model$converged)) {
     notes <- c(notes, "The model did not converge; every result below is unreliable.")
   }
-  notes <- c(notes, .check_model_size(model))
   fam_name <- family$family
+  # A Poisson frequency table (whole-number weights, some above 1) holds one
+  # row per distinct count. glm() counts residual degrees of freedom in rows;
+  # the data the table stands for have them in observations. Corrected on the
+  # fit, so the dispersion, F tests, t intervals and marginal means all equal
+  # those of the expanded data, as in anova_count().
+  freq_n <- if (fam_name %in% c("poisson", "quasipoisson") &&
+                .frequency_weights(d, weights)) sum(d[[weights]]) else NULL
+  row_model <- model
+  if (!is.null(freq_n) && freq_n - model$rank >= 1) {
+    model$df.residual <- freq_n - model$rank
+  }
+  notes <- c(notes, .check_model_size(model))
   sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
                   grepl("^Negative Binomial", fam_name)) {
     .check_separation(model)
@@ -252,18 +263,17 @@ anova_glm <- function(data, response, groups,
   notes <- c(notes, rv$note)
 
   ## Analysis of deviance -----------------------------------------------------
-  av <- .glm_anova(model, type = type, test_statistic = test_statistic,
+  av <- .glm_anova(row_model, type = type, test_statistic = test_statistic,
                    vcov_matrix = rv$matrix)
+  if (!is.null(freq_n) && !(identical(test_statistic, "Wald") && !is.null(rv$matrix))) {
+    av <- .freq_weight_anova(av, stats::df.residual(row_model),
+                             stats::df.residual(model),
+                             .estimates_dispersion(model) || identical(test_statistic, "F"))
+  }
   notes <- c(notes, av$note)
   if (!is.null(rv$matrix) && !is.null(av$table)) {
-    notes <- c(notes, if (identical(test_statistic, "Wald")) {
-      sprintf("The omnibus Wald test uses the robust (%s) covariance, as the coefficient table, the marginal means and the comparisons do.",
-              vcov_type)
-    } else {
-      sprintf("The omnibus %s test compares deviances, so it rests on the model-based variance; the robust (%s) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\".",
-              if (identical(test_statistic, "F")) "F" else "likelihood-ratio",
-              vcov_type)
-    })
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type,
+                                         identical(test_statistic, "Wald")))
   }
 
   ## Effect sizes -------------------------------------------------------------
@@ -272,18 +282,11 @@ anova_glm <- function(data, response, groups,
   notes <- c(notes, eff$notes)
 
   ## Dispersion ---------------------------------------------------------------
-  # A Poisson frequency table (whole-number weights, some above 1) holds one
-  # row per distinct count: dividing the Pearson statistic by the rows rather
-  # than by the observations they stand for inflates it, and with it the
-  # overdispersion note, just as it did in anova_count().
-  freq_n <- if (fam_name == "poisson" && .frequency_weights(d, weights)) {
-    sum(d[[weights]])
-  } else NULL
-  dispersion <- .count_dispersion(model, freq_n)
+  dispersion <- .dispersion(model)
   if (!is.null(freq_n)) {
     notes <- c(notes, sprintf(
-      "The weights in `%s` are whole numbers, so the dispersion treats them as frequency weights: it divides by the %s observations they represent minus the %d parameters, not by the %d rows.",
-      weights, format(freq_n), model$rank, nrow(d)))
+      "The weights in `%s` are whole numbers, so they are treated as frequency weights: the residual degrees of freedom are counted in the %s observations they represent, not the %d rows, so the dispersion, F tests and intervals equal those of the data expanded to one row per observation.",
+      weights, format(freq_n), nrow(d)))
   }
   # A binary response cannot be overdispersed, and with frequency weights its
   # Pearson statistic grows with the weights: the check only means something
@@ -297,15 +300,17 @@ anova_glm <- function(data, response, groups,
     notes <- c(notes, "The dispersion is reported as NA: for a 0/1 response the Pearson statistic carries no information about overdispersion, which binary data cannot show.")
   }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
-  if (fixed_family && is.finite(dispersion) && dispersion > 1.2) {
+  p_over <- .overdispersion_p(dispersion, stats::df.residual(model))
+  if (fixed_family && is.finite(dispersion) && dispersion > 1 &&
+      is.finite(p_over) && p_over < 0.05) {
     # Under a true dispersion phi a test statistic of this family is about phi
     # times its nominal chi-square; say what that does rather than only that
     # it happened.
     size <- stats::pchisq(stats::qchisq(0.95, 1) / dispersion, 1,
                           lower.tail = FALSE)
     notes <- c(notes, sprintf(
-      "Pearson dispersion is %.2f, where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. %s",
-      dispersion, fam_name, sqrt(dispersion), 100 * size,
+      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. %s",
+      dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), 100 * size,
       if (identical(test_statistic, "F")) {
         sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
                 fam_name)
@@ -429,21 +434,9 @@ anova_glm <- function(data, response, groups,
 #' @noRd
 .glm_anova <- function(model, type = "II", test_statistic = "LR",
                        vcov_matrix = NULL) {
-  if (is.null(vcov_matrix) || !identical(test_statistic, "Wald")) {
-    return(.car_anova(model, type = type, test_statistic = test_statistic))
-  }
-  got <- .collect_conditions(car::Anova(
-    model, type = if (type == "III") 3L else 2L, test.statistic = "Wald",
-    vcov. = vcov_matrix))
-  raw <- got$value
-  if (inherits(raw, "error")) {
-    return(list(table = NULL, raw = NULL, note = sprintf(
-      "The Type %s ANOVA table could not be computed: %s",
-      type, conditionMessage(raw))))
-  }
-  said <- got$said[!grepl("^Coefficient covariances computed by", got$said)]
-  list(table = .tidy_anova(raw, type), raw = raw,
-       note = .said_note(said, "car::Anova()"))
+  robust <- !is.null(vcov_matrix) && identical(test_statistic, "Wald")
+  .car_anova(model, type = type, test_statistic = test_statistic,
+             vcov_matrix = if (robust) vcov_matrix else NULL)
 }
 
 #' The note for a design with exactly two cells

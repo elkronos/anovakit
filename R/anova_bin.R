@@ -74,7 +74,10 @@
 #'   profile-likelihood intervals, or \code{"wald"}.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-#'   the \pkg{sandwich} package.
+#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   marginal means and the comparisons; the omnibus table uses them only with
+#'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+#'   deviances. \code{$notes} says which applies.
 #' @param adjust Character. Multiplicity adjustment for the pairwise
 #'   comparisons, passed to \code{\link[emmeans]{contrast}}. Default
 #'   \code{"tukey"}.
@@ -244,16 +247,21 @@ anova_bin <- function(data, response, groups,
   notes <- c(notes, sep_note)
 
   ## Analysis of deviance ----------------------------------------------------
-  av <- .car_anova(model, type = type, test_statistic = test_statistic)
+  rv <- .robust_vcov(model, vcov_type)
+  notes <- c(notes, rv$note)
+  robust_wald <- !is.null(rv$matrix) && identical(test_statistic, "Wald")
+  av <- .car_anova(model, type = type, test_statistic = test_statistic,
+                   vcov_matrix = if (robust_wald) rv$matrix else NULL)
   notes <- c(notes, av$note)
+  if (!is.null(rv$matrix) && !is.null(av$table)) {
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+  }
 
   ## Model versus null, from the model's own (weighted) deviances -------------
   ms <- .bin_model_stats(model, success)
   notes <- c(notes, ms$note)
 
   ## Odds ratios -------------------------------------------------------------
-  rv <- .robust_vcov(model, vcov_type)
-  notes <- c(notes, rv$note)
   if (!is.null(rv$matrix) && ci_method == "profile") {
     ci_method <- "wald"
     notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
