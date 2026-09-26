@@ -942,7 +942,7 @@ test_that("aliasing is visible in the result, not only in a suppressed message",
   m$dup <- m$g
   mf <- anova_manova(m, c("score1", "score2"), c("g", "dup"),
                      assumptions = FALSE, plots = FALSE)
-  expect_lte(sum(grepl("could not be estimated", mf$notes)), 1L)
+  expect_identical(sum(grepl("could not be estimated", mf$notes)), 1L)
 })
 
 test_that("the ancova centring note claims an effect only where there is one", {

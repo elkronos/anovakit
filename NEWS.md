@@ -15,6 +15,68 @@ for a tour and the README for the design decisions behind it.
 The package supersedes a collection of loose scripts distributed from the same
 repository. If you used those, note the following before comparing results.
 
+## Changes made after an adversarial review, before release
+
+A multi-agent adversarial review reproduced 167 problems; all were fixed, each
+with a regression test against an independent reference. The changes a user
+will notice:
+
+* **MANOVA** reports genuine Type II / Type III multivariate tests from
+  `car::Manova()`; it previously reported sequential (Type I) tests whatever
+  `type` said, so results depended on the order of `groups`. `$model` is now
+  the multivariate `mlm`. With covariates, covariates are centred and a
+  multivariate homogeneity-of-slopes test is reported in `$slopes_test`.
+* **ANCOVA** gains `interaction`, defaulting to `TRUE`: with several grouping
+  factors their interaction is fitted, and the slopes test and simple slopes
+  follow the cells. `vcov_type` now reaches the F tests (robust Wald F) and
+  the simple slopes. A 0/1 covariate is held at its mean in `$emmeans`.
+* **Marginal means and comparisons.** For an additive multi-factor model
+  (`interaction = FALSE`) they are reported per factor, with a `term` column,
+  instead of for every cell of the grid. Empty cells are left out or flagged.
+  Comparisons above 5000 are skipped with a note. `$posthoc` has
+  `p_value` (unadjusted), `p_adjusted` and `adjustment` in every function.
+  Non-log, non-logit links compare on the response scale instead of
+  mislabelled link-scale "ratios". Quasi families use t. Global
+  `emm_options()` no longer change results.
+* **Effect sizes.** `anova_welch()` standardises by the average of the two
+  group variances, with Bonett's interval, so the interval is valid under
+  unequal variances (a `standardiser` column says so). Odds ratios
+  (`anova_bin()`) and rate ratios (`anova_count()`) are each a level against
+  its reference level, whatever the contrasts, with `factor` and `comparison`
+  columns. McFadden's R squared is reported only for binomial, Poisson and
+  negative binomial families, and is invariant to aggregation.
+* **Weights.** Zero-weight rows are dropped and counted in `$n_removed`.
+  `anova_bin()`'s null model, model-versus-null test and proportion table use
+  the weights. Whole-number weights above 1 are treated as frequencies for
+  the dispersion in `anova_count()` and `anova_glm()`.
+* **Intervals.** Profile intervals use t cut-offs when the dispersion is
+  estimated. Under separation or a zero-count cell an interval is open on the
+  side the estimate diverged in, and its finite end is profiled directly.
+* **Robust standard errors** fall back to model-based ones, with a note, at
+  the boundary (separation, an all-zero group) and at leverage 1.
+* **Separation** is detected whatever the contrasts, and zero-count cells in
+  count models are flagged.
+* **Repeated measures.** Sphericity corrections are computed directly when
+  afex cannot supply them, so an uncorrected p-value is never labelled "GG";
+  `observed` reaches generalised eta squared; normality is tested per
+  within-subject cell; `$residuals` follow `$data_used`; column names of any
+  kind work; `...` accepts only `fun_aggregate`, `observed`, `type` and
+  `anova_table = list(p_adjust_method = )`.
+* **Count models.** An explicit `model = "negbin"` that cannot be fitted is an
+  error rather than a silent switch to quasi-Poisson; the theta and
+  overdispersion notes state the size of the problem they describe.
+* **Kruskal-Wallis** keeps infinite values (ranks can use them), counts ties
+  on the ranks, and `anova_welch()`/`anova_kw()` label a combined grouping
+  "A x B cells".
+* **Input.** Non-ASCII group labels no longer crash in UTF-8 sessions; an
+  explicit `NA` factor level counts as missing; distinct values that print
+  alike stay distinct groups; colliding cell labels, a column in two roles, and
+  the names `Residuals` and `(Intercept)` are refused.
+* **Printing.** `summary()` returns a `summary.anovakit_fit` object and shows
+  the method's own tables; counts are not rounded; p-values below machine
+  precision print as such; the omnibus heading names the test.
+* **Packaging.** `ggplot2 (>= 3.4.0)` and `testthat (>= 3.1.8)` are declared.
+
 ## The functions were renamed and now share one convention
 
 `ancova_analysis()` is `anova_ancova()` and `manova_analysis()` is

@@ -557,7 +557,7 @@ anova_ancova <- function(data, response, groups, covariates,
     involved <- unique(c(
       covariates[covariates %in% dup_lab],
       groups[vapply(groups, function(g) any(startsWith(dup_lab, g)), logical(1))]))
-    d2 <- .relabel_contrasts(d, groups, type)
+    d2 <- .bracket_group_contrasts(d, groups, type)
     fits2 <- fit_both(d2)
     if (length(clashes(fits2)) > 0L) {
       .stopf("Column names collide with the names of the model's coefficients (%s is produced twice), so the marginal means would be computed from the wrong columns. Rename the column(s) involved: %s.",
@@ -577,31 +577,6 @@ anova_ancova <- function(data, response, groups, covariates,
   }
   list(additive = fits$additive, interaction = fits$interaction, data = d,
        notes = c(.said_note(unique(fits$said), "stats::lm()"), notes))
-}
-
-#' Give every grouping factor contrasts whose column labels cannot collide
-#'
-#' The contrasts are the ones the fit would have used anyway -- sum-to-zero
-#' under Type III, the session default otherwise, polynomial for an ordered
-#' factor -- with their column labels wrapped in brackets.
-#' @noRd
-.relabel_contrasts <- function(d, groups, type) {
-  opts <- if (identical(type, "III")) {
-    c(unordered = "contr.sum", ordered = "contr.poly")
-  } else {
-    getOption("contrasts", c(unordered = "contr.treatment", ordered = "contr.poly"))
-  }
-  for (g in groups) {
-    f <- d[[g]]
-    fun <- if (is.ordered(f)) opts[[2L]] else opts[[1L]]
-    M <- match.fun(fun)(levels(f))
-    cn <- colnames(M)
-    if (is.null(cn)) cn <- seq_len(ncol(M))
-    colnames(M) <- paste0("[", cn, "]")
-    stats::contrasts(f, ncol(M)) <- M
-    d[[g]] <- f
-  }
-  d
 }
 
 #' The homogeneity-of-slopes F test, guarded against an exact fit

@@ -38,7 +38,9 @@
 #' test use t and F; its residual degrees of freedom are passed so that all
 #' three agree.
 #'
-#' @param model a fitted model.
+#' @param fit a fitted model. (Not called \code{model}, so that emmeans' own
+#'   \code{model} argument -- afex's univariate or multivariate model -- can be
+#'   passed through \code{...}.)
 #' @param specs character vector of factor names to marginalise over.
 #' @param type \code{"response"} or \code{"link"}.
 #' @param vcov_matrix optional covariance matrix (for example from
@@ -47,20 +49,20 @@
 #' @return list with \code{grid} (an \code{emmGrid} or \code{NULL}) and
 #'   \code{note} (character, empty on success).
 #' @noRd
-.emmeans_grid <- function(model, specs, type = c("response", "link"),
+.emmeans_grid <- function(fit, specs, type = c("response", "link"),
                           vcov_matrix = NULL, ...) {
   type <- match.arg(type)
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  args <- list(object = model,
+  args <- list(object = fit,
                specs = .formula(NULL, specs, quote_terms = TRUE))
   if (type == "response") args$type <- "response"
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
   dots <- list(...)
   if (!"cov.keep" %in% names(dots)) args$cov.keep <- character(0)
-  if (!"df" %in% names(dots) && inherits(model, "glm") &&
-      .estimates_dispersion(model)) {
-    dfr <- stats::df.residual(model)
+  if (!"df" %in% names(dots) && inherits(fit, "glm") &&
+      .estimates_dispersion(fit)) {
+    dfr <- stats::df.residual(fit)
     if (!is.null(dfr) && is.finite(dfr) && dfr >= 1) args$df <- dfr
   }
   args <- c(args, dots)

@@ -12,65 +12,89 @@
 #'   \item{method}{Character. The analysis that was run, as printed.}
 #'   \item{call}{The matched call, so a result can always say how it was made.}
 #'   \item{model}{The fitted model object: an \code{lm} from
-#'     \code{\link{anova_ancova}}, a \code{glm} from \code{\link{anova_bin}},
-#'     \code{\link{anova_count}} and \code{\link{anova_glm}}, a
-#'     \code{manova} from \code{\link{anova_manova}}, an \code{afex_aov} from
-#'     \code{\link{anova_rm}}, and the \code{htest} returned by
+#'     \code{\link{anova_ancova}}, a \code{glm} (or a \code{negbin} from
+#'     \code{MASS::glm.nb()}) from \code{\link{anova_bin}},
+#'     \code{\link{anova_count}} and \code{\link{anova_glm}}, the multivariate
+#'     \code{mlm} from \code{\link{anova_manova}}, an \code{afex_aov} from
+#'     \code{\link{anova_rm}} (fitted on internal names, see its
+#'     \code{$internal_names}), and the \code{htest} returned by
 #'     \code{\link[stats]{oneway.test}} or \code{\link[stats]{kruskal.test}}
 #'     from \code{\link{anova_welch}} and \code{\link{anova_kw}}, which fit no
-#'     model.}
-#'   \item{anova}{Data frame. The omnibus test table.}
+#'     model. A fitted \code{lm} or \code{glm} refers to the analysed rows, so
+#'     \code{update(fit$model, data = fit$data_used)} refits it.}
+#'   \item{anova}{Data frame. The omnibus test table. Its attributes record
+#'     the type of sums of squares, the test statistic and (in
+#'     \code{anova_rm}) the sphericity correction; \code{print()} shows them.}
 #'   \item{effect_sizes}{Data frame, or \code{NULL}. What it holds depends on
 #'     the method: partial eta squared with partial omega squared
 #'     (\code{anova_ancova}, \code{anova_manova}, and \code{anova_glm} on a
-#'     Gaussian family), Hedges' g with intervals (\code{anova_welch}), epsilon
+#'     Gaussian family), a standardised mean difference on the average of the
+#'     two group variances, with intervals (\code{anova_welch}), epsilon
 #'     squared and eta squared for the rank statistic (\code{anova_kw}), partial
 #'     and generalised eta squared (\code{anova_rm}), odds ratios
-#'     (\code{anova_bin}), incidence rate ratios (\code{anova_count}), and the
-#'     deviance explained with McFadden's pseudo R squared (\code{anova_glm} on
-#'     any other family). Both variance measures are \emph{partial}: the
+#'     (\code{anova_bin}) and incidence rate ratios (\code{anova_count}), each
+#'     a level against its reference level whatever the contrasts, and the
+#'     deviance explained (\code{anova_glm} on any other family) with
+#'     McFadden's pseudo R squared for the binomial, Poisson and negative
+#'     binomial families only. Both variance measures are \emph{partial}: the
 #'     classical omega squared is only a proportion of variance when the effect
 #'     sums of squares partition the total, which Type II and Type III sums of
 #'     squares do not.}
 #'   \item{emmeans}{Data frame, or \code{NULL}. Estimated marginal means with
-#'     intervals at \code{conf_level}.}
-#'   \item{emmeans_object}{The \code{emmGrid}, or \code{NULL}. Pass this to
-#'     \pkg{emmeans} for contrasts the wrapper does not cover. It carries
+#'     intervals at \code{conf_level} (group summaries for
+#'     \code{anova_welch} and \code{anova_kw}). When grouping factors enter a
+#'     model additively they are reported per factor, with a \code{term}
+#'     column.}
+#'   \item{emmeans_object}{The \code{emmGrid}, a named list of them (one per
+#'     factor) when the means are reported per factor, or \code{NULL}. Pass it
+#'     to \pkg{emmeans} for contrasts the wrapper does not cover. It carries
 #'     \pkg{emmeans}' own default confidence level rather than
 #'     \code{conf_level}, so give \code{level =} when you summarise it. It is
 #'     \code{NULL} for \code{\link{anova_welch}} and \code{\link{anova_kw}},
 #'     which fit no model \pkg{emmeans} can use, and for
 #'     \code{\link{anova_manova}}, where there is one grid per response under
 #'     \code{$univariate[[response]]$emmeans_object}.}
-#'   \item{posthoc}{Data frame, or \code{NULL}. Pairwise comparisons.}
+#'   \item{posthoc}{Data frame, or \code{NULL}. Pairwise comparisons, with the
+#'     unadjusted p-value in \code{p_value}, the adjusted one in
+#'     \code{p_adjusted} and the method in \code{adjustment}.}
 #'   \item{assumptions}{Named list of assumption checks. Contents vary by
 #'     method; each element is a test object, a data frame or \code{NULL}. It is
 #'     empty for \code{\link{anova_kw}} unless \code{diagnostics = TRUE}, since
 #'     the test assumes no distribution.}
 #'   \item{plots}{Named list of \pkg{ggplot2} objects. Empty when
 #'     \code{plots = FALSE}. Nothing is ever drawn as a side effect.}
-#'   \item{data_used}{Data frame. The rows and columns the model was fitted on.}
+#'   \item{data_used}{Data frame. The rows and columns the model was fitted on:
+#'     the analysed columns only, after missing and infinite values, zero
+#'     weights and incomplete subjects are removed. Covariates are mean-centred
+#'     there when \code{anova_ancova} or \code{anova_manova} centred them.}
 #'   \item{n_removed}{Integer. Input rows that are not in \code{data_used}:
-#'     dropped for missing or infinite values or, in \code{\link{anova_rm}},
-#'     for an incomplete within-subject design or because \pkg{afex}
-#'     aggregated duplicated subject-by-cell rows into their means.
+#'     dropped for missing or infinite values (a factor level that is itself
+#'     \code{NA} counts as missing) or a prior weight of zero, or, in
+#'     \code{\link{anova_rm}}, for an incomplete within-subject design or
+#'     because repeated subject-by-cell rows were aggregated (with
+#'     \code{fun_aggregate}, the mean by default).
 #'     \code{nrow(data_used) + n_removed} is always the number of rows given.}
 #'   \item{conf_level}{Numeric. The level used for every interval returned.}
 #'   \item{notes}{Character vector. Everything the function decided on your
 #'     behalf, could not compute, or thinks you should know -- including
-#'     anything \pkg{car}, \code{\link[stats]{glm}} or \pkg{afex} said while
-#'     the model was being fitted. Always read this.}
+#'     anything \pkg{car}, \code{\link[stats]{glm}}, \pkg{emmeans},
+#'     \pkg{sandwich} or \pkg{afex} said while the model was being fitted.
+#'     Always read this.}
 #' }
 #'
 #' @section Components individual functions add:
 #' Each function returns everything above plus whatever its own method
 #' produces. \code{names(fit)} lists them all. \code{\link{anova_ancova}} adds
-#' \code{$slopes_test}, \code{$simple_slopes} and \code{$covariate_means};
-#' \code{\link{anova_rm}} adds \code{$sphericity}, \code{$subjects_dropped} and
-#' the breakdown of \code{$n_removed}; \code{\link{anova_manova}} adds
-#' \code{$multivariate}, \code{$univariate}, \code{$canonical} and
-#' \code{$canonical_term}; \code{\link{anova_count}} adds \code{$model_type},
-#' \code{$dispersion} and \code{$model_dispersion};
+#' \code{$slopes_test}, \code{$simple_slopes}, \code{$covariate_means},
+#' \code{$model_additive} and \code{$model_interaction};
+#' \code{\link{anova_rm}} adds \code{$sphericity}, \code{$subjects_dropped},
+#' the breakdown of \code{$n_removed}, \code{$residuals} (within-subject
+#' residuals in the row order of \code{$data_used}) and
+#' \code{$internal_names}; \code{\link{anova_manova}} adds
+#' \code{$multivariate}, \code{$univariate}, \code{$canonical},
+#' \code{$canonical_term}, \code{$slopes_test} (with covariates),
+#' \code{$covariate_means} and \code{$test}; \code{\link{anova_count}} adds
+#' \code{$model_type}, \code{$dispersion} and \code{$model_dispersion};
 #' \code{\link{anova_bin}} and \code{\link{anova_glm}} add
 #' \code{$model_stats}. Each is documented on the function that produces it.
 #'
@@ -231,7 +255,8 @@ print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
     .print_df(object$effect_sizes, digits, row.names = FALSE)
   }
   if (!is.null(object$emmeans) && NROW(object$emmeans) > 0L) {
-    header <- if (is.null(object$emmeans_object)) "Group summaries" else
+    # anova_welch and anova_kw fit no model: theirs are group summaries.
+    header <- if (inherits(object$model, "htest")) "Group summaries" else
       "Estimated marginal means"
     cat(sprintf("\n%s (%s%% intervals)\n", header, .pct(object$conf_level)))
     .print_df(object$emmeans, digits, row.names = FALSE)
