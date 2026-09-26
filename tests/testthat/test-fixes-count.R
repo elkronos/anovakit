@@ -325,10 +325,14 @@ test_that("F151: a frequency table and its expanded data make the same model cho
   expect_true(any(grepl("treated as frequency weights", tab$notes)))
   expect_true(any(grepl("600 observations", tab$notes)))
 
-  # quasi-Poisson still counts rows, and says so
+  # quasi-Poisson now counts observations too, and says so
   q <- anova_count(fr$agg, "cnt", "g", weights = "freq", model = "quasipoisson",
                    plots = FALSE)
-  expect_true(any(grepl("estimates its dispersion from the 27 rows", q$notes)))
+  expect_true(any(grepl("counted in the 600 observations", q$notes)))
+  qref <- stats::glm(cnt ~ g, family = stats::quasipoisson(), data = fr$raw)
+  expect_equal(q$anova$statistic[1],
+               car::Anova(qref, test.statistic = "F")[["F value"]][1],
+               tolerance = 1e-8)
 
   # non-integer weights are not frequencies
   w <- fr$agg; w$freq <- w$freq + 0.5

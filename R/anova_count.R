@@ -103,7 +103,11 @@
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
 #'   Default \code{0.95}.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
-#'   (\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
+#'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
+#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   marginal means and the comparisons; the omnibus table uses them only with
+#'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+#'   deviances. \code{$notes} says which applies.
 #' @param adjust Character. Multiplicity adjustment for the pairwise
 #'   comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
 #'   \code{"sidak"}, \code{"scheffe"}, \code{"dunnettx"}, \code{"bonferroni"},
@@ -252,7 +256,9 @@ anova_count <- function(data, response, groups,
   n_obs <- if (freq_w) sum(d[[weights]]) else NULL
   dispersion <- .count_dispersion(pois, n_obs)
 
-  chosen <- .choose_count_model(model, dispersion, overdispersion_threshold)
+  chosen <- .choose_count_model(model, dispersion, overdispersion_threshold,
+                                df = if (freq_w) n_obs - pois$rank else
+                                  stats::df.residual(pois))
   notes <- c(notes, chosen$notes)
   if (freq_w) {
     notes <- c(notes, sprintf(
@@ -317,6 +323,13 @@ anova_count <- function(data, response, groups,
     model_type <- "quasipoisson"
   }
 
+  # With frequency weights each row stands for several observations, and the
+  # residual degrees of freedom of the data they stand for are counted in
+  # observations. glm() counts rows, so it is corrected on the fit: every
+  # quantity built on it -- the quasi-Poisson dispersion, F tests, t
+  # intervals, the marginal means -- then equals that of the expanded data.
+  row_fit <- fit
+  if (freq_w && n_obs - fit$rank >= 1) fit$df.residual <- n_obs - fit$rank
   if (model_type == "quasipoisson" && test_statistic == "LR") {
     test_statistic <- "F"
     notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
@@ -325,24 +338,29 @@ anova_count <- function(data, response, groups,
   notes <- c(notes, .check_separation(fit))
 
   ## Analysis of deviance -----------------------------------------------------
-  av <- .car_anova(fit, type = type, test_statistic = test_statistic)
+  rv <- .robust_vcov(fit, vcov_type)
+  notes <- c(notes, rv$note)
+  robust_wald <- !is.null(rv$matrix) && identical(test_statistic, "Wald")
+  av <- .car_anova(row_fit, type = type, test_statistic = test_statistic,
+                   vcov_matrix = if (robust_wald) rv$matrix else NULL)
+  if (freq_w && !robust_wald) {
+    av <- .freq_weight_anova(av, stats::df.residual(row_fit), stats::df.residual(fit),
+                             model_type == "quasipoisson" || test_statistic == "F")
+  }
   notes <- c(notes, av$note)
+  if (!is.null(rv$matrix) && !is.null(av$table)) {
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+  }
   if (test_statistic == "F" && model_type != "quasipoisson") {
     notes <- c(notes, .f_test_note(model_type, .dispersion(fit)))
   }
   if (freq_w && (model_type == "quasipoisson" || test_statistic == "F")) {
-    quasi <- model_type == "quasipoisson"
     notes <- c(notes, sprintf(
-      "%s estimates its dispersion from the %d rows, not from the %s observations the frequency weights represent, so %s can be far too conservative here. Expand the table to one row per observation for %s.",
-      if (quasi) "A quasi-Poisson model" else "The F test",
-      nrow(d), format(n_obs, big.mark = ","),
-      if (quasi) "its tests and intervals" else "it",
-      if (quasi) "quasi-Poisson inference" else "an F test"))
+      "The model's residual degrees of freedom are counted in the %s observations the frequency weights represent, not the %d rows, so its estimated dispersion, F tests and intervals equal those of the data expanded to one row per observation.",
+      format(n_obs, big.mark = ","), nrow(d)))
   }
 
   ## Marginal rates and pairwise incidence rate ratios ------------------------
-  rv <- .robust_vcov(fit, vcov_type)
-  notes <- c(notes, rv$note)
   emm_extra <- if (!is.null(offset)) list(offset = 0) else list()
   emm <- do.call(.emm_block, c(list(
     model = fit, groups = groups, additive = .is_additive(interaction),
@@ -475,15 +493,21 @@ anova_count <- function(data, response, groups,
 #' about phi times its nominal chi-square, so the size of a nominal 5\% test
 #' on 1 degree of freedom is P(chisq_1 > qchisq(0.95, 1) / phi).
 #' @noRd
-.inflation_note <- function(phi) {
+.inflation_note <- function(phi, p_over = NA_real_) {
   size <- stats::pchisq(stats::qchisq(0.95, 1) / phi, 1, lower.tail = FALSE)
-  sprintf("A Poisson model assumes a dispersion of 1; at %.2f its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about %.2f times too small, so its intervals are too narrow and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
-          phi, sqrt(phi), 100 * size)
+  sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about %.2f times too small, so its intervals are too narrow and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
+          phi,
+          if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else "",
+          sqrt(phi), 100 * size)
 }
 
 #' Decide which count model to fit
 #' @noRd
-.choose_count_model <- function(model, dispersion, threshold) {
+.choose_count_model <- function(model, dispersion, threshold, df = NA_real_) {
+  # A dispersion a little above 1 arises by chance half the time; only one the
+  # Pearson test cannot put down to chance is worth a note.
+  p_over <- .overdispersion_p(dispersion, df)
+  beyond_chance <- is.finite(p_over) && p_over < 0.05
   if (model == "negbin" && !requireNamespace("MASS", quietly = TRUE)) {
     .stopf("model = \"negbin\" requires the {MASS} package. Install it, or use model = \"quasipoisson\".")
   }
@@ -496,9 +520,9 @@ anova_count <- function(data, response, groups,
     # Poisson family belongs here too.
     notes <- if (finite && dispersion > threshold) {
       sprintf("Pearson dispersion is %.2f, above the threshold of %.2f: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. %s",
-              dispersion, threshold, .inflation_note(dispersion))
-    } else if (finite && dispersion > 1) {
-      sprintf("Pearson dispersion is %.2f. %s", dispersion, .inflation_note(dispersion))
+              dispersion, threshold, .inflation_note(dispersion, p_over))
+    } else if (finite && dispersion > 1 && beyond_chance) {
+      sprintf("Pearson dispersion is %.2f. %s", dispersion, .inflation_note(dispersion, p_over))
     } else character(0)
     return(list(model = "poisson", notes = notes))
   }
@@ -510,7 +534,9 @@ anova_count <- function(data, response, groups,
     note <- sprintf(
       "Pearson dispersion is %.2f, at or below the threshold of %.2f, so a Poisson model was kept.",
       dispersion, threshold)
-    if (dispersion > 1) note <- paste(note, .inflation_note(dispersion))
+    if (dispersion > 1 && beyond_chance) {
+      note <- paste(note, .inflation_note(dispersion, p_over))
+    }
     return(list(model = "poisson", notes = note))
   }
   if (requireNamespace("MASS", quietly = TRUE)) {

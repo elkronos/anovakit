@@ -41,7 +41,9 @@
 #'     \pkg{car}, \code{\link[stats]{glm}} and \pkg{afex} are captured into
 #'     \code{$notes} instead.
 #'   \item Rows with missing or infinite values in the analysed columns are
-#'     dropped. \code{$n_removed} counts the input rows that are not in
+#'     dropped. The exception is the response of \code{\link{anova_kw}}: a rank
+#'     test can use infinite values (as the best or worst possible outcome), so
+#'     it keeps them. \code{$n_removed} counts the input rows that are not in
 #'     \code{$data_used}, so \code{nrow($data_used) + $n_removed} is always the
 #'     number of rows supplied.
 #'   \item Grouping columns are coerced to factors; character columns get their

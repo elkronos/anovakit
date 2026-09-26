@@ -115,17 +115,22 @@ assume equal variances either. Each difference in means is divided by the
 average-variance standard deviation of its two groups,
 \eqn{s^* = \sqrt{(s_1^2 + s_2^2)/2}}{s* = sqrt((s1^2 + s2^2) / 2)}, rather
 than by the pooled standard deviation, whose meaning and sampling variance
-both depend on equal variances. The interval is Bonett's (2008) interval
-for the population value \eqn{\delta^* = (\mu_1 - \mu_2) /
-\sqrt{(\sigma_1^2 + \sigma_2^2)/2}}{delta* = (mu1 - mu2) / sqrt((sigma1^2 +
-sigma2^2) / 2)}: \eqn{d^* \pm z_{1-\alpha/2}\, SE}{d* +/- z SE} with
-\deqn{SE^2 = \frac{d^{*2} (s_1^4/(n_1-1) + s_2^4/(n_2-1))}{8 s^{*4}} + \frac{s_1^2/(n_1-1) + s_2^2/(n_2-1)}{s^{*2}},}{SE^2 = d*^2 (s1^4/(n1-1) + s2^4/(n2-1)) / (8 s*^4) + (s1^2/(n1-1) + s2^2/(n2-1)) / s*^2,}
-which remains valid when the variances and the group sizes both differ. In
-simulation (variance ratios up to 16, group sizes from 2 to 50) a 95\%
-interval covered 94-96\% from about ten observations per group, and
-95-100\% below that, except where a group of two had much the larger
-variance (about 90\%). A t critical value was not used: it made the
-small-sample intervals more conservative still.
+both depend on equal variances. The interval is for the population value
+\eqn{\delta^* = (\mu_1 - \mu_2) / \sqrt{(\sigma_1^2 + \sigma_2^2)/2}}{delta*
+= (mu1 - mu2) / sqrt((sigma1^2 + sigma2^2) / 2)}. It inverts the noncentral
+t distribution of Welch's statistic on Welch's degrees of freedom and
+rescales the bounds on the noncentrality to the average-variance standard
+deviation, which is the interval \code{effectsize::cohens_d(pooled_sd =
+FALSE)} reports. In simulation (variance ratios from 1/4 to 16 in either
+group, group sizes from 2 to 50, true differences of 0 and 0.8) a 95\%
+interval covered 93-97\% whenever the smaller group had at least five
+observations, 93-98\% for equal groups of two or three, and 86-95\% when
+a group of two or three sat beside one ten or more times its size, where
+no interval does well: with two observations a group's standard deviation
+is barely estimated. Bonett's (2008) normal-theory interval for the same
+quantity was also examined; it was wider than needed for equal small groups
+(99-100\% at two per group) and covered less in the unbalanced cases
+(81-94\%).
 
 With \code{hedges_correction = TRUE} the estimate is multiplied by the
 small-sample bias correction \eqn{J(\nu) = \Gamma(\nu/2) / (\sqrt{\nu/2}\,
@@ -165,7 +170,7 @@ fit
 fit$posthoc
 
 # Standardised mean differences on the average-variance standard deviation,
-# with Bonett's interval, which does not assume equal variances
+# with an interval that does not assume equal variances
 fit$effect_sizes
 
 # Two grouping variables are combined into one cell factor

@@ -534,14 +534,17 @@
   if (inherits(model, "glm")) {
     fam <- tryCatch(stats::family(model)$family, error = function(e) "")
     mu <- stats::fitted(model)
-    at_boundary <- if (fam %in% c("binomial", "quasibinomial")) {
-      any(mu < 1e-8 | mu > 1 - 1e-8)
-    } else if (fam %in% c("poisson", "quasipoisson") || inherits(model, "negbin") ||
-               grepl("^Negative Binomial", fam)) {
-      any(mu < 1e-8)
-    } else {
-      FALSE
-    }
+    binary <- fam %in% c("binomial", "quasibinomial")
+    count <- fam %in% c("poisson", "quasipoisson") || inherits(model, "negbin") ||
+      grepl("^Negative Binomial", fam)
+    # The same criterion as the separation note, so the two can never
+    # disagree: a small separated group can stop well short of a fitted value
+    # of 1e-8 while its coefficient has plainly diverged, and the sandwich
+    # still collapses there. The fitted-value check catches what remains.
+    at_boundary <- (binary || count) && (
+      length(.check_separation(model)) > 0L ||
+        (binary && any(mu < 1e-8 | mu > 1 - 1e-8)) ||
+        (count && any(mu < 1e-8)))
     if (at_boundary) {
       return(list(matrix = NULL, note = sprintf(
         "Robust standard errors (%s) were not used: some fitted values are on the boundary (a group with no events, or all events), where the sandwich covariance collapses towards zero and reports spuriously small p-values. Model-based standard errors were used instead.",

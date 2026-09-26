@@ -1110,8 +1110,8 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   if (any(hit)) {
     txt <- paste(txt, sprintf(
       "The ANOVA table shows a significant interaction with a factor averaged over (%s), so these averages can hide or reverse the differences within its levels; set emm_specs = c(%s) to compare the cells.",
-      paste(sprintf("%s, p = %s", anova_tab$term[hit],
-                    format.pval(anova_tab$p_value[hit], digits = 3)), collapse = "; "),
+      paste(sprintf("%s, %s", anova_tab$term[hit],
+                    .fmt_p(anova_tab$p_value[hit], digits = 3)), collapse = "; "),
       paste(sprintf("\"%s\"", unique(c(specs, averaged))), collapse = ", ")))
   }
   txt

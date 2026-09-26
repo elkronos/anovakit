@@ -64,6 +64,30 @@
   out
 }
 
+#' A p-value for a sentence: "p = 0.012", or "p < 2.2e-16" at machine precision
+#' @noRd
+.fmt_p <- function(p, digits = 2L) {
+  eps <- .Machine$double.eps
+  ifelse(!is.na(p) & p < eps,
+         paste("p <", format(eps, digits = digits)),
+         paste("p =", format(signif(p, digits))))
+}
+
+#' Is a Pearson dispersion above 1 by more than chance?
+#'
+#' Under the model the Pearson statistic is roughly chi-square on the residual
+#' degrees of freedom, so a dispersion a little above 1 is expected half the
+#' time. A note about overdispersion is worth giving only when the statistic
+#' is beyond what that distribution produces.
+#' @return the upper-tail p-value, or \code{NA} when it cannot be computed.
+#' @noRd
+.overdispersion_p <- function(dispersion, df) {
+  if (!is.finite(dispersion) || is.null(df) || !is.finite(df) || df < 1) {
+    return(NA_real_)
+  }
+  stats::pchisq(dispersion * df, df, lower.tail = FALSE)
+}
+
 #' Pearson dispersion statistic for a fitted GLM
 #'
 #' Pearson rather than the deviance ratio, which is biased for small counts, and
@@ -437,7 +461,15 @@
 
   co_ok <- co[keep]
   se_co <- sqrt(pmax(diag(V), 0))
-  runaway <- setdiff(names(co_ok)[abs(co_ok) > 10 & se_co > 10], "(Intercept)")
+  # Coefficients are worth naming only under treatment coding, where each one
+  # is a level against its reference; a sum-to-zero or polynomial coefficient
+  # names nothing the reader can find in the data. The cells are named anyway.
+  ctr <- fit$contrasts
+  treatment <- is.null(ctr) || all(vapply(ctr, function(x)
+    identical(x, "contr.treatment"), logical(1)))
+  runaway <- if (treatment) {
+    setdiff(names(co_ok)[abs(co_ok) > 10 & se_co > 10], "(Intercept)")
+  } else character(0)
   coefs <- if (length(runaway) > 0L) {
     sprintf(" The affected coefficient(s): %s.",
             paste(gsub("`", "", runaway, fixed = TRUE), collapse = ", "))

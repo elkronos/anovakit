@@ -618,25 +618,22 @@ anova_ancova <- function(data, response, groups, covariates,
 #' than of the covariance.
 #' @noRd
 .robust_anova <- function(model, type, V, vcov_type, fallback = TRUE) {
-  got <- .collect_conditions(car::Anova(model, type = if (type == "III") 3L else 2L,
-                                        vcov. = V))
-  raw <- got$value
-  if (inherits(raw, "error")) {
+  # Through .car_anova(), so a response in small units is rescaled for car's
+  # absolute tolerance here as well, with the covariance rescaled to match.
+  got <- .car_anova(model, type = type, vcov_matrix = V)
+  if (is.null(got$table)) {
     return(list(table = NULL, note = sprintf(
       "Robust (%s) Wald F tests could not be computed%s: %s",
       vcov_type,
       if (fallback) ", so the F tests in $anova are model-based" else "",
-      conditionMessage(raw))))
+      sub("^The Type [I]+ ANOVA table could not be computed: ", "", got$note))))
   }
-  raw <- as.data.frame(raw)
-  names(raw)[names(raw) == "F"] <- "F value"
-  tab <- .tidy_anova(raw, type)
+  tab <- got$table
   attr(tab, "statistic") <- sprintf("Wald F with %s covariance", vcov_type)
-  said <- got$said[!grepl("^Coefficient covariances computed by", got$said)]
   list(table = tab, note = c(
     sprintf("vcov_type = \"%s\": the F tests in $anova are Wald F tests built from that covariance (car::Anova(vcov. = )), on the model's residual degrees of freedom, so the table has no sums of squares. $effect_sizes are still computed from the model-based sums of squares, which the covariance does not change, and the homogeneity-of-slopes test in $slopes_test is the model-based F test.",
             vcov_type),
-    .said_note(said, "car::Anova()")))
+    got$note))
 }
 
 #' A note when the covariate means differ materially between groups

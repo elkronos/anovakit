@@ -26,17 +26,22 @@
 #' average-variance standard deviation of its two groups,
 #' \eqn{s^* = \sqrt{(s_1^2 + s_2^2)/2}}{s* = sqrt((s1^2 + s2^2) / 2)}, rather
 #' than by the pooled standard deviation, whose meaning and sampling variance
-#' both depend on equal variances. The interval is Bonett's (2008) interval
-#' for the population value \eqn{\delta^* = (\mu_1 - \mu_2) /
-#' \sqrt{(\sigma_1^2 + \sigma_2^2)/2}}{delta* = (mu1 - mu2) / sqrt((sigma1^2 +
-#' sigma2^2) / 2)}: \eqn{d^* \pm z_{1-\alpha/2}\, SE}{d* +/- z SE} with
-#' \deqn{SE^2 = \frac{d^{*2} (s_1^4/(n_1-1) + s_2^4/(n_2-1))}{8 s^{*4}} + \frac{s_1^2/(n_1-1) + s_2^2/(n_2-1)}{s^{*2}},}{SE^2 = d*^2 (s1^4/(n1-1) + s2^4/(n2-1)) / (8 s*^4) + (s1^2/(n1-1) + s2^2/(n2-1)) / s*^2,}
-#' which remains valid when the variances and the group sizes both differ. In
-#' simulation (variance ratios up to 16, group sizes from 2 to 50) a 95\%
-#' interval covered 94-96\% from about ten observations per group, and
-#' 95-100\% below that, except where a group of two had much the larger
-#' variance (about 90\%). A t critical value was not used: it made the
-#' small-sample intervals more conservative still.
+#' both depend on equal variances. The interval is for the population value
+#' \eqn{\delta^* = (\mu_1 - \mu_2) / \sqrt{(\sigma_1^2 + \sigma_2^2)/2}}{delta*
+#' = (mu1 - mu2) / sqrt((sigma1^2 + sigma2^2) / 2)}. It inverts the noncentral
+#' t distribution of Welch's statistic on Welch's degrees of freedom and
+#' rescales the bounds on the noncentrality to the average-variance standard
+#' deviation, which is the interval \code{effectsize::cohens_d(pooled_sd =
+#' FALSE)} reports. In simulation (variance ratios from 1/4 to 16 in either
+#' group, group sizes from 2 to 50, true differences of 0 and 0.8) a 95\%
+#' interval covered 93-97\% whenever the smaller group had at least five
+#' observations, 93-98\% for equal groups of two or three, and 86-95\% when
+#' a group of two or three sat beside one ten or more times its size, where
+#' no interval does well: with two observations a group's standard deviation
+#' is barely estimated. Bonett's (2008) normal-theory interval for the same
+#' quantity was also examined; it was wider than needed for equal small groups
+#' (99-100\% at two per group) and covered less in the unbalanced cases
+#' (81-94\%).
 #'
 #' With \code{hedges_correction = TRUE} the estimate is multiplied by the
 #' small-sample bias correction \eqn{J(\nu) = \Gamma(\nu/2) / (\sqrt{\nu/2}\,
@@ -152,7 +157,7 @@
 #' fit$posthoc
 #'
 #' # Standardised mean differences on the average-variance standard deviation,
-#' # with Bonett's interval, which does not assume equal variances
+#' # with an interval that does not assume equal variances
 #' fit$effect_sizes
 #'
 #' # Two grouping variables are combined into one cell factor
@@ -410,13 +415,14 @@ anova_welch <- function(data, response, groups,
 #' Standardised mean difference that does not assume equal variances
 #'
 #' The difference in means over the average-variance standard deviation
-#' \code{sqrt((s1^2 + s2^2) / 2)}, with Bonett's (2008) heteroscedastic
-#' interval for the population value. With \code{hedges_correction} the
+#' \code{sqrt((s1^2 + s2^2) / 2)}, with the noncentral-t interval of Welch's
+#' statistic rescaled to it, for the population value. With \code{hedges_correction} the
 #' estimate (not the interval) is multiplied by the bias correction J at the
 #' Satterthwaite degrees of freedom of the standardiser (Delacre et al.,
 #' 2021).
 #' @return list with \code{estimate}, \code{conf_low}, \code{conf_high},
-#'   \code{se} (of the uncorrected estimate), \code{standardiser} and
+#'   \code{se} (the scale of Welch's statistic on the standardised scale,
+#'   \code{se_w / s*}), \code{standardiser} and
 #'   \code{df} (of the standardiser).
 #' @noRd
 .std_mean_diff <- function(x, y, conf_level = 0.95, hedges_correction = TRUE) {
@@ -430,13 +436,35 @@ anova_welch <- function(data, response, groups,
   s <- sqrt((v1 + v2) / 2)
   if (!is.finite(s) || s == 0) return(na)
   d <- (mean(x) - mean(y)) / s
-  se <- sqrt(d^2 * (v1^2 / df1 + v2^2 / df2) / (8 * s^4) +
-               (v1 / df1 + v2 / df2) / s^2)
+  # The interval inverts the noncentral t distribution of Welch's statistic
+  # on Welch's degrees of freedom, and rescales the bounds on its noncentrality
+  # to the average-variance standardiser: d* = t * se_w / s*.
+  se_w <- sqrt(v1 / n1 + v2 / n2)
+  t_w <- (mean(x) - mean(y)) / se_w
+  df_w <- se_w^4 / ((v1 / n1)^2 / df1 + (v2 / n2)^2 / df2)
+  ci <- .ncp_t_interval(t_w, df_w, conf_level) * se_w / s
   nu <- (v1 + v2)^2 / (v1^2 / df1 + v2^2 / df2)
   J <- if (hedges_correction) .hedges_j(nu) else 1
-  z <- stats::qnorm(1 - (1 - conf_level) / 2)
-  list(estimate = J * d, conf_low = d - z * se, conf_high = d + z * se,
-       se = se, standardiser = s, df = nu)
+  list(estimate = J * d, conf_low = ci[1L], conf_high = ci[2L],
+       se = se_w / s, standardiser = s, df = nu)
+}
+
+#' Confidence interval for the noncentrality of a t statistic
+#'
+#' The bounds are the noncentrality parameters at which the observed t is the
+#' upper and the lower (1 - level) / 2 quantile. \code{pt()} warns about
+#' precision far in the tails; the roots are unaffected, so its warnings are
+#' not passed on.
+#' @noRd
+.ncp_t_interval <- function(t, df, conf_level) {
+  a <- (1 - conf_level) / 2
+  f <- function(ncp, p) suppressWarnings(stats::pt(t, df, ncp)) - p
+  w <- 10 + abs(t)
+  root <- function(p) tryCatch(
+    stats::uniroot(f, c(t - w, t + w), p = p, extendInt = "yes",
+                   tol = 1e-10)$root,
+    error = function(e) NA_real_)
+  c(root(1 - a), root(a))
 }
 
 #' Hedges' small-sample bias correction for a standardiser on \code{df}

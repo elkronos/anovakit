@@ -39,8 +39,9 @@ will notice:
   mislabelled link-scale "ratios". Quasi families use t. Global
   `emm_options()` no longer change results.
 * **Effect sizes.** `anova_welch()` standardises by the average of the two
-  group variances, with Bonett's interval, so the interval is valid under
-  unequal variances (a `standardiser` column says so). Odds ratios
+  group variances, with the noncentral-t interval of Welch's statistic (as
+  `effectsize::cohens_d(pooled_sd = FALSE)` reports), so the interval is valid
+  under unequal variances (a `standardiser` column says so). Odds ratios
   (`anova_bin()`) and rate ratios (`anova_count()`) are each a level against
   its reference level, whatever the contrasts, with `factor` and `comparison`
   columns. McFadden's R squared is reported only for binomial, Poisson and

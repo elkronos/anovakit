@@ -32,7 +32,9 @@ wk_ties <- function() {
 }
 
 # Hand computation of the average-variance standardised difference, written
-# in Delacre et al.'s (2021) and Bonett's (2008) own notation.
+# in Delacre et al.'s (2021) notation, with the interval found by inverting
+# the noncentral t of Welch's statistic (solved here with optimize() on the
+# squared distance, independently of the package's uniroot()).
 wk_smd_ref <- function(x, y, level = 0.95) {
   n1 <- length(x); n2 <- length(y)
   v1 <- stats::var(x); v2 <- stats::var(y)
@@ -40,30 +42,35 @@ wk_smd_ref <- function(x, y, level = 0.95) {
   d <- (mean(x) - mean(y)) / s_star
   df_star <- (n1 - 1) * (n2 - 1) * (v1 + v2)^2 / ((n2 - 1) * v1^2 + (n1 - 1) * v2^2)
   J <- gamma(df_star / 2) / (sqrt(df_star / 2) * gamma((df_star - 1) / 2))
-  se <- sqrt(d^2 * (v1^2 / (n1 - 1) + v2^2 / (n2 - 1)) / (8 * s_star^4) +
-               (v1 / (n1 - 1) + v2 / (n2 - 1)) / s_star^2)
-  z <- stats::qnorm(1 - (1 - level) / 2)
-  list(d = d, g = J * d, low = d - z * se, high = d + z * se)
+  se_w <- sqrt(v1 / n1 + v2 / n2)
+  t <- (mean(x) - mean(y)) / se_w
+  nu <- se_w^4 / ((v1 / n1)^2 / (n1 - 1) + (v2 / n2)^2 / (n2 - 1))
+  a <- (1 - level) / 2
+  bound <- function(p) stats::optimize(function(ncp)
+    (suppressWarnings(stats::pt(t, nu, ncp)) - p)^2,
+    c(t - 20 - abs(t), t + 20 + abs(t)), tol = 1e-12)$minimum
+  list(d = d, g = J * d, low = bound(1 - a) * se_w / s_star,
+       high = bound(a) * se_w / s_star)
 }
 
 # F052 / F053: standardised differences valid under unequal variances ---------
 
-test_that("the standardised difference uses the average-variance SD and Bonett's interval (F052)", {
+test_that("the standardised difference uses the average-variance SD and the Welch noncentral-t interval (F052)", {
   d <- wk_two()
   x <- d$y[d$g == "A"]; y <- d$y[d$g == "B"]
   ref <- wk_smd_ref(x, y)
 
   fit_d <- anova_welch(d, "y", "g", hedges_correction = FALSE, plots = FALSE)
   expect_equal(fit_d$effect_sizes$cohens_d, ref$d)
-  expect_equal(fit_d$effect_sizes$conf_low, ref$low)
-  expect_equal(fit_d$effect_sizes$conf_high, ref$high)
+  expect_equal(fit_d$effect_sizes$conf_low, ref$low, tolerance = 1e-5)
+  expect_equal(fit_d$effect_sizes$conf_high, ref$high, tolerance = 1e-5)
   expect_identical(fit_d$effect_sizes$standardiser, "sqrt((s1^2 + s2^2) / 2)")
 
   fit_g <- anova_welch(d, "y", "g", plots = FALSE)
   expect_equal(fit_g$effect_sizes$hedges_g, ref$g)
   # the interval is for the population value, the same with or without J
-  expect_equal(fit_g$effect_sizes$conf_low, ref$low)
-  expect_equal(fit_g$effect_sizes$conf_high, ref$high)
+  expect_equal(fit_g$effect_sizes$conf_low, ref$low, tolerance = 1e-5)
+  expect_equal(fit_g$effect_sizes$conf_high, ref$high, tolerance = 1e-5)
 
   # Before the fix: g = 1.13 [0.43, 1.83] beside a Welch p of 0.147. Now the
   # effect-size interval agrees with the Welch test in the same row.
@@ -75,6 +82,8 @@ test_that("the standardised difference uses the average-variance SD and Bonett's
   skip_if_not_installed("effectsize")
   es <- effectsize::cohens_d(x, y, pooled_sd = FALSE, ci = 0.95)
   expect_equal(fit_d$effect_sizes$cohens_d, es$Cohens_d)
+  expect_equal(fit_d$effect_sizes$conf_low, es$CI_low, tolerance = 1e-4)
+  expect_equal(fit_d$effect_sizes$conf_high, es$CI_high, tolerance = 1e-4)
   expect_lt(abs(fit_g$effect_sizes$hedges_g -
                   effectsize::hedges_g(x, y, pooled_sd = FALSE)$Hedges_g), 0.02)
 })
@@ -101,8 +110,8 @@ test_that("small groups get an interval that does not undercover (F053)", {
   d <- data.frame(g = rep(c("A", "B"), each = 2), y = c(1, 2, 3.5, 5))
   fit <- anova_welch(d, "y", "g", plots = FALSE, hedges_correction = FALSE)
   ref <- wk_smd_ref(d$y[1:2], d$y[3:4])
-  expect_equal(fit$effect_sizes$conf_low, ref$low)
-  expect_equal(fit$effect_sizes$conf_high, ref$high)
+  expect_equal(fit$effect_sizes$conf_low, ref$low, tolerance = 1e-5)
+  expect_equal(fit$effect_sizes$conf_high, ref$high, tolerance = 1e-5)
   # Welch's CI includes 0 (p = 0.11); so must the standardised one now.
   expect_gt(fit$posthoc$p_value, 0.05)
   expect_lt(fit$effect_sizes$conf_low, 0)
