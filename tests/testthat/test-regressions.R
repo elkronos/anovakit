@@ -367,9 +367,16 @@ test_that("a character grouping column gets the same reference level everywhere"
   }
   a <- terms_in("C")
   skip_if(is.null(a), "the C collation could not be set")
-  b <- terms_in("en_US.UTF-8")
-  if (!is.null(b)) expect_identical(a, b)
   expect_identical(a[1], "Banana")   # C collation: upper case sorts first
+  # The decisive comparison needs a collation that differs from C's.
+  b <- NULL
+  for (loc in c("en_US.UTF-8", "en_GB.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8",
+                "en_US.utf8", "English_United States.1252")) {
+    b <- terms_in(loc)
+    if (!is.null(b)) break
+  }
+  skip_if(is.null(b), "no locale with a non-C collation is installed")
+  expect_identical(a, b)
 })
 
 test_that("the mvt adjustment, which is randomised, is not offered", {

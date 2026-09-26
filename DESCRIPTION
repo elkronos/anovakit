@@ -1,25 +1,26 @@
 Package: anovakit
-Title: Analysis of Variance Workflows with Assumption Checks and Effect Sizes
+Title: ANOVA Workflows with Assumption Checks and Effect Sizes
 Version: 0.1.0
 Authors@R: person("Justin", "Chase", email = "jchase.msu@gmail.com",
                   role = c("aut", "cre"))
 Description: Provides a consistent set of wrappers around the analysis of
     variance designs that applied work most often needs: Welch's analysis of
-    variance (Welch, 1951, <doi:10.1093/biomet/38.3-4.330>), the
-    Kruskal-Wallis test with Dunn post-hoc comparisons (Dunn, 1964,
+    variance (Welch (1951) <doi:10.1093/biomet/38.3-4.330>), the
+    Kruskal-Wallis test with Dunn post-hoc comparisons (Dunn (1964)
     <doi:10.1080/00401706.1964.10490181>), analysis of covariance, repeated
-    measures with the Greenhouse-Geisser (1959,
-    <doi:10.1007/BF02289823>) and Huynh-Feldt (1976,
+    measures with the Greenhouse-Geisser (Greenhouse and Geisser (1959)
+    <doi:10.1007/BF02289823>) and Huynh-Feldt (Huynh and Feldt (1976)
     <doi:10.3102/10769986001001069>) corrections, multivariate analysis of
-    variance and covariance with Mardia's normality tests (Mardia, 1970,
-    <doi:10.1093/biomet/57.3.519>) and Box's M (Box, 1949,
+    variance and covariance with Mardia's normality tests (Mardia (1970)
+    <doi:10.1093/biomet/57.3.519>) and Box's M (Box (1949)
     <doi:10.1093/biomet/36.3-4.317>), and analyses of deviance for binary and
     count responses. Each function validates its input, checks the assumptions
-    that matter for the method it implements, reports effect sizes with
-    confidence intervals, computes estimated marginal means and pairwise
-    comparisons, and returns 'ggplot2' objects rather than drawing them. All
-    eight functions share one argument convention and return one S3 class with
-    'print', 'summary' and 'plot' methods.
+    that matter for the method it implements, reports effect sizes (with
+    confidence intervals for standardised mean differences, odds ratios and
+    rate ratios), computes estimated marginal means and pairwise comparisons,
+    and returns 'ggplot2' objects rather than drawing them. All eight
+    functions share one argument convention and return one S3 class with
+    print(), summary() and plot() methods.
 License: GPL-3
 Encoding: UTF-8
 Language: en-GB
@@ -27,7 +28,7 @@ Depends: R (>= 3.5.0)
 Imports:
     car,
     emmeans,
-    ggplot2,
+    ggplot2 (>= 3.4.0),
     stats,
     utils
 Suggests:
@@ -38,7 +39,7 @@ Suggests:
     MASS,
     rmarkdown,
     sandwich,
-    testthat (>= 3.0.0),
+    testthat (>= 3.1.8),
     tibble,
     withr
 VignetteBuilder: knitr

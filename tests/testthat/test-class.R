@@ -22,6 +22,9 @@ test_that("every function returns the same class with the same components", {
     manova = anova_manova(d_mv, c("score1", "score2"), "g",
                           assumptions = FALSE, plots = FALSE)
   )
+  if (requireNamespace("afex", quietly = TRUE)) {
+    fits$rm <- anova_rm(fx_repeated(), "score", "id", "time", plots = FALSE)
+  }
   for (nm in names(fits)) {
     expect_fit_shape(fits[[nm]])
     expect_true(is.data.frame(fits[[nm]]$anova), info = nm)
@@ -77,18 +80,34 @@ test_that("the notes vector is deduplicated and always character", {
 })
 
 test_that("every function accepts a data.table and a tibble", {
-  d <- fx_oneway()
-  ref <- anova_welch(d, "value", "group", plots = FALSE)$anova
-
-  if (requireNamespace("data.table", quietly = TRUE)) {
-    dt <- data.table::as.data.table(d)
-    expect_equal(anova_welch(dt, "value", "group", plots = FALSE)$anova, ref)
-    expect_equal(anova_kw(dt, "value", "group", plots = FALSE)$anova,
-                 anova_kw(d, "value", "group", plots = FALSE)$anova)
+  calls <- list(
+    welch  = list(fx_oneway(), function(d) anova_welch(d, "value", "group", plots = FALSE)),
+    kw     = list(fx_oneway(), function(d) anova_kw(d, "value", "group", plots = FALSE)),
+    glm    = list(fx_oneway(), function(d) anova_glm(d, "value", "group", plots = FALSE)),
+    bin    = list(fx_binary(), function(d) anova_bin(d, "y", "g", plots = FALSE)),
+    count  = list(fx_counts(), function(d) anova_count(d, "count", "g1", plots = FALSE)),
+    ancova = list(fx_ancova(), function(d) anova_ancova(d, "dv", "iv", "cov", plots = FALSE)),
+    manova = list(fx_multivariate(), function(d) anova_manova(
+      d, c("score1", "score2"), "g", assumptions = FALSE, plots = FALSE))
+  )
+  if (requireNamespace("afex", quietly = TRUE)) {
+    calls$rm <- list(fx_repeated(), function(d) anova_rm(d, "score", "id", "time",
+                                                         plots = FALSE))
   }
-  if (requireNamespace("tibble", quietly = TRUE)) {
-    tb <- tibble::as_tibble(d)
-    expect_equal(anova_welch(tb, "value", "group", plots = FALSE)$anova, ref)
+  for (nm in names(calls)) {
+    d <- calls[[nm]][[1]]
+    f <- calls[[nm]][[2]]
+    ref <- f(d)
+    if (requireNamespace("data.table", quietly = TRUE)) {
+      got <- f(data.table::as.data.table(d))
+      expect_equal(got$anova, ref$anova, info = paste(nm, "data.table"))
+      expect_identical(got$n_removed, ref$n_removed, info = nm)
+    }
+    if (requireNamespace("tibble", quietly = TRUE)) {
+      got <- f(tibble::as_tibble(d))
+      expect_equal(got$anova, ref$anova, info = paste(nm, "tibble"))
+      expect_identical(nrow(got$data_used) + got$n_removed, nrow(d), info = nm)
+    }
   }
 })
 
