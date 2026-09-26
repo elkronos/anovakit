@@ -324,8 +324,11 @@ test_that("an ill-determined negative binomial theta is reported as such", {
     anova_count(d, "y", "g", model = "negbin", plots = FALSE))
 
   expect_identical(fit$model_type, "negbin")
-  expect_true(any(grepl("not meaningfully overdispersed|not well determined|did not converge",
-                        fit$notes)))
+  # This fixture hits MASS's iteration limit, so the one message it must get
+  # is the non-convergence note (read from fit$th.warn, not from warning text)
+  expect_false(is.null(fit$model$th.warn))
+  expect_true(any(grepl("did not converge", fit$notes)))
+  expect_false(any(grepl("dispersion parameter theta =", fit$notes)))
   # and the note must not present a runaway theta as a three-decimal estimate
   runaway <- fit$model$theta > 1000 ||
     fit$model$theta / fit$model$SE.theta < 2
@@ -977,11 +980,14 @@ test_that("a runaway negative binomial theta is reported as non-convergence", {
       n, mu = c(a = 5, b = 8)[as.character(g)], size = 0.7))
   })
   real <- MASS::glm.nb
+  # Non-convergence is read from the fit, where glm.nb() records it in
+  # th.warn, exactly as MASS does when the alternation limit is reached
   notes <- testthat::with_mocked_bindings(
     anova_count(d, "y", "g", model = "negbin", plots = FALSE)$notes,
     glm.nb = function(...) {
       m <- real(...)
       warning("alternation limit reached")
+      m$th.warn <- "alternation limit reached"
       m
     },
     .package = "MASS")
