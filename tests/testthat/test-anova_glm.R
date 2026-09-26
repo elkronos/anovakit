@@ -162,7 +162,7 @@ test_that("robust standard errors reach the marginal means", {
     fit$emmeans$se, anova_glm(d, "value", "group", plots = FALSE)$emmeans$se)))
 })
 
-test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.5", {
+test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.2", {
   d <- fx_overdispersed()
   fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
   m <- stats::glm(y ~ g, family = stats::poisson(), data = d)
@@ -170,8 +170,11 @@ test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.5", {
   expect_equal(fit$assumptions$dispersion, phi)
   expect_gt(phi, 1.5)
   expect_lt(phi, 15)
-  expect_true(any(grepl("suggests overdispersion", fit$notes)))
+  expect_true(any(grepl(sprintf("Pearson dispersion is %.2f", phi), fit$notes,
+                        fixed = TRUE)))
+  expect_true(any(grepl("family = \"quasipoisson\"", fit$notes, fixed = TRUE)))
   ok <- anova_glm(fx_counts(), "count", c("g1", "g2"), interaction = TRUE,
                   family = "poisson", plots = FALSE)
-  expect_false(any(grepl("overdispersion", ok$notes)))
+  expect_lt(ok$assumptions$dispersion, 1.2)
+  expect_false(any(grepl("^Pearson dispersion is", ok$notes)))
 })
