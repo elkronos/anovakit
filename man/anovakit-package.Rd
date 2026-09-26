@@ -53,13 +53,28 @@ way and return the same S3 class, \code{\link{anovakit_fit}}.
     dropped. \code{$n_removed} counts the input rows that are not in
     \code{$data_used}, so \code{nrow($data_used) + $n_removed} is always the
     number of rows supplied.
-  \item Grouping columns are coerced to factors and unused level combinations
-    are dropped, so the number of groups reported is the number that contain
-    data.
-  \item \code{posthoc = FALSE} skips the pairwise comparisons, which cost
-    \code{choose(k, 2)} tests, and says so in \code{$notes}.
+  \item Grouping columns are coerced to factors; character columns get their
+    levels in C-locale order, so the reference level does not depend on the
+    session. A factor level that is itself \code{NA} counts as missing.
+  \item \code{\link{anova_welch}} and \code{\link{anova_kw}} combine several
+    grouping columns into one factor of the cells that contain data. The
+    model-based functions fit the grouping columns as factors instead. When
+    those factors enter the model additively, marginal means and pairwise
+    comparisons are reported for each factor separately, averaged over the
+    others. When the model contains their interaction, they are reported for
+    the cells: a level combination with no data is left out when the model
+    cannot estimate it, and named in \code{$notes} when the model estimates
+    it by extrapolation from the other cells.
+  \item \code{posthoc = FALSE} skips the pairwise comparisons and says in
+    \code{$notes} how many there would have been. Above 5000 comparisons
+    they are skipped by default, with a note.
   \item Prior weights, where a function accepts them, are named as a column
     rather than passed as a vector, so they are subsetted with the data.
+    Rows with a weight of zero contribute nothing and are dropped (and
+    counted in \code{$n_removed}).
+  \item A column may play only one role (response, group, covariate,
+    weights, offset, subject); the names \code{Residuals} and
+    \code{(Intercept)} are reserved.
   \item Anything the function decided on your behalf, or could not compute,
     is recorded in \code{$notes}. Read it.
 }
@@ -75,6 +90,14 @@ and accept the \code{\link[stats]{p.adjust}} methods (\code{"holm"},
 \code{"BH"} respectively. The other six go through \pkg{emmeans} and
 additionally accept \code{"tukey"} (their default), \code{"sidak"},
 \code{"scheffe"} and \code{"dunnettx"}.
+
+Every \code{$posthoc} table reports the unadjusted p-value in
+\code{p_value}, the adjusted one in \code{p_adjusted} and the method in
+\code{adjustment}. The intervals of \code{\link{anova_welch}} are
+per-comparison intervals; those of the \pkg{emmeans}-based functions are
+adjusted (simultaneous) intervals, and a note says when \pkg{emmeans} had
+to use a different adjustment for them (it cannot turn a step-down method
+such as Holm into intervals, and uses Bonferroni instead).
 }
 
 \seealso{

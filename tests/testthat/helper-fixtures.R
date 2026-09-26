@@ -133,8 +133,22 @@ expect_fit_shape <- function(fit) {
   invisible(fit)
 }
 
-#' Assert that a call writes nothing to stdout
+#' Assert that a call writes nothing to the console
+#'
+#' Stdout alone is not the console: a warning or a message reaches the user
+#' just as surely, so both are collected and must be empty too.
 expect_silent_stdout <- function(expr) {
-  out <- utils::capture.output(invisible(force(expr)))
+  said <- character(0)
+  out <- utils::capture.output(withCallingHandlers(
+    invisible(force(expr)),
+    warning = function(w) {
+      said <<- c(said, paste("warning:", conditionMessage(w)))
+      invokeRestart("muffleWarning")
+    },
+    message = function(m) {
+      said <<- c(said, paste("message:", conditionMessage(m)))
+      invokeRestart("muffleMessage")
+    }))
   testthat::expect_identical(length(out), 0L)
+  testthat::expect_identical(said, character(0))
 }
