@@ -244,7 +244,8 @@ test_that("an ordered grouping factor accepts a reference level", {
 
 test_that("the response may not also be a covariate or a group", {
   d <- fx_ancova()
-  expect_error(anova_ancova(d, "dv", "iv", "dv"), "cannot also be a covariate")
+  expect_error(anova_ancova(d, "dv", "iv", "dv"),
+               "given as both the response and a covariate")
   expect_error(anova_manova(d, c("dv", "cov"), "iv", covariates = "cov"),
                "cannot be both a response and a predictor")
   expect_error(anova_manova(d, "dv", "iv", covariates = "iv"),
@@ -765,9 +766,14 @@ test_that("no fitting or marginal-means call leaks a condition to the console", 
 })
 
 test_that("the ancova model-choice note is emitted once and is true", {
+  # The covariate varies only in group a, so the slopes of b and c are not
+  # estimable and the slopes test cannot be computed. (A covariate that is a
+  # function of the group, as this fixture used to be, is now refused
+  # outright: see test-fixes-ancova.R.)
   aliased <- withr::with_seed(3, {
     g <- factor(rep(c("a", "b", "c"), each = 20))
-    data.frame(g = g, x = as.numeric(g), y = stats::rnorm(60))
+    x <- ifelse(g == "a", stats::rnorm(60, 5, 1), ifelse(g == "b", 2, 8))
+    data.frame(g = g, x = x, y = stats::rnorm(60))
   })
   ok <- fx_ancova()
   grid <- expand.grid(fi = list(NULL, TRUE, FALSE), cc = c(TRUE, FALSE),
