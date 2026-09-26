@@ -479,3 +479,44 @@ test_that("F096: the fit does not carry unanalysed input columns", {
   expect_equal(stats::coef(stats::update(fit$model, data = fit$data_used)),
                stats::coef(fit$model))
 })
+
+# Dispersion notes shared with anova_count (F146, F151, F154) ------------------
+
+test_that("a Poisson frequency table gets the dispersion of the expanded data", {
+  withr::local_seed(21)
+  long <- data.frame(g = factor(rep(c("a", "b", "c"), each = 200)))
+  long$y <- stats::rpois(600, rep(c(2, 3, 4), each = 200))
+  tab <- stats::aggregate(list(n = rep(1, 600)), by = list(g = long$g, y = long$y), FUN = sum)
+  f_long <- anova_glm(long, "y", "g", family = "poisson", plots = FALSE)
+  f_tab <- anova_glm(tab, "y", "g", family = "poisson", weights = "n", plots = FALSE)
+  ref <- sum(stats::residuals(f_long$model, type = "pearson")^2) /
+    stats::df.residual(f_long$model)
+  expect_equal(f_tab$assumptions$dispersion, ref, tolerance = 1e-8)
+  expect_false(any(grepl("^Pearson dispersion is", f_tab$notes)))
+  expect_true(any(grepl("frequency weights", f_tab$notes)))
+})
+
+test_that("mild Poisson overdispersion is reported with its consequence", {
+  withr::local_seed(22)
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 150)))
+  d$y <- stats::rnbinom(450, mu = 6, size = 12)
+  fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
+  phi <- sum(stats::residuals(fit$model, type = "pearson")^2) / stats::df.residual(fit$model)
+  expect_true(phi > 1.2 && phi < 1.5)
+  size <- stats::pchisq(stats::qchisq(0.95, 1) / phi, 1, lower.tail = FALSE)
+  note <- grep("^Pearson dispersion is", fit$notes, value = TRUE)
+  expect_length(note, 1L)
+  expect_match(note, sprintf("roughly %.0f%%", 100 * size), fixed = TRUE)
+})
+
+test_that("an F test on a Poisson fit says it is a quasi-likelihood test", {
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 20)),
+                  y = rep(c(1, 3, 6, 2, 8, 0), 10))
+  fit <- anova_glm(d, "y", "g", family = "poisson", test_statistic = "F",
+                   plots = FALSE)
+  ref <- car::Anova(stats::glm(y ~ g, data = d, family = poisson), test.statistic = "F")
+  expect_equal(fit$anova$statistic[1], ref[["F value"]][1])
+  expect_true(any(grepl("quasi-likelihood test", fit$notes)))
+  expect_true(any(grepl(sprintf("%.3g", sum(stats::residuals(fit$model, type = "pearson")^2) /
+                                   stats::df.residual(fit$model)), fit$notes, fixed = TRUE)))
+})

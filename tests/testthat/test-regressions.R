@@ -385,13 +385,12 @@ test_that("a character grouping column gets the same reference level everywhere"
 test_that("the mvt adjustment, which is randomised, is not offered", {
   expect_error(anova_glm(fx_oneway(), "value", "group", adjust = "mvt"),
                "must be one of")
-  seed_before <- if (exists(".Random.seed", .GlobalEnv)) {
-    get(".Random.seed", .GlobalEnv)
-  } else NULL
+  # Seed first, so the stream exists and the check always runs, whatever
+  # earlier tests left behind.
+  withr::local_seed(1)
+  seed_before <- get(".Random.seed", .GlobalEnv)
   invisible(anova_glm(fx_oneway(), "value", "group", plots = FALSE))
-  if (!is.null(seed_before)) {
-    expect_identical(get(".Random.seed", .GlobalEnv), seed_before)
-  }
+  expect_identical(get(".Random.seed", .GlobalEnv), seed_before)
 })
 
 test_that("print honours its digits argument regardless of the global option", {

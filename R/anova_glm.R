@@ -271,18 +271,46 @@ anova_glm <- function(data, response, groups,
   notes <- c(notes, eff$notes)
 
   ## Dispersion ---------------------------------------------------------------
-  dispersion <- .dispersion(model)
+  # A Poisson frequency table (whole-number weights, some above 1) holds one
+  # row per distinct count: dividing the Pearson statistic by the rows rather
+  # than by the observations they stand for inflates it, and with it the
+  # overdispersion note, just as it did in anova_count().
+  freq_n <- if (fam_name == "poisson" && .frequency_weights(d, weights)) {
+    sum(d[[weights]])
+  } else NULL
+  dispersion <- .count_dispersion(model, freq_n)
+  if (!is.null(freq_n)) {
+    notes <- c(notes, sprintf(
+      "The weights in `%s` are whole numbers, so the dispersion treats them as frequency weights: it divides by the %s observations they represent minus the %d parameters, not by the %d rows.",
+      weights, format(freq_n), model$rank, nrow(d)))
+  }
   # A binary response cannot be overdispersed, and with frequency weights its
   # Pearson statistic grows with the weights: the check only means something
   # for counts and for proportions out of several trials.
   binary <- fam_name == "binomial" && all(model$y %in% c(0, 1))
-  if (fam_name %in% c("poisson", "binomial") && !binary &&
-      is.finite(dispersion) && dispersion > 1.5) {
+  fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
+  if (fixed_family && is.finite(dispersion) && dispersion > 1.2) {
+    # Under a true dispersion phi a test statistic of this family is about phi
+    # times its nominal chi-square; say what that does rather than only that
+    # it happened.
+    size <- stats::pchisq(stats::qchisq(0.95, 1) / dispersion, 1,
+                          lower.tail = FALSE)
     notes <- c(notes, sprintf(
-      "Pearson dispersion is %.2f. For a %s family this suggests overdispersion; consider quasi%s, or %s.",
-      dispersion, fam_name, fam_name,
-      if (fam_name == "poisson") "anova_count(model = \"negbin\")" else
-        "a beta-binomial model"))
+      "Pearson dispersion is %.2f, where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. %s",
+      dispersion, fam_name, sqrt(dispersion), 100 * size,
+      if (identical(test_statistic, "F")) {
+        sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
+                fam_name)
+      } else {
+        sprintf("Consider family = \"quasi%s\", or %s.", fam_name,
+                if (fam_name == "poisson") "anova_count(model = \"negbin\")" else
+                  "a beta-binomial model")
+      }))
+  }
+  if (identical(test_statistic, "F") && fam_name %in% c("poisson", "binomial")) {
+    notes <- c(notes, sprintf(
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
+      fam_name, .dispersion(model), fam_name))
   }
 
   ## Coefficient intervals ----------------------------------------------------
