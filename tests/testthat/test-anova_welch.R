@@ -3,8 +3,9 @@
 # The omnibus test and every pairwise row are checked against stats::oneway.test
 # and stats::t.test on the same data, so the wrapper cannot drift from the
 # functions it wraps. The rest covers what the wrapper adds: per-group
-# normality, Hedges' g with its small-sample correction, the variance-ratio
-# note, and combining several grouping variables into one cell factor.
+# normality, the standardised mean differences (average-variance standardiser,
+# Bonett's interval, the small-sample correction), the variance-ratio note, and
+# combining several grouping variables into one cell factor.
 
 test_that("the omnibus test reproduces stats::oneway.test exactly", {
   d <- fx_oneway()
@@ -24,6 +25,8 @@ test_that("with two groups it reproduces the Welch t-test", {
 
   expect_equal(fit$anova$p_value, unname(ref$p.value))
   expect_equal(fit$posthoc$p_value, unname(ref$p.value))
+  expect_equal(fit$posthoc$difference, unname(ref$estimate[1] - ref$estimate[2]))
+  expect_equal(fit$posthoc$statistic, unname(ref$statistic))
   expect_equal(fit$posthoc$conf_low, ref$conf.int[1])
   expect_equal(fit$posthoc$conf_high, ref$conf.int[2])
 })
@@ -44,21 +47,34 @@ test_that("group summaries match hand-computed means and t intervals", {
 })
 
 test_that("Hedges' g matches the closed-form value and is named for what it is", {
-  d <- fx_oneway(means = c(A = 0, B = 1), sds = c(A = 1, B = 1))
+  # Average-variance standardiser with the bias correction at its
+  # Satterthwaite degrees of freedom (Delacre et al., 2021), and Bonett's
+  # (2008) interval, written out from the published formulas.
+  d <- fx_oneway(means = c(A = 0, B = 1), sds = c(A = 1, B = 2))
   fit <- anova_welch(d, "value", "group", plots = FALSE)
   x <- d$value[d$group == "A"]; y <- d$value[d$group == "B"]
-  n1 <- length(x); n2 <- length(y)
-  sp <- sqrt(((n1 - 1) * stats::var(x) + (n2 - 1) * stats::var(y)) / (n1 + n2 - 2))
-  g <- (mean(x) - mean(y)) / sp * (1 - 3 / (4 * (n1 + n2) - 9))
+  n1 <- length(x); n2 <- length(y); v1 <- stats::var(x); v2 <- stats::var(y)
+  s_star <- sqrt((v1 + v2) / 2)
+  d_star <- (mean(x) - mean(y)) / s_star
+  df_star <- (n1 - 1) * (n2 - 1) * (v1 + v2)^2 / ((n2 - 1) * v1^2 + (n1 - 1) * v2^2)
+  J <- gamma(df_star / 2) / (sqrt(df_star / 2) * gamma((df_star - 1) / 2))
+  se <- sqrt(d_star^2 * (v1^2 / (n1 - 1) + v2^2 / (n2 - 1)) / (8 * s_star^4) +
+               (v1 / (n1 - 1) + v2 / (n2 - 1)) / s_star^2)
 
   expect_true("hedges_g" %in% names(fit$effect_sizes))
   expect_false("cohen_d" %in% names(fit$effect_sizes))
-  expect_equal(fit$effect_sizes$hedges_g, g)
+  expect_equal(fit$effect_sizes$hedges_g, J * d_star)
+  expect_equal(fit$effect_sizes$conf_low, d_star - stats::qnorm(0.975) * se)
+  expect_equal(fit$effect_sizes$conf_high, d_star + stats::qnorm(0.975) * se)
+  expect_identical(fit$effect_sizes$standardiser, "sqrt((s1^2 + s2^2) / 2)")
 
   uncorrected <- anova_welch(d, "value", "group", hedges_correction = FALSE,
                              plots = FALSE)
   expect_true("cohens_d" %in% names(uncorrected$effect_sizes))
-  expect_equal(uncorrected$effect_sizes$cohens_d, (mean(x) - mean(y)) / sp)
+  expect_equal(uncorrected$effect_sizes$cohens_d, d_star)
+  skip_if_not_installed("effectsize")
+  expect_equal(uncorrected$effect_sizes$cohens_d,
+               effectsize::cohens_d(x, y, pooled_sd = FALSE)$Cohens_d)
 })
 
 test_that("conf_level reaches the pairwise intervals, not only the summaries", {
