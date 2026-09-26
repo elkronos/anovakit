@@ -9,7 +9,7 @@ anova_kw(
   response,
   groups,
   conf_level = 0.95,
-  adjust = c("BH", "holm", "hochberg", "hommel", "bonferroni", "BY", "fdr", "none"),
+  adjust = "BH",
   diagnostics = FALSE,
   posthoc = TRUE,
   plots = TRUE,
@@ -30,10 +30,10 @@ Default \code{0.95}.}
 \item{adjust}{Character. Multiplicity adjustment for Dunn's comparisons,
 passed to \code{\link[stats]{p.adjust}}. One of \code{"BH"},
 \code{"holm"}, \code{"hochberg"}, \code{"hommel"}, \code{"bonferroni"},
-\code{"BY"}, \code{"fdr"} or \code{"none"}. Default \code{"BH"}. Note
-that \code{"tukey"} is not available here, as it is on the functions whose
-comparisons come from \pkg{emmeans}: Dunn's test is a rank comparison, not
-a linear contrast.}
+\code{"BY"}, \code{"fdr"} or \code{"none"}, spelled out in full. Default
+\code{"BH"}. Note that \code{"tukey"} is not available here, as it is on
+the functions whose comparisons come from \pkg{emmeans}: Dunn's test is a
+rank comparison, not a linear contrast.}
 
 \item{diagnostics}{Logical. Compute the optional normality diagnostics into
 \code{$assumptions$normality}, with a Q-Q plot. They are contextual only
@@ -51,13 +51,32 @@ of groups is large. Default \code{TRUE}.}
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovakit_fit}} object. \code{$anova} holds the
-  Kruskal-Wallis test, \code{$posthoc} Dunn's comparisons with raw and
-  adjusted p-values, \code{$effect_sizes} epsilon squared and eta squared for
-  the rank statistic, and \code{$emmeans} one row per group with its size,
-  median, mean rank (the quantity Dunn's comparisons are built from), mean,
-  standard deviation and interval. \code{$assumptions$normality} is present
-  only when \code{diagnostics = TRUE}.
+An \code{\link{anovakit_fit}} object.
+  \itemize{
+    \item \code{$anova}: the Kruskal-Wallis test, one row. Its \code{term}
+      is the grouping column, or \code{"A x B cells"} when several were
+      combined.
+    \item \code{$posthoc}: Dunn's comparisons, one row per pair of groups,
+      with \code{group1}, \code{group2}, \code{mean_rank_diff} (the mean
+      rank of \code{group1} minus that of \code{group2}), \code{z} (the
+      same difference over its standard error, so with the same sign),
+      \code{p_value} (two-sided, unadjusted), \code{p_adjusted} (adjusted
+      by \code{adjust}) and \code{adjustment}: the same p-value columns as
+      every other function in the package. \code{rstatix::dunn_test()}
+      reports \code{group2} minus \code{group1}, so its statistic has the
+      opposite sign.
+    \item \code{$effect_sizes}: \code{epsilon_squared} and
+      \code{eta_squared_H}, defined in Details.
+    \item \code{$emmeans}: one row per group with its size, median, mean
+      rank (the quantity Dunn's comparisons are built from), mean, standard
+      deviation and t interval for the mean. These are raw group summaries;
+      no model is fitted.
+    \item \code{$assumptions$normality}: present only when
+      \code{diagnostics = TRUE}.
+    \item \code{$model}: the \code{htest} from
+      \code{\link[stats]{kruskal.test}}, computed on the ranks; its
+      \code{data.name} names the response and the grouping column(s).
+  }
 }
 \description{
 Compares the distribution of a numeric response across groups without
@@ -70,16 +89,54 @@ Dunn's test is computed directly from the rank sums, with the standard tie
 correction, so the package does not depend on an external implementation and
 the full range of \code{\link[stats]{p.adjust}} methods is available.
 
-Normality is not required and is not tested. When \code{diagnostics = TRUE} a
-Q-Q plot of within-group deviations is produced for context only; it plays no
-part in the inference.
+\strong{Ties.} Values are ranked exactly as stored, and ties are counted on
+those ranks, both for the omnibus test and for Dunn's comparisons, so the
+tie correction always matches the ranks used. Two values that differ only
+through floating-point error (\code{0.1 + 0.2} and \code{0.3}, say) are
+therefore distinct, not tied; \code{$notes} says so when the data contain
+such values. Round the response first if they are meant to be equal.
+(\code{\link[stats]{kruskal.test}} itself counts ties on the printed values,
+so in that one situation its statistic differs slightly from the one
+reported here, which equals \code{kruskal.test()} applied to the ranks.)
+
+\strong{Infinite values} of the response are kept, not dropped: they rank
+as the most extreme observations, which is how a rank analysis treats, for
+example, non-completers coded as \code{Inf}. A group containing one has an
+infinite (or, with both signs, undefined) mean and no standard deviation, so
+those columns of \code{$emmeans} are reported as \code{Inf}, \code{-Inf} or
+\code{NA}. Its mean rank is exact, as is its median unless that falls
+between \code{-Inf} and \code{Inf} (then \code{NA}). The box plot cannot
+draw infinite values. Missing values are dropped and counted as usual.
+
+\strong{Effect sizes.} With \eqn{H} the tie-corrected statistic, \eqn{n}
+observations and \eqn{k} groups, \code{epsilon_squared} is
+\eqn{H / (n - 1)} and \code{eta_squared_H} is
+\eqn{(H - k + 1) / (n - k)}, the names used by Tomczak and Tomczak (2014)
+and \pkg{effectsize}. The first is exactly the proportion of rank variance
+between groups (the \eqn{R^2} of a one-way analysis of variance on the
+ranks), and the second is its bias-adjusted counterpart, so
+\code{epsilon_squared} is never smaller than \code{eta_squared_H}: the
+reverse of what the same names mean for a parametric analysis. A negative
+\code{eta_squared_H} (less between-group variation than chance produces) is
+reported as 0, with a note giving the unfloored value; with one observation
+per group (\eqn{n = k}) it is undefined and reported as \code{NA}, also
+with a note.
+
+Normality is not required and is not tested. When \code{diagnostics = TRUE}
+a Q-Q plot of within-group standardised deviations (each value minus its
+group mean, divided by its group standard deviation) is produced for
+context only; it plays no part in the inference.
 
 When several grouping variables are supplied they are combined into a single
-cell factor. The result is then one omnibus test across all populated cells:
-it cannot separate a main effect of one factor from a main effect of another,
-and it cannot test an interaction. A note to that effect is added to the
-returned object. For a factorial rank-based analysis, consider the
-Scheirer-Ray-Hare extension or an aligned rank transform.
+cell factor. The result is then one omnibus test across all populated cells,
+labelled \code{"A x B cells"} in \code{$anova}: it cannot separate a main
+effect of one factor from a main effect of another, and it cannot test an
+interaction. A note to that effect is added to the returned object. For a
+factorial rank-based analysis, consider the Scheirer-Ray-Hare extension or
+an aligned rank transform.
+
+A response in which every value is the same is refused: there is nothing to
+rank.
 }
 \examples{
 set.seed(123)
@@ -108,10 +165,22 @@ anova_kw(d, "value", "group", diagnostics = TRUE,
 small <- data.frame(g = rep(c("a", "b"), each = 3), y = c(1, 2, 3, 4, 5, 6))
 anova_kw(small, "y", "g", plots = FALSE)$anova
 
+# Infinite values are kept and ranked as the most extreme outcomes
+worst <- data.frame(g = rep(c("a", "b"), each = 5),
+                    y = c(1:5, 6, 7, Inf, Inf, Inf))
+anova_kw(worst, "y", "g", plots = FALSE)$anova
+
 }
 \references{
+Cohen, B. H. (2008). \emph{Explaining Psychological Statistics} (3rd ed.).
+Wiley.
+
 Dunn, O. J. (1964). Multiple comparisons using rank sums.
 \emph{Technometrics}, 6(3), 241-252.
+
+Tomczak, M., & Tomczak, E. (2014). The need to report effect size
+estimates revisited. An overview of some recommended measures of effect
+size. \emph{Trends in Sport Sciences}, 21(1), 19-25.
 }
 \seealso{
 \code{\link{anova_welch}} for the parametric equivalent.
