@@ -241,8 +241,15 @@
 }
 
 #' Canonical discriminant scatterplot
+#'
+#' @param scores matrix of scores with columns \code{Can1}, \code{Can2}, ...,
+#'   on axes scaled to unit pooled within-group variance.
+#' @param group factor of the described term's levels.
+#' @param group_name legend and axis label for \code{group}.
+#' @param subtitle optional subtitle, replacing the default one.
 #' @noRd
-.plot_canonical <- function(scores, group, group_name = "Group") {
+.plot_canonical <- function(scores, group, group_name = "Group",
+                            subtitle = NULL) {
   df <- as.data.frame(scores)
   df$.group <- droplevels(as.factor(group))
   if (ncol(scores) == 1L) {
@@ -251,7 +258,7 @@
                                        fill = .data[[".group"]])) +
         ggplot2::geom_boxplot(show.legend = FALSE) +
         ggplot2::labs(title = "Canonical discriminant scores",
-                      subtitle = "Only one discriminant axis is estimable",
+                      subtitle = subtitle %||% "Only one discriminant axis is estimable",
                       x = group_name, y = "Can1") +
         .gg_theme_auto(levels(df$.group))
     )
@@ -263,7 +270,7 @@
     ggplot2::geom_point(alpha = 0.6) +
     ggplot2::geom_point(data = centroids, size = 5, shape = 4, stroke = 1.5) +
     ggplot2::labs(title = "Canonical discriminant analysis",
-                  subtitle = "Crosses mark group centroids",
+                  subtitle = subtitle %||% "Crosses mark group centroids",
                   x = "Can1", y = "Can2", colour = group_name) +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),

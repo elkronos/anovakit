@@ -104,9 +104,23 @@ test_that("Box's M and the discriminant analysis are computed in the adjusted sp
                score2 = 3 + 0.3 * age + stats::rnorm(n))
   })
   fit <- anova_manova(d, c("score1", "score2"), "g", covariates = "age",
-                      plots = FALSE)
+                      plots = TRUE)
   expect_gt(fit$assumptions$box_m$p_value, 0.05)
-  expect_true(any(grepl("covariates partialled out", fit$notes)))
+  expect_true(any(grepl("covariate effects removed", fit$notes)))
+
+  # The discriminant analysis lives in the same space: within groups, the
+  # plotted scores are linear in the model residuals, with unit pooled
+  # within-group variance, and the structure coefficients are the pooled
+  # within-group correlations of the residuals with the scores.
+  S <- as.matrix(fit$plots$canonical$data[, grep("^Can", names(fit$plots$canonical$data))])
+  W <- apply(S, 2, function(s) s - stats::ave(s, d$g))
+  R <- stats::residuals(stats::lm(cbind(score1, score2) ~ age + g, data = d))
+  expect_equal(unname(colSums(W^2)) / stats::df.residual(fit$model),
+               rep(1, ncol(S)))
+  expect_equal(unname(as.matrix(fit$assumptions$structure_coefficients[, -1L])),
+               unname(stats::cor(R, W)))
+  expect_equal(unname(stats::lm.fit(R, W)$residuals), matrix(0, nrow(d), ncol(S)),
+               tolerance = 1e-8)
 })
 
 test_that("discriminant scores discriminate as well as their eigenvalue claims", {
@@ -255,9 +269,9 @@ test_that("the response may not also be a covariate or a group", {
   expect_error(anova_ancova(d, "dv", "iv", "dv"),
                "given as both the response and a covariate")
   expect_error(anova_manova(d, c("dv", "cov"), "iv", covariates = "cov"),
-               "cannot be both a response and a predictor")
+               "both a response and a covariate")
   expect_error(anova_manova(d, "dv", "iv", covariates = "iv"),
-               "cannot be both a group and a covariate")
+               "both a grouping variable and a covariate")
 })
 
 test_that("the uncentred-covariate note only claims zero is outside when it is", {
