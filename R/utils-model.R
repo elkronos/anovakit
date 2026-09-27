@@ -66,6 +66,22 @@
        note = .said_note(said, "car::Anova()"))
 }
 
+#' Fall back to Type II tests when Type III ones are undefined
+#'
+#' A model with aliased coefficients (an empty cell of the design, or
+#' collinear predictors) has no Type III tests: car refuses them, and the
+#' function would otherwise return no omnibus table at all -- by default, in
+#' anova_ancova(). Type II tests are defined, so they are computed instead,
+#' as anova_manova() does, and the method label and table heading say so.
+#' @return list with \code{type} (the type to use) and \code{note}.
+#' @noRd
+.type_for_model <- function(model, type) {
+  if (identical(type, "III") && anyNA(stats::coef(model))) {
+    return(list(type = "II", note = "The model has aliased coefficients (an empty cell of the design, or collinear predictors), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead."))
+  }
+  list(type = type, note = character(0))
+}
+
 #' Say whether the omnibus test uses a robust covariance
 #'
 #' Likelihood-ratio and F tests compare deviances or residual sums of squares
@@ -183,6 +199,11 @@
     if (!target %in% names(out)) out[[target]] <- df[[nm]]
   }
   out <- out[!out$term %in% "(Intercept)", , drop = FALSE]
+  # car orders its columns by statistic (Df first for Wald, last for LR); one
+  # order whatever the test keeps positional access and printing stable.
+  lead <- intersect(c("term", "sum_sq", "mean_sq", "df", "statistic"), names(out))
+  tail <- intersect("p_value", names(out))
+  out <- out[c(lead, setdiff(names(out), c(lead, tail)), tail)]
   row.names(out) <- NULL
   if (!is.na(type)) attr(out, "ss_type") <- type
   if (!is.na(stat_name)) {

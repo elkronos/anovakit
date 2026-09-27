@@ -2,6 +2,7 @@
 
 <!-- badges: start -->
 [![R-CMD-check](https://github.com/elkronos/anovakit/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/elkronos/anovakit/actions/workflows/R-CMD-check.yaml)
+[![pkgdown](https://github.com/elkronos/anovakit/actions/workflows/pkgdown.yaml/badge.svg)](https://github.com/elkronos/anovakit/actions/workflows/pkgdown.yaml)
 <!-- badges: end -->
 
 Eight analysis-of-variance workflows that share one argument convention, one
@@ -13,6 +14,10 @@ same way, drops incomplete rows and says how many, checks the assumptions that
 matter for the method it implements, reports effect sizes, computes estimated
 marginal means and pairwise comparisons, and returns `ggplot2` objects rather
 than drawing them.
+
+**Documentation:** <https://elkronos.github.io/anovakit/> has a walkthrough for
+every function, guides to the diagnostics and the plots, and the full
+reference.
 
 ## Installation
 
@@ -276,9 +281,26 @@ does, with the same name and the same meaning.
 
 ## Getting help
 
+The website, <https://elkronos.github.io/anovakit/>, has:
+
+- a [guide to choosing a function](https://elkronos.github.io/anovakit/articles/choosing.html);
+- a walkthrough for each function: [Welch](https://elkronos.github.io/anovakit/articles/welch.html),
+  [Kruskal-Wallis](https://elkronos.github.io/anovakit/articles/kruskal-wallis.html),
+  [ANCOVA](https://elkronos.github.io/anovakit/articles/ancova.html),
+  [repeated measures](https://elkronos.github.io/anovakit/articles/repeated-measures.html),
+  [MANOVA](https://elkronos.github.io/anovakit/articles/manova.html),
+  [binary outcomes](https://elkronos.github.io/anovakit/articles/binary.html),
+  [counts](https://elkronos.github.io/anovakit/articles/counts.html) and
+  [other GLMs](https://elkronos.github.io/anovakit/articles/glm.html);
+- guides to the [diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.html),
+  the [plots](https://elkronos.github.io/anovakit/articles/visuals.html) and
+  [working with results](https://elkronos.github.io/anovakit/articles/results.html).
+
+From R:
+
 ```r
 vignette("anovakit")      # the whole package on one dataset
-?anova_welch                  # any function
+?anova_welch              # any function
 ?anovakit_fit             # what the returned object holds
 citation("anovakit")
 ```

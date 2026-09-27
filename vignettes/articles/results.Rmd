@@ -1,0 +1,335 @@
+---
+title: "Working with results: the anovakit_fit object"
+description: >
+  What every function returns, how to print, extract and reuse it, how to go
+  further with emmeans and the fitted model, and how to report a result.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+Every anovakit function returns an object of class `anovakit_fit`. It is a
+plain named list: every table is a data frame, every figure a **ggplot2**
+object, and nothing is hidden behind accessor functions. This article shows
+what is in it and how to use it. The examples use `chickwts`, the weights of
+71 chicks raised on six feed supplements.
+
+```{r data}
+table(chickwts$feed)
+```
+
+```{r fit}
+fit <- anova_glm(chickwts, "weight", "feed")
+```
+
+`anova_glm()` with its default Gaussian family is a classical one-way ANOVA,
+which is a convenient model-based example. Everything below applies to all
+eight functions; where one differs, it says so.
+
+## What is in a fit
+
+```{r names}
+class(fit)
+names(fit)
+```
+
+The first fourteen components are the same for every function:
+
+| Component | What it holds |
+|---|---|
+| `method` | The analysis that was run, as printed. |
+| `call` | The call that made the fit. |
+| `model` | The fitted model (`lm`, `glm`, `mlm`, `afex_aov`), or the `htest` for `anova_welch()` and `anova_kw()`. |
+| `anova` | The omnibus test table. |
+| `effect_sizes` | The method's effect sizes, with intervals where they exist. |
+| `emmeans` | Estimated marginal means (group summaries for Welch and Kruskal-Wallis). |
+| `emmeans_object` | The **emmeans** grid behind `$emmeans`, for further contrasts. |
+| `posthoc` | Pairwise comparisons. |
+| `assumptions` | The assumption checks this method needs. |
+| `plots` | Named list of ggplot2 figures. |
+| `data_used` | The rows and columns the analysis actually used. |
+| `n_removed` | How many input rows are not in `data_used`. |
+| `conf_level` | The level of every interval in the fit. |
+| `notes` | Everything the function decided or could not compute. |
+
+After those come the components a function adds for itself: here `family` and
+`model_stats`. `anova_ancova()` adds the slopes test and the simple slopes,
+`anova_rm()` the sphericity table and the subjects it dropped, and so on. Each
+walkthrough describes its own, and `?anovakit_fit` lists them all.
+
+## Printing
+
+`print()` shows the omnibus table, any notes, and the names of the plots:
+
+```{r print}
+fit
+```
+
+`summary()` shows the rest: effect sizes, marginal means, comparisons and the
+assumption checks. It returns an object, so you can keep it and print it later
+with different `digits`.
+
+```{r summary}
+s <- summary(fit, digits = 3)
+class(s)
+s
+```
+
+Both use `digits` for display only; the numbers stored in the fit are never
+rounded.
+
+## The tables are ordinary data frames
+
+Every table is a data frame with a documented column layout, so base R, dplyr
+or data.table all work on it without conversion.
+
+```{r anova}
+fit$anova
+```
+
+The model-based functions attach the test details to the omnibus table as
+attributes, which is how `print()` knows what heading to write:
+
+```{r anova-attr}
+attributes(fit$anova)[c("ss_type", "statistic")]
+```
+
+The pairwise comparisons have one row per pair. `p_value` is the *unadjusted*
+p-value, `p_adjusted` the adjusted one, and `adjustment` names the method, so
+nothing about the adjustment has to be remembered from the call:
+
+```{r posthoc}
+names(fit$posthoc)
+unique(fit$posthoc$adjustment)
+```
+
+Selecting and sorting is plain subsetting. Here are the comparisons that
+survive the Tukey adjustment, largest difference first:
+
+```{r posthoc-filter}
+ph <- fit$posthoc
+sig <- ph[ph$p_adjusted < 0.05, c("contrast", "estimate", "conf_low",
+                                  "conf_high", "p_adjusted")]
+sig[order(-abs(sig$estimate)), ]
+```
+
+The intervals in `$posthoc` from the model-based functions are simultaneous.
+With a single-step method such as Tukey's they use the same adjustment as
+`p_adjusted`, so an interval that excludes zero agrees with an adjusted p-value
+below `1 - conf_level`. Step-down methods such as Holm's cannot be turned into
+intervals; **emmeans** then uses Bonferroni intervals, and `$notes` says so.
+
+Writing a table out is one line:
+
+```{r write, eval = FALSE}
+write.csv(fit$posthoc, "comparisons.csv", row.names = FALSE)
+```
+
+## Read the notes
+
+`$notes` is a character vector. It records every decision the function made on
+your behalf (which model it chose, which rows it dropped, which correction it
+applied), everything it could not compute and why, and anything **car**,
+**emmeans**, **stats** or **afex** said while fitting. None of it is printed to
+the console as a warning, so this is the one place to look.
+
+This simple fit needed no decisions, so its notes are empty:
+
+```{r notes-empty}
+fit$notes
+```
+
+Ask for heteroscedasticity-consistent standard errors and there is more to
+say: which parts of the output use them, and what they cannot do.
+
+```{r notes}
+robust <- anova_glm(chickwts, "weight", "feed", vcov_type = "HC3",
+                    plots = FALSE)
+writeLines(robust$notes)
+```
+
+Treat the notes as a checklist to read before you quote a number. They are
+plain text, so you can also search them, for example to flag which fits in a
+batch used robust standard errors:
+
+```{r notes-search}
+fits <- list(
+  welch  = anova_welch(chickwts, "weight", "feed", plots = FALSE),
+  glm    = fit,
+  robust = robust
+)
+vapply(fits, function(f) length(f$notes), integer(1))
+vapply(fits, function(f) any(grepl("robust", f$notes, ignore.case = TRUE)),
+       logical(1))
+```
+
+## Which rows were used
+
+Every function drops rows it cannot analyse (missing or infinite values in the
+analysed columns, zero weights, and in `anova_rm()` subjects with an incomplete
+design) and counts them. `nrow(fit$data_used) + fit$n_removed` is always the
+number of rows you supplied:
+
+```{r rows}
+gappy <- chickwts
+gappy$weight[c(3, 17, 40)] <- NA
+g <- anova_glm(gappy, "weight", "feed", plots = FALSE)
+c(supplied = nrow(gappy), used = nrow(g$data_used), removed = g$n_removed)
+```
+
+`$data_used` holds only the analysed columns, in the form the model saw them:
+grouping columns as factors, and covariates mean-centred when
+`anova_ancova()` or `anova_manova()` centred them.
+
+```{r data-used}
+str(g$data_used)
+```
+
+## Going further with emmeans
+
+`$emmeans` and `$posthoc` cover the usual questions: the mean of each group,
+and every pairwise difference. For anything else, `$emmeans_object` is the
+**emmeans** reference grid the tables were built from.
+
+```{r emm-object}
+grid <- fit$emmeans_object
+class(grid)
+```
+
+For example, comparing every feed with `horsebean` (Dunnett-style comparisons
+with a control) instead of all 15 pairs:
+
+```{r emm-dunnett}
+ct <- emmeans::contrast(grid, "trt.vs.ctrl", ref = "horsebean")
+confint(ct, level = fit$conf_level)
+```
+
+Or a custom contrast: the four plant-based feeds against the two animal-based
+ones. The coefficients follow the order of the factor levels.
+
+```{r emm-custom}
+levels(chickwts$feed)
+plant_vs_animal <- list(
+  "plant - animal" = c(casein = -1/2, horsebean = 1/4, linseed = 1/4,
+                       meatmeal = -1/2, soybean = 1/4, sunflower = 1/4)
+)
+confint(emmeans::contrast(grid, plant_vs_animal), level = fit$conf_level)
+```
+
+Two things to keep in mind:
+
+- The grid carries **emmeans**' default confidence level, not the fit's
+  `conf_level`. Pass `level = fit$conf_level` (as above) when you want the two
+  to agree.
+- When grouping factors enter a model additively, the means are reported per
+  factor and `$emmeans_object` is a named list with one grid per factor. In
+  `anova_manova()` there is one grid per response, under
+  `fit$univariate[[response]]$emmeans_object`. `anova_welch()` and `anova_kw()`
+  fit no model **emmeans** can use, so theirs is `NULL`.
+
+## Going further with the model
+
+`$model` is the fitted model itself: an `lm`, `glm`, `negbin`, multivariate
+`mlm` or `afex_aov`. Its call refers to the analysed rows through an
+environment the fit carries, so the usual model functions work on it directly,
+from anywhere:
+
+```{r model}
+class(fit$model)
+null <- update(fit$model, . ~ 1)
+anova(null, fit$model, test = "F")
+AIC(null, fit$model)
+```
+
+`anova_welch()` and `anova_kw()` fit no model; for them `$model` is the
+`htest` returned by `oneway.test()` or `kruskal.test()`.
+
+```{r htest}
+fits$welch$model
+```
+
+## Plots
+
+`$plots` is a named list of ggplot2 objects, built but never drawn.
+`plot(fit, "name")` returns one, and `plot(fit)` returns the first:
+
+```{r plots}
+names(fit$plots)
+plot(fit, "emmeans")
+```
+
+They are ordinary ggplot2 objects, so `+` adds to them. The
+[plots guide](visuals.html) shows every figure the package makes and how to
+customise it. When you are fitting many models and do not need the figures,
+`plots = FALSE` skips building them and keeps the objects small.
+
+## Many analyses at once
+
+Because every function has the same signature and returns the same structure,
+running one analysis over several outcomes or subsets is a loop. Here the
+built-in `ToothGrowth` data compare the two vitamin C supplements separately at
+each dose:
+
+```{r loop}
+tg <- ToothGrowth
+by_dose <- lapply(split(tg, tg$dose), function(d) {
+  anova_welch(d, "len", "supp", plots = FALSE)
+})
+data.frame(
+  dose      = names(by_dose),
+  statistic = vapply(by_dose, function(f) f$anova$statistic, numeric(1)),
+  df        = vapply(by_dose, function(f) f$anova$den_df, numeric(1)),
+  p_value   = vapply(by_dose, function(f) f$anova$p_value, numeric(1)),
+  row.names = NULL
+)
+```
+
+If you then need to adjust across those tests, `p.adjust()` on the
+`p_value` column does it.
+
+## Reporting a result
+
+Everything a write-up needs is in the tables. A small helper keeps the
+formatting in one place:
+
+```{r report-helper}
+fmt_p <- function(p) {
+  if (p < 0.001) "p < .001" else sprintf("p = %s", sub("^0", "", sprintf("%.3f", p)))
+}
+a <- fit$anova[fit$anova$term == "feed", ]
+res_df <- fit$anova$df[fit$anova$term == "Residuals"]
+es <- fit$effect_sizes[fit$effect_sizes$term == "feed", ]
+```
+
+```{r report-es}
+es
+```
+
+> Chick weight differed between feed supplements,
+> F(`r a$df`, `r res_df`) = `r sprintf("%.2f", a$statistic)`,
+> `r fmt_p(a$p_value)`, partial η² = `r sprintf("%.2f", es$partial_eta_sq)`,
+> partial ω² = `r sprintf("%.2f", es$partial_omega_sq)`. Of the
+> `r nrow(fit$posthoc)` pairwise comparisons,
+> `r sum(fit$posthoc$p_adjusted < 0.05)` were significant after Tukey's
+> adjustment.
+
+Because the numbers come from the fit rather than being typed, they cannot drift
+from the analysis when the data change.
+
+## Saving and reproducing
+
+A fit is an ordinary R object, so `saveRDS()` stores it whole, figures
+included. `$call` records how it was made:
+
+```{r call}
+fit$call
+```
+
+Fits made with `plots = FALSE` are much smaller, which matters when you store
+many of them.

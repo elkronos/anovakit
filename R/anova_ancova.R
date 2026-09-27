@@ -106,6 +106,10 @@
 #'   across every grouping term this includes. See Details.
 #' @param type Character. \code{"III"} (default) or \code{"II"} sums of squares.
 #'   The model is fitted under sum-to-zero contrasts when \code{"III"}.
+#'   A model with aliased coefficients (an empty cell of the design, or
+#'   collinear predictors) has no Type III tests; Type II tests are then
+#'   computed instead, and \code{$notes}, the method and the table heading
+#'   say so.
 #' @param conf_level Numeric in (0, 1). Level for every interval returned,
 #'   including the bands of the covariate plot. Default \code{0.95}.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
@@ -313,6 +317,9 @@ anova_ancova <- function(data, response, groups, covariates,
 
   model <- if (use_interaction) m_int else m_add
   notes <- c(notes, .check_model_size(model))
+  tt <- .type_for_model(model, type)
+  type <- tt$type
+  notes <- c(notes, tt$note)
 
   # Now that the model is known, say what centring did to this fit. $emmeans
   # are evaluated at the covariate mean whether or not it was centred; only
@@ -683,7 +690,7 @@ anova_ancova <- function(data, response, groups, covariates,
   big <- !is.na(gap) & gap > threshold
   if (!any(big)) return(character(0))
   sprintf("The covariate means differ between groups (largest difference: %s pooled within-group SDs). With the slopes assumed equal, any real difference in slopes biases the adjusted comparisons by the slope difference times the covariate-mean difference, and the homogeneity-of-slopes test often lacks the power to detect a difference large enough to matter, so the group row and $posthoc can reject far more often than their nominal level. force_interaction = TRUE does not assume equal slopes.",
-          paste(sprintf("%s %.2g", covariates[big], gap[big]), collapse = ", "))
+          paste(sprintf("%s %.2f", covariates[big], gap[big]), collapse = ", "))
 }
 
 #' A note when the covariate mean lies outside a group's observed range

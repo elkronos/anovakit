@@ -46,6 +46,10 @@
 #' @param interaction \code{FALSE} (additive, the default), \code{TRUE} (full
 #'   factorial), or a whole number giving the highest interaction order.
 #' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
+#'   A model with aliased coefficients (an empty cell of the design, or
+#'   collinear predictors) has no Type III tests; Type II tests are then
+#'   computed instead, and \code{$notes}, the method and the table heading
+#'   say so.
 #' @param test_statistic Character or \code{NULL}. One of \code{"LR"},
 #'   \code{"Wald"} or \code{"F"}, passed to \code{\link[car]{Anova}}. When
 #'   \code{NULL} (the default) it is chosen after fitting: an F test when the
@@ -103,6 +107,12 @@
 #' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
 #'   and residual deviances, and the residual degrees of freedom).
+#'   \code{$anova} has the columns \code{term}, \code{sum_sq} (F tests only),
+#'   \code{df}, \code{statistic} and \code{p_value}, in that order whatever
+#'   \code{test_statistic}. In an F table of a non-Gaussian family, as
+#'   \pkg{car} computes it, a term's \code{sum_sq} is its change in deviance
+#'   and the \code{Residuals} row holds the Pearson chi-square, from which the
+#'   dispersion the F statistic divides by is estimated.
 #'   \code{$assumptions} holds \code{coefficients} -- the coefficient table,
 #'   with the intervals \code{ci_method} selects -- and \code{dispersion}.
 #'   \code{$effect_sizes} depends on the family:
@@ -255,6 +265,9 @@ anova_glm <- function(data, response, groups,
     model$df.residual <- freq_n - model$rank
   }
   notes <- c(notes, .check_model_size(model))
+  tt <- .type_for_model(model, type)
+  type <- tt$type
+  notes <- c(notes, tt$note)
   sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
                   grepl("^Negative Binomial", fam_name)) {
     .check_separation(model)

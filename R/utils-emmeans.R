@@ -312,7 +312,9 @@
     "none"
   }
   p_method <- if (identical(adjust, "none")) "none" else adjust
-  if (!identical(ci_method, p_method) &&
+  # A single comparison needs no adjustment, so emmeans reports none for its
+  # interval; that is not a mismatch with the p-value method.
+  if (NROW(out) > 1L && !identical(ci_method, p_method) &&
       !(p_method == "tukey" && ci_method %in% c("tukey", "none"))) {
     note <- c(note, sprintf(
       "The comparison intervals use the %s adjustment while the p-values use %s: emmeans cannot turn %s into intervals.",

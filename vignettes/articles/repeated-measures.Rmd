@@ -1,0 +1,627 @@
+---
+title: "Repeated measures ANOVA: the same subjects under several conditions"
+description: >
+  A walkthrough of anova_rm(): mixed designs, sphericity corrections,
+  generalised eta squared, incomplete subjects and within-subject residual
+  checks.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+`anova_rm()` fits a repeated measures ANOVA, in which every subject is measured
+in every cell of one or more *within-subject* factors, optionally with
+*between-subject* factors that split the subjects into groups. It takes data in
+long format (one row per subject per cell), fits the model with
+`afex::aov_ez()` and so needs the afex package. If each subject contributes a
+single observation, the groups are independent and `anova_welch()` or
+`anova_glm()` is the right tool; for a before-and-after design where the
+question is about the "after", `anova_ancova()` with the baseline as a
+covariate is often better. The [decision guide](choosing.html) has more.
+
+## The data
+
+`afex::obk.long` is the long form of a contrived data set from O'Brien and
+Kaiser (1985): 16 subjects in three treatments (`control`, `A`, `B`), of both
+genders, each measured at a pre-test, a post-test and a follow-up (`phase`),
+five times an hour apart within each session (`hour`). So there are two
+between-subject factors and two within-subject factors, 3 x 5 = 15 cells per
+subject and 16 x 15 = 240 rows. The phases are stored in alphabetical order;
+putting them in time order makes every table easier to read.
+
+```{r data}
+obk <- afex::obk.long
+obk$phase <- factor(obk$phase, levels = c("pre", "post", "fup"))
+head(obk)
+nrow(obk)
+# subjects in each between-subject cell
+with(obk[!duplicated(obk$id), ], table(treatment, gender))
+```
+
+```{r data-means}
+round(with(obk, tapply(value, list(treatment, phase), mean)), 2)
+```
+
+The control group barely changes across the phases, while both treatments rise
+after the pre-test. A repeated measures ANOVA tests effects like that against
+the variation *within* subjects, which is usually much smaller than the
+variation between them.
+
+## Fitting the model
+
+Every column is named as a string. `subject` identifies the subject, `within`
+lists the within-subject factors, and `between` the between-subject factors,
+each of which must take one value per subject (the function checks).
+
+```{r fit}
+fit <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+                between = c("treatment", "gender"))
+fit
+```
+
+Reading the printout:
+
+- The heading of the table says the sums of squares are Type III, the
+  statistic is F, and the degrees of freedom are Greenhouse-Geisser corrected
+  (the default `correction = "GG"`).
+- `Observations used: 240`: every subject has every cell, so nothing was
+  removed. An incomplete subject would be dropped and named in the notes
+  ([below](#incomplete-designs)).
+- The table has a row for every term of the full factorial model, 15 in all.
+- Two notes: which terms failed Mauchly's test, and a warning that the default
+  marginal means average over a factor that interacts with a factor they show.
+- Four plots are available.
+
+`summary(fit)` adds the assumption checks, effect sizes, marginal means,
+comparisons and the sphericity table.
+
+## The omnibus test
+
+```{r anova}
+print(fit$anova, digits = 3)
+```
+
+- `num_df` and `den_df` are the numerator and denominator degrees of freedom.
+  For a term that involves a within-subject factor they have been multiplied by
+  the Greenhouse-Geisser epsilon, which is why they are not whole numbers.
+  The between-subject terms (`treatment`, `gender` and their interaction) need
+  no correction.
+- `mse` is the mean square of the error term the effect is tested against:
+  between-subject terms against the variation between subjects, within-subject
+  terms against their own subject-by-term interaction.
+- `statistic` is F, `partial_eta_sq` is the partial eta squared, and `p_value`
+  is computed on the corrected degrees of freedom.
+
+```{r anova-read, include = FALSE}
+a <- fit$anova
+p_of <- function(t) a$p_value[a$term == t]
+fmt_p <- function(p) {
+  if (p < 0.001) "p < 0.001" else paste("p =", format(signif(p, 2)))
+}
+```
+
+`phase` (`r fmt_p(p_of("phase"))`) and `hour`
+(`r fmt_p(p_of("hour"))`) are clear, and so is the `treatment:phase`
+interaction (`r fmt_p(p_of("treatment:phase"))`): the treatments differ
+in how the scores change across the phases, as the table of means suggested.
+The type and correction are stored as attributes of the table:
+
+```{r anova-attrs}
+attr(fit$anova, "ss_type")
+attr(fit$anova, "correction")
+```
+
+## Sphericity
+
+A within-subject F test assumes *sphericity*: that the differences between
+every pair of levels of a within-subject factor have the same variance. When
+the assumption fails the F test rejects too often. The usual remedy is to shrink
+both degrees of freedom by an estimate of epsilon, which is 1 under sphericity
+and as low as 1/(k - 1) for a factor with k levels.
+
+```{r sphericity}
+print(fit$sphericity, digits = 3)
+```
+
+```{r sph-read, include = FALSE}
+sp <- fit$sphericity
+sp_h <- sp[sp$term == "hour", ]
+sp_p <- sp[sp$term == "phase", ]
+```
+
+There is one row per within-subject term with more than one degree of freedom
+(a two-level factor has nothing to test; see [below](#a-within-only-design)).
+Terms that share the same within-subject factors share the same error matrix,
+so `treatment:hour`, `gender:hour` and `hour` have the same Mauchly's test
+and the same epsilons.
+
+- `mauchly_w` and `p_value` are Mauchly's test. It rejects for `hour`
+  (p = `r signif(sp_h$p_value, 2)`) and its interactions, and not for `phase`
+  (p = `r signif(sp_p$p_value, 2)`).
+- `gg_epsilon` is the Greenhouse-Geisser estimate
+  (`r round(sp_h$gg_epsilon, 3)` for `hour`), and `hf_epsilon` the
+  Huynh-Feldt estimate with Lecoutre's correction
+  (`r round(sp_h$hf_epsilon, 3)`), capped at 1. `hf_epsilon_raw` is the
+  uncapped value; the two differ only when the estimate exceeds 1, and a note
+  then says so.
+- `p_gg` and `p_hf` are each term's p-value under each correction, so you can
+  see both whichever one `$anova` uses.
+
+The `correction` argument chooses what `$anova` reports: `"GG"` (the default),
+`"HF"` or `"none"`.
+
+```{r corrections}
+hf <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+               between = c("treatment", "gender"), correction = "HF",
+               plots = FALSE)
+none <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+                 between = c("treatment", "gender"), correction = "none",
+                 plots = FALSE)
+rows <- fit$anova$term %in% c("phase", "hour")
+data.frame(term = fit$anova$term[rows],
+           df_GG = fit$anova$num_df[rows], p_GG = fit$anova$p_value[rows],
+           df_HF = hf$anova$num_df[rows], p_HF = hf$anova$p_value[rows],
+           df_none = none$anova$num_df[rows], p_none = none$anova$p_value[rows])
+none$notes[1]
+```
+
+Greenhouse-Geisser is the conservative choice and Huynh-Feldt the less
+conservative one; with no correction the p-values for `hour` are the smallest
+of the three, and the note warns that they may be too small. A common rule is
+to use Huynh-Feldt when the Greenhouse-Geisser epsilon is above about 0.75 and
+Greenhouse-Geisser otherwise, but deciding in advance, rather than after seeing
+the p-values, matters more than which you pick. Mauchly's test has little power
+in small samples, so a non-significant result is weak reassurance; correcting
+by default costs little.
+
+The same table is in `fit$assumptions$sphericity`. When there are fewer
+subjects than a term has contrasts, Mauchly's test is undefined; the epsilons
+are then computed directly and a note says so.
+
+## Effect sizes
+
+```{r effect-sizes}
+print(fit$effect_sizes, digits = 3)
+```
+
+`partial_eta_sq` is the effect's sum of squares over itself plus its own error
+sum of squares. In a repeated measures design each within-subject term has its
+own, relatively small, error term, so partial eta squared for those terms is
+large and not comparable with the same effect measured in a between-subjects
+design. `generalised_eta_sq` (Olejnik and Algina, 2003) puts the subject
+variation back into the denominator, so it is comparable across designs, and it
+is the measure to report when you want to compare with other studies. Neither
+has an interval.
+
+Generalised eta squared depends on which factors were *manipulated* and which
+were merely *observed*. By default every factor is treated as manipulated.
+Gender was not assigned by the experimenter, so it belongs in `observed`
+(passed on to afex):
+
+```{r observed}
+obs <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+                between = c("treatment", "gender"), observed = "gender",
+                plots = FALSE)
+data.frame(term = fit$effect_sizes$term,
+           ges_default = fit$effect_sizes$generalised_eta_sq,
+           ges_observed = obs$effect_sizes$generalised_eta_sq)[1:8, ]
+attr(obs$effect_sizes, "observed")
+```
+
+Every generalised eta squared shrinks, because the variation gender accounts
+for now counts as part of the individual differences in the denominator.
+Partial eta squared, the F tests and the p-values do not change.
+
+## Marginal means and comparisons
+
+By default `$emmeans` holds the marginal means of the within-subject cells,
+here the 15 combinations of phase and hour, averaged over the between-subject
+factors:
+
+```{r emmeans}
+head(fit$emmeans)
+nrow(fit$posthoc)
+attr(fit$emmeans, "emmeans_model")
+```
+
+They come from afex's *multivariate* model, so each cell's standard error and
+degrees of freedom come from that cell's own variance, not from a pooled error
+term (`df` is the number of subjects minus the number of between-subject
+cells, `r fit$emmeans$df[1]`). The `emmeans_model` attribute records this.
+
+The second note of the fit warns that averaging over `treatment` is risky here,
+because `treatment:phase` is significant: the average change across phases
+hides the fact that the control group does not change. `emm_specs` chooses the
+factors the means are computed over. Asking for phase by treatment, averaged
+over hour and gender:
+
+```{r emm-specs}
+tp <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+               between = c("treatment", "gender"),
+               emm_specs = c("phase", "treatment"))
+print(tp$emmeans, digits = 3)
+```
+
+The comparisons now cover all 36 pairs of the nine cells. Those within a
+treatment across phases are usually the ones of interest:
+
+```{r emm-specs-posthoc}
+ph <- tp$posthoc
+within_trt <- c("pre control - fup control", "pre A - fup A", "pre B - fup B")
+print(ph[ph$contrast %in% within_trt,
+         c("contrast", "estimate", "conf_low", "conf_high", "p_value",
+           "p_adjusted")], digits = 3)
+tp$notes[2]
+```
+
+`p_value` is unadjusted and `p_adjusted` is adjusted by the method in the
+`adjustment` column (Tukey by default, across all 36 comparisons, which is
+conservative when you only care about three of them). `adjust` chooses another
+method for the whole family. If you planned only a few comparisons, take their
+unadjusted `p_value`s and adjust them among themselves with `p.adjust()`. The
+note confirms which factors were averaged over.
+
+When you need a contrast the wrapper does not compute -- say, the change from
+pre to follow-up compared between treatments -- `$emmeans_object` is the
+emmeans grid with your factor names and labels, ready for `emmeans::contrast()`.
+
+## Checking assumptions
+
+Two assumptions matter: sphericity, covered above, and normality of the
+within-subject errors.
+
+```{r normality}
+print(fit$assumptions$normality, digits = 3)
+```
+
+The within-subject F tests depend on what is left of each value once its
+subject's mean and its cell's mean (within its between-subject group) are
+removed. Those residuals are `fit$residuals`, one per row of `$data_used` and
+in the same order, and Shapiro-Wilk is run on them separately for each
+within-subject cell. Pooling them would mix cells of different spread, which
+can fail a normality test even when every cell is normal. Here no cell rejects
+at the 5% level; the smallest p-value is
+`r signif(min(fit$assumptions$normality$p_value), 2)`, in the
+`r fit$assumptions$normality$cell[which.min(fit$assumptions$normality$p_value)]`
+cell. With 15 tests, one or two small p-values are expected by chance, so look
+for a pattern rather than a single cell. A cell that cannot be tested (fewer
+than three subjects, or no variation) gets an `NA` p-value and the reason in
+the `note` column.
+
+```{r residuals}
+head(cbind(fit$data_used, residual = round(fit$residuals, 3)))
+```
+
+The normality of the subject means, which the between-subject tests rely on, is
+not tested. The [diagnostics article](diagnostics.html) covers the checks
+across the package.
+
+## Plots
+
+Each plot is a ggplot2 object; `plot(fit, "name")` returns it for you to print
+or modify (see [Plots and visual customisation](visuals.html)).
+
+### Residuals against fitted values
+
+```{r plot-residuals}
+plot(fit, "residuals")
+```
+
+The residuals and fitted values are the within-subject ones described above
+(a fitted value is the observed value minus its residual). What to look for:
+the same even band as in any residual plot, with no funnel. The values in
+this data set are whole numbers on a short scale, which is why the points line
+up along diagonal stripes.
+
+### Normal Q-Q plot
+
+```{r plot-qq}
+plot(fit, "qq")
+```
+
+The residuals here are standardised within each within-subject cell, as they
+are tested in `$assumptions$normality`, so cells with different spreads are
+put on the same footing. What to look for: points along the dashed line, with
+no systematic curve at the ends. Here both ends bend in towards the middle: the
+residuals have lighter tails than a normal distribution, which is common for
+whole-number scores on a short scale and is generally harmless for the F
+tests. Heavy tails, bending away from the line, would be the worrying
+pattern.
+
+### Residuals in row order
+
+```{r plot-index}
+plot(fit, "index")
+```
+
+The residuals in the row order of `$data_used`, which is the order the rows
+came in (here, 15 consecutive rows per subject). What to look for: no trends,
+and no runs of residuals on the same side of zero. A drift within each block
+of rows would suggest practice or fatigue effects that the model does not
+capture; if your data are sorted by time of testing, this is where a drift
+over the course of the study would show. Nothing of the kind is visible here.
+
+### Marginal means
+
+```{r plot-emmeans}
+plot(fit, "emmeans")
+plot(tp, "emmeans")
+```
+
+The first factor in `emm_specs` goes on the x axis and any others are mapped
+to colour, with one line per level. In the first plot (the default, phase by
+hour) the pre-test is the lowest phase at every hour and the third hour is the
+highest in every phase. The second, phase by treatment, shows the control group
+staying flat while `A` and `B` rise, which is the `treatment:phase`
+interaction.
+
+## Incomplete designs
+
+A repeated measures ANOVA needs every subject in every within-subject cell.
+`datasets::ChickWeight` records the weights of 50 chicks on four diets, every
+two days from birth to day 20 and on day 21. Some chicks died or were not
+weighed on every day:
+
+```{r chicks}
+cw <- as.data.frame(datasets::ChickWeight)
+table(table(cw$Chick))   # rows per chick: most have all 12
+```
+
+`Time` is numeric; like every within-subject column it is turned into a
+factor, so each day is a level.
+
+```{r chicks-fit}
+chick <- anova_rm(cw, "weight", subject = "Chick", within = "Time",
+                  between = "Diet", plots = FALSE)
+chick$subjects_dropped
+c(n_removed = chick$n_removed,
+  missing = chick$n_removed_missing,
+  unbalanced = chick$n_removed_unbalanced,
+  aggregated = chick$n_removed_aggregated)
+chick$notes[1]
+```
+
+Five chicks without a full set of weighings were removed before fitting, and
+they are listed in `$subjects_dropped` in the order of the subject column's
+levels (`Chick` is an ordered factor, which is why they are not in numeric
+order). `$n_removed` counts every input row that is not in `$data_used`, and
+three components break it down by cause: rows with a missing value, rows
+belonging to incomplete subjects, and rows combined by aggregation (next
+section). Here all `r chick$n_removed` removed rows belong to incomplete
+subjects.
+
+A missing value costs more than its own row. Setting one weight to `NA`:
+
+```{r chicks-na}
+cw_na <- cw
+cw_na$weight[cw_na$Chick == "1" & cw_na$Time == 10] <- NA
+chick_na <- anova_rm(cw_na, "weight", subject = "Chick", within = "Time",
+                     between = "Diet", plots = FALSE)
+c(n_removed = chick_na$n_removed,
+  missing = chick_na$n_removed_missing,
+  unbalanced = chick_na$n_removed_unbalanced)
+chick_na$subjects_dropped
+```
+
+The row with the missing weight is dropped, which leaves chick 1 without a
+day-10 weighing, so its other 11 rows go too.
+`nrow(data_used) + n_removed` is always the number of rows supplied. If losing
+whole subjects is too costly, a mixed model (for example with lme4 or afex's
+`mixed()`) can use incomplete subjects; `anova_rm()` cannot.
+
+These growth data also show how badly sphericity can fail: weights spread out
+as chicks grow, so the variance of the differences grows with the gap between
+days.
+
+```{r chicks-sphericity}
+print(chick$sphericity[, c("term", "mauchly_w", "p_value", "gg_epsilon",
+                           "hf_epsilon")], digits = 3)
+```
+
+A Greenhouse-Geisser epsilon of `r round(chick$sphericity$gg_epsilon[1], 2)`
+is close to its minimum of 1/11 for a 12-level factor: the corrected test has
+barely more degrees of freedom than a single comparison.
+
+### Internal names
+
+afex builds a model formula from column names and names its wide-format
+columns after the within-subject levels, so a column called `subject id` or
+levels such as `0, 2, 4` would be mangled. `anova_rm()` therefore gives afex
+internal names and labels, and maps every table and plot back to yours.
+`$model` is the afex fit itself and keeps the internal names;
+`$internal_names` gives the correspondence:
+
+```{r internal-names}
+chick$internal_names
+head(chick$model$data$long, 3)
+```
+
+The day levels 0, 2, 4, ... are `L01`, `L02`, `L03`, ... in `$model`, in
+level order. You only need this table if you work with `$model` directly.
+
+## Repeated rows: `fun_aggregate`
+
+Sometimes a subject has several rows in the same cell: several trials per
+condition, or, if you leave a factor out of the analysis, the rows it used to
+distinguish. Analysing `obk` by phase alone leaves five rows (the hours) per
+subject and phase. They are combined into one value before fitting, with the
+mean by default:
+
+```{r aggregate}
+by_phase <- anova_rm(obk, "value", subject = "id", within = "phase",
+                     between = "treatment", plots = FALSE)
+by_phase$notes[1]
+c(used = nrow(by_phase$data_used), removed = by_phase$n_removed,
+  aggregated = by_phase$n_removed_aggregated)
+head(by_phase$data_used, 3)
+```
+
+`$data_used` holds the aggregated rows (one per subject and phase), and the
+192 rows combined away are counted in `$n_removed` and
+`$n_removed_aggregated`. Pass `fun_aggregate` to use another function, for
+example the median for skewed trial-level data:
+
+```{r aggregate-median}
+by_phase_md <- anova_rm(obk, "value", subject = "id", within = "phase",
+                        between = "treatment", fun_aggregate = median,
+                        plots = FALSE)
+by_phase_md$notes[1]
+all.equal(by_phase_md$data_used$value, by_phase$data_used$value)
+```
+
+In these contrived data the median and the mean of each subject's five hourly
+values happen to coincide, so the result is the same; the note records the
+function either way. Aggregation is a convenience: if the repeated rows are a
+design factor, like `hour`, it is usually better to keep it in `within`.
+
+## A within-only design
+
+`between` is optional. `datasets::sleep` gives the extra hours of sleep of ten
+patients under two drugs (`group`), each patient taking both, so `group` is a
+within-subject factor and `ID` the subject:
+
+```{r sleep}
+sl <- anova_rm(datasets::sleep, "extra", subject = "ID", within = "group")
+sl
+```
+
+With a two-level factor there is only one difference per subject, so
+sphericity holds automatically: `$sphericity` is `NULL` and the note says why.
+The heading of the table says "no sphericity correction", and
+`attr(sl$anova, "correction")` is "`r attr(sl$anova, "correction")`", even
+though `correction` was left at its default: there is nothing to correct, and
+the degrees of freedom are the uncorrected `r sl$anova$num_df` and
+`r sl$anova$den_df`. The ANOVA is then the paired t-test in another form, with
+F = t^2^:
+
+```{r sleep-t}
+d <- with(datasets::sleep, extra[group == "2"] - extra[group == "1"])
+tt <- t.test(d)
+c(t_squared = unname(tt$statistic)^2, F = sl$anova$statistic,
+  p_t = tt$p.value, p_F = sl$anova$p_value)
+```
+
+The same equivalence holds for the normality check. With one two-level
+within-subject factor, the residuals are plus and minus half of each subject's
+centred difference, so both rows of `$assumptions$normality` test the
+normality of the differences, which is exactly the assumption of the paired
+t-test:
+
+```{r sleep-normality}
+sl$assumptions$normality
+shapiro.test(d)$p.value
+```
+
+Both rows give p = `r signif(sl$assumptions$normality$p_value[1], 2)`: the
+differences are not convincingly normal, because one patient's difference
+(`r max(d)` hours) is far larger than the others (without that patient,
+Shapiro-Wilk gives p = `r signif(shapiro.test(d[-which.max(d)])$p.value, 2)`).
+Ten subjects is too few to lean on the test, but it is a reason to check the
+result with a nonparametric paired test.
+
+## Options worth knowing
+
+- `correction` (`"GG"`, `"HF"`, `"none"`), shown [above](#sphericity).
+- `emm_specs`, shown [above](#marginal-means-and-comparisons). When it leaves
+  out a factor of the model, the means are averaged over it and a note says so.
+- `adjust` sets the multiplicity adjustment for `$posthoc`: `"tukey"` (the
+  default), `"holm"`, `"bonferroni"`, `"BH"` and others; `posthoc = FALSE`
+  skips the comparisons.
+- `conf_level` sets the level of every interval.
+- A few arguments of `afex::aov_ez()` pass through `...`: `observed` (above),
+  `fun_aggregate` (above), `type = 2` for Type II sums of squares, and
+  `anova_table = list(p_adjust_method = "holm")` to adjust the p-values of
+  `$anova` across its terms. Anything else is an error rather than silently
+  ignored. `covariate` is refused: `anova_rm()` does not fit covariates.
+
+```{r type-2}
+t2 <- anova_rm(obk, "value", subject = "id", within = c("phase", "hour"),
+               between = c("treatment", "gender"), type = 2, plots = FALSE)
+attr(t2$anova, "ss_type")
+print(t2$anova[1:3, c("term", "statistic", "p_value")], digits = 3)
+```
+
+The design here is unbalanced between subjects (two to four subjects per
+treatment-by-gender cell), so Type II and Type III tests differ for most terms.
+Only the terms that contain both between-subject factors, such as
+`treatment:gender`, are the same under both.
+
+- `factorize = TRUE` (the default) converts a response stored as a factor or
+  as text to numbers *through its labels*, so a factor with levels 11, 17, 21
+  becomes 11, 17, 21 rather than 1, 2, 3; a note records the conversion.
+
+## What the notes say
+
+```{r notes}
+fit$notes
+```
+
+1. Mauchly's test rejects sphericity for `hour` and the terms involving it, and
+   the table uses the Greenhouse-Geisser correction. The corrected p-values are
+   the ones to report.
+2. The default marginal means average over `treatment` and `gender`, but
+   `treatment:phase` is significant, so those averages can hide the
+   difference between treatments. The note suggests the full cell grid; a
+   smaller `emm_specs` such as `c("phase", "treatment")`, used above, is often
+   enough.
+
+Other notes you may see: subjects removed for incomplete cells, rows
+aggregated, a response converted from a factor, epsilons computed directly
+because the error matrix is singular, a Huynh-Feldt estimate above 1, a design
+with no error degrees of freedom, and anything afex or emmeans said while the
+model was being fitted.
+
+## Reporting the result
+
+```{r report-values, include = FALSE}
+row <- function(t) a[a$term == t, ]
+f2 <- function(x) sprintf("%.2f", x)
+ge <- setNames(fit$effect_sizes$generalised_eta_sq, fit$effect_sizes$term)
+r_ph <- row("phase"); r_tp <- row("treatment:phase"); r_hr <- row("hour")
+em <- tp$emmeans
+m <- function(t, p) em$estimate[em$treatment == t & em$phase == p]
+```
+
+> A 3 (treatment) x 2 (gender) x 3 (phase) x 5 (hour) mixed ANOVA was run on
+> the scores, with Type III sums of squares and Greenhouse-Geisser corrected
+> degrees of freedom (Mauchly's test rejected sphericity for hour, W =
+> `r f2(sp_h$mauchly_w)`, `r fmt_p(sp_h$p_value)`; epsilon =
+> `r f2(sp_h$gg_epsilon)`). Scores changed across phases,
+> F(`r f2(r_ph$num_df)`, `r f2(r_ph$den_df)`) = `r f2(r_ph$statistic)`,
+> `r fmt_p(r_ph$p_value)`, generalised &eta;^2^ = `r f2(ge[["phase"]])`, and
+> across hours, F(`r f2(r_hr$num_df)`, `r f2(r_hr$den_df)`) =
+> `r f2(r_hr$statistic)`, `r fmt_p(r_hr$p_value)`, generalised &eta;^2^ =
+> `r f2(ge[["hour"]])`. The change across phases depended on treatment,
+> F(`r f2(r_tp$num_df)`, `r f2(r_tp$den_df)`) = `r f2(r_tp$statistic)`,
+> `r fmt_p(r_tp$p_value)`, generalised &eta;^2^ =
+> `r f2(ge[["treatment:phase"]])`: averaged over hour and gender, the control
+> group scored `r f2(m("control", "pre"))` at pre-test and
+> `r f2(m("control", "fup"))` at follow-up, against `r f2(m("A", "pre"))` to
+> `r f2(m("A", "fup"))` for treatment A and `r f2(m("B", "pre"))` to
+> `r f2(m("B", "fup"))` for treatment B.
+
+## See also
+
+- `?anova_rm` for every argument, including the details of the sphericity
+  computation and the residuals.
+- [Working with results](results.html) for the `anovakit_fit` object and
+  `$emmeans_object`.
+- `anova_ancova()` ([article](ancova.html)) for a pre-post design analysed with
+  the baseline as a covariate.
+- `anova_welch()` ([article](welch.html)) and `anova_kw()`
+  ([article](kruskal-wallis.html)) for independent groups.
+- [Diagnostics](diagnostics.html) and [Plots and visual
+  customisation](visuals.html).
+
+O'Brien, R. G., & Kaiser, M. K. (1985). MANOVA method for analyzing repeated
+measures designs: An extensive primer. *Psychological Bulletin*, 97, 316-333.
+
+Olejnik, S., & Algina, J. (2003). Generalized eta and omega squared statistics:
+measures of effect size for some common research designs. *Psychological
+Methods*, 8(4), 434-447.

@@ -100,6 +100,10 @@
   df <- data.frame(value = data[[response]],
                    cell  = droplevels(as.factor(data[[cell]])),
                    stringsAsFactors = FALSE)
+  # anova_kw() keeps infinite responses, which a box plot cannot place; drawn
+  # as they are, ggplot2 warns about them every time the plot is printed.
+  # The labels count what is drawn.
+  df <- df[is.finite(df$value), , drop = FALSE]
   counts <- table(df$cell)
   med <- tapply(df$value, df$cell, stats::median, na.rm = TRUE)
   # Look levels up by position, not by name: a level that is the empty string
@@ -183,9 +187,13 @@
     lab_colour <- NULL
   }
 
-  p <- p +
-    ggplot2::geom_line(linewidth = 0.7) +
-    ggplot2::geom_point(size = 2.5)
+  # Lines connect the levels of the other factors, which is what shows an
+  # interaction; for a single unordered factor they would suggest a trend
+  # between categories that have no order, so only the points are drawn.
+  if (length(factors) > 1L || is.ordered(emm[[xvar]])) {
+    p <- p + ggplot2::geom_line(linewidth = 0.7)
+  }
+  p <- p + ggplot2::geom_point(size = 2.5)
   if (has_ci) {
     p <- p + ggplot2::geom_errorbar(
       ggplot2::aes(ymin = .data[[lower]], ymax = .data[[upper]]),
@@ -249,16 +257,19 @@
 #' @param subtitle optional subtitle, replacing the default one.
 #' @noRd
 .plot_canonical <- function(scores, group, group_name = "Group",
-                            subtitle = NULL) {
+                            context = NULL) {
   df <- as.data.frame(scores)
   df$.group <- droplevels(as.factor(group))
+  # The subtitle describes what is drawn, so it is chosen with the geometry;
+  # `context` (which term the axes describe) is prepended to it.
+  sub <- function(what) paste(c(context, what), collapse = ". ")
   if (ncol(scores) == 1L) {
     return(
       ggplot2::ggplot(df, ggplot2::aes(x = .data[[".group"]], y = .data[["Can1"]],
                                        fill = .data[[".group"]])) +
         ggplot2::geom_boxplot(show.legend = FALSE) +
         ggplot2::labs(title = "Canonical discriminant scores",
-                      subtitle = subtitle %||% "Only one discriminant axis is estimable",
+                      subtitle = sub("Only one discriminant axis is estimable"),
                       x = group_name, y = "Can1") +
         .gg_theme_auto(levels(df$.group))
     )
@@ -270,7 +281,7 @@
     ggplot2::geom_point(alpha = 0.6) +
     ggplot2::geom_point(data = centroids, size = 5, shape = 4, stroke = 1.5) +
     ggplot2::labs(title = "Canonical discriminant analysis",
-                  subtitle = subtitle %||% "Crosses mark group centroids",
+                  subtitle = sub("Crosses mark group centroids"),
                   x = "Can1", y = "Can2", colour = group_name) +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
