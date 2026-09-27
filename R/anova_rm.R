@@ -106,8 +106,10 @@
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
 #'   Default \code{0.95}.
 #' @param correction Character. Sphericity correction applied to the ANOVA
-#'   table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. It is
-#'   recorded in \code{attr(fit$anova, "correction")} and printed.
+#'   table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. The
+#'   correction actually applied is recorded in
+#'   \code{attr(fit$anova, "correction")} and printed: \code{"none"} when every
+#'   within-subject factor has two levels, where there is nothing to correct.
 #' @param posthoc Logical. Compute pairwise comparisons. There are
 #'   \code{choose(k, 2)} of them, so this is worth turning off when the number
 #'   of cells is large; \code{$notes} records that they were skipped. Default
@@ -998,7 +1000,10 @@ anova_rm <- function(data, response, subject, within, between = NULL,
     out$p_value[idx[!ok]] <- NA_real_
   }
   row.names(out) <- NULL
-  attr(out, "correction") <- correction
+  # What was applied, not what was asked for: with no sphericity table (every
+  # within-subject factor has two levels) nothing is corrected, and a
+  # "GG-corrected" heading would describe degrees of freedom that are not.
+  attr(out, "correction") <- if (is.null(sph_tab)) "none" else correction
   attr(out, "statistic") <- "F"
   out
 }

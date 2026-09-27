@@ -140,7 +140,14 @@
 #'   \code{factor} and \code{comparison} (what it compares), \code{IRR},
 #'   \code{conf_low},
 #'   \code{conf_high} and \code{p_value}. \code{$emmeans} holds the estimated
-#'   marginal rates.
+#'   marginal rates. \code{$assumptions} holds \code{poisson_dispersion} and
+#'   \code{model_dispersion} (as above) and \code{cell_counts}, the number of
+#'   observations in each cell (with frequency weights, \code{n} counts the
+#'   observations and \code{rows} the rows of the table). \code{$plots} holds
+#'   \code{emmeans}, the marginal rates with their intervals, and
+#'   \code{observed}, box plots of the observed counts by cell -- of the
+#'   observed rates, count divided by exposure, when there is an
+#'   \code{offset}.
 #'
 #' @seealso \code{\link{anova_bin}} for binary responses.
 #'
@@ -394,9 +401,30 @@ anova_count <- function(data, response, groups,
       title = sprintf("Estimated %s rate by group", response),
       ylab = sprintf("Estimated %s", response))
     added <- .add_cell(d, groups)
-    plot_list$observed <- .plot_box(added$data, response, added$cell,
-                                    title = "Observed counts by group",
-                                    xlab = paste(groups, collapse = " : "))
+    obs <- added$data
+    # With an exposure the comparable quantity is the rate, not the count: a
+    # group observed for longer has more events at the same rate. With
+    # frequency weights each row stands for several observations, so the
+    # plot draws the observations (unless there are too many to draw).
+    obs_resp <- response
+    if (!is.null(offset)) {
+      obs_resp <- ".observed_rate"
+      obs[[obs_resp]] <- obs[[response]] / obs[[offset]]
+    }
+    if (freq_w && sum(obs[[weights]]) <= 2e5) {
+      obs <- obs[rep(seq_len(nrow(obs)), obs[[weights]]), , drop = FALSE]
+    } else if (freq_w) {
+      notes <- c(notes, "The plot of observed counts shows one point per row of the frequency table, not per observation: the table stands for more than 200,000 observations.")
+    }
+    p_obs <- .plot_box(obs, obs_resp, added$cell,
+                       title = if (is.null(offset)) "Observed counts by group" else
+                         sprintf("Observed rates by group (%s per unit of %s)",
+                                 response, offset),
+                       xlab = paste(groups, collapse = " : "))
+    if (!is.null(offset)) {
+      p_obs <- p_obs + ggplot2::labs(y = sprintf("%s / %s", response, offset))
+    }
+    plot_list$observed <- p_obs
   } else if (plots) {
     notes <- c(notes, "Plots were skipped because the estimated marginal means could not be computed.")
   }
@@ -414,7 +442,8 @@ anova_count <- function(data, response, groups,
     posthoc      = emm$posthoc,
     assumptions  = list(poisson_dispersion = dispersion,
                         model_dispersion = model_dispersion,
-                        cell_counts = .cell_counts(d, groups)),
+                        cell_counts = .cell_counts(d, groups,
+                                                   freq = if (freq_w) weights)),
     plots        = plot_list,
     data_used    = d,
     n_removed    = n_removed,

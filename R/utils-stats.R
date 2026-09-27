@@ -480,7 +480,8 @@
       "No events were observed in ", where, ", so the fitted rate there is ",
       "numerically zero.", coefs, " A rate ratio involving such a cell is not ",
       "identified: it will be near zero or enormous, its interval unbounded on one ",
-      "side, and its Wald p-value near 1 no matter how large the difference is. ",
+      "side, and its Wald p-value near 1 no matter how large the difference is; ",
+      "the same goes for that cell's marginal mean and the comparisons involving it. ",
       "The likelihood-ratio omnibus test remains usable. Consider collapsing the ",
       "level, or an exact or penalised method for the affected comparisons."))
   }
@@ -489,7 +490,8 @@
     "numerically 0 or 1 in ", where, ".", coefs,
     " An affected odds ratio is not identified: it will be enormous, its ",
     "interval will be unbounded on one side, and its Wald p-value will be near 1 ",
-    "no matter how strong the association is. With events this sparse the ",
+    "no matter how strong the association is; the same goes for that cell's ",
+    "marginal probability and the comparisons involving it. With events this sparse the ",
     "likelihood-ratio omnibus test is also liberal. Consider a penalised fit such ",
     "as logistf::logistf(), or collapsing the offending level.")
 }
