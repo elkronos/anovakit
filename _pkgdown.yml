@@ -1,0 +1,120 @@
+url: https://elkronos.github.io/anovakit/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#2c5d8f"
+    code-font-scale: 0.9
+
+authors:
+  Justin Chase:
+    href: https://github.com/elkronos
+
+home:
+  title: "anovakit: ANOVA workflows with assumption checks and effect sizes"
+  description: >
+    Eight analysis-of-variance workflows in R that share one argument
+    convention and one return class, each with matched assumption checks,
+    effect sizes, marginal means, pairwise comparisons and ggplot2 figures.
+  sidebar:
+    structure: [links, license, community, citation, authors, dev]
+
+navbar:
+  structure:
+    left: [intro, walkthroughs, topics, reference, news]
+    right: [search, github]
+  components:
+    walkthroughs:
+      text: Walkthroughs
+      menu:
+      - text: "Which function?"
+        href: articles/choosing.html
+      - text: -------
+      - text: "Comparing means"
+      - text: "Welch's ANOVA: anova_welch()"
+        href: articles/welch.html
+      - text: "Kruskal-Wallis: anova_kw()"
+        href: articles/kruskal-wallis.html
+      - text: "ANCOVA: anova_ancova()"
+        href: articles/ancova.html
+      - text: "Repeated measures: anova_rm()"
+        href: articles/repeated-measures.html
+      - text: "MANOVA: anova_manova()"
+        href: articles/manova.html
+      - text: -------
+      - text: "Other outcomes"
+      - text: "Binary outcomes: anova_bin()"
+        href: articles/binary.html
+      - text: "Counts and rates: anova_count()"
+        href: articles/counts.html
+      - text: "Any GLM family: anova_glm()"
+        href: articles/glm.html
+    topics:
+      text: Guides
+      menu:
+      - text: "Diagnostics"
+        href: articles/diagnostics.html
+      - text: "Plots and customisation"
+        href: articles/visuals.html
+      - text: "Working with results"
+        href: articles/results.html
+      - text: -------
+      - text: "All articles"
+        href: articles/index.html
+
+articles:
+- title: Start here
+  navbar: ~
+  contents:
+  - anovakit
+  - choosing
+  - results
+- title: Walkthroughs
+  desc: >
+    One article per function: the data, the fit, the output, effect sizes,
+    comparisons, diagnostics, plots, options and a model write-up.
+  contents:
+  - welch
+  - kruskal-wallis
+  - ancova
+  - repeated-measures
+  - manova
+  - binary
+  - counts
+  - glm
+- title: Guides
+  desc: Topics that cut across every function.
+  contents:
+  - diagnostics
+  - visuals
+
+reference:
+- title: Analysis functions
+  desc: >
+    Each takes a data frame and column names given as character strings, and
+    returns an `anovakit_fit`.
+- subtitle: Continuous outcomes
+  contents:
+  - anova_welch
+  - anova_kw
+  - anova_ancova
+  - anova_rm
+  - anova_manova
+- subtitle: Binary, count and other outcomes
+  contents:
+  - anova_bin
+  - anova_count
+  - anova_glm
+- title: The fitted object
+  desc: What every function returns, and the methods for it.
+  contents:
+  - anovakit_fit
+  - print.anovakit_fit
+  - summary.anovakit_fit
+  - plot.anovakit_fit
+- title: Package overview
+  contents:
+  - anovakit-package
+
+news:
+  cran_dates: false

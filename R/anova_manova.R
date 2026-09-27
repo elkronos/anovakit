@@ -435,7 +435,13 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     assum$mardia <- mt$table
     notes <- c(notes, mt$note)
     if (!is.null(mt$table) && any(mt$table$p_value < 0.05, na.rm = TRUE)) {
-      notes <- c(notes, "Mardia's tests reject multivariate normality of the residuals. Pillai's trace is the most robust of the four multivariate statistics; consider it if you have not already.")
+      notes <- c(notes, paste(
+        "Mardia's tests reject multivariate normality of the residuals.",
+        if (identical(test, "Pillai")) {
+          "The multivariate table uses Pillai's trace, the most robust of the four statistics to this."
+        } else {
+          "Pillai's trace is the most robust of the four multivariate statistics to this; consider test = \"Pillai\"."
+        }))
     }
     bm <- .box_m(Ycov, cellv)
     if (is.null(bm)) {
@@ -445,7 +451,18 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
                                 p_value = bm$p_value, stringsAsFactors = FALSE)
       notes <- c(notes, bm$note)
       if (!is.na(bm$p_value) && bm$p_value < 0.001) {
-        notes <- c(notes, "Box's M rejects equality of the group covariance matrices. The test is very sensitive to non-normality, so inspect the group covariances before acting on it; with unequal group sizes as well, prefer Pillai's trace.")
+        n_cell <- table(cellv)
+        balanced <- length(unique(n_cell[n_cell > 0L])) == 1L
+        pillai <- identical(test, "Pillai")
+        notes <- c(notes, paste(
+          "Box's M rejects equality of the group covariance matrices. The test is very sensitive to non-normality, so inspect the group covariances before acting on it.",
+          if (balanced) {
+            paste("With equal group sizes the multivariate tests are fairly robust to unequal covariances, Pillai's trace most of all",
+                  if (pillai) "(it is the statistic used here)." else "(consider test = \"Pillai\").")
+          } else {
+            paste("With unequal group sizes as well, the multivariate tests can be too liberal or too conservative;",
+                  if (pillai) "Pillai's trace, used here, is the least affected." else "prefer test = \"Pillai\".")
+          }))
       }
     }
   }
@@ -500,8 +517,8 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     if (!is.null(cds)) {
       plot_list$canonical <- .plot_canonical(
         cds$scores, cds$group, paste(ct$vars, collapse = " : "),
-        subtitle = if (length(term_labels) > 1L) {
-          sprintf("Axes for the `%s` term; other terms' effects removed. Crosses mark group centroids",
+        context = if (length(term_labels) > 1L) {
+          sprintf("Axes for the `%s` term; other terms' effects removed",
                   canonical_term)
         } else NULL)
     }

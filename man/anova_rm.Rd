@@ -53,8 +53,10 @@ comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
 Default \code{0.95}.}
 
 \item{correction}{Character. Sphericity correction applied to the ANOVA
-table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. It is
-recorded in \code{attr(fit$anova, "correction")} and printed.}
+table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. The
+correction actually applied is recorded in
+\code{attr(fit$anova, "correction")} and printed: \code{"none"} when every
+within-subject factor has two levels, where there is nothing to correct.}
 
 \item{posthoc}{Logical. Compute pairwise comparisons. There are
 \code{choose(k, 2)} of them, so this is worth turning off when the number

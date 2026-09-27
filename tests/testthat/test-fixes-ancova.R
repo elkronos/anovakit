@@ -396,7 +396,7 @@ test_that("F148: an additive fit with imbalanced covariate means carries a bias 
   expect_gt(gap, 0.5)
   note <- grep("covariate means differ between groups", fit$notes, value = TRUE)
   expect_length(note, 1L)
-  expect_match(note, sprintf("x %.2g pooled", gap), fixed = TRUE)
+  expect_match(note, sprintf("x %.2f pooled", gap), fixed = TRUE)
   expect_match(note, "force_interaction = TRUE", fixed = TRUE)
   expect_false(any(grepl("mildly optimistic", fit$notes, fixed = TRUE)))
 

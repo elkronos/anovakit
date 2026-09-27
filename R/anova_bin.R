@@ -66,6 +66,10 @@
 #' @param interaction \code{FALSE} (additive, the default), \code{TRUE} (full
 #'   factorial), or a whole number giving the highest interaction order.
 #' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
+#'   A model with aliased coefficients (an empty cell of the design, or
+#'   collinear predictors) has no Type III tests; Type II tests are then
+#'   computed instead, and \code{$notes}, the method and the table heading
+#'   say so.
 #' @param test_statistic Character. \code{"LR"} (default) or \code{"Wald"},
 #'   passed to \code{\link[car]{Anova}}.
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
@@ -239,6 +243,9 @@ anova_bin <- function(data, response, groups,
     notes <- c(notes, "The logistic regression did not converge; every result below is unreliable.")
   }
   notes <- c(notes, .check_model_size(model))
+  tt <- .type_for_model(model, type)
+  type <- tt$type
+  notes <- c(notes, tt$note)
 
   # The odds ratios come from a reference-coded fit of the same model, so that
   # each one is a level against its reference level whatever `type`, the
@@ -655,14 +662,20 @@ anova_bin <- function(data, response, groups,
 #'   for a fixed dispersion, the squared t quantile when it is estimated.
 #' @param dispersion what the deviance is divided by: 1 for a fixed
 #'   dispersion, the Pearson estimate otherwise, as \code{profile.glm()} does.
+#' @param design optional list with \code{X} and \code{coef}: the same fit on
+#'   another coding (see the code).
 #' @return the two ends on the linear-predictor scale: +/-Inf for an open end,
 #'   NA for a finite end that cannot be found.
 #' @noRd
 .separated_profile <- function(model, term, conf_level,
                                cutoff = stats::qchisq(conf_level, 1),
-                               dispersion = 1) {
-  X <- stats::model.matrix(model)
-  co <- stats::coef(model)
+                               dispersion = 1, design = NULL) {
+  # `design` reparameterises the same fit (a treatment-coded design matrix
+  # `X` spanning the model's column space, with the coefficients `coef` it
+  # gives): the likelihood, and so the profile, are unchanged, but `term`
+  # can then be a coefficient the model itself was not fitted with.
+  X <- if (is.null(design)) stats::model.matrix(model) else design$X
+  co <- if (is.null(design)) stats::coef(model) else design$coef
   keep <- names(co)[!is.na(co)]
   X <- X[, keep, drop = FALSE]
   j <- match(term, colnames(X))

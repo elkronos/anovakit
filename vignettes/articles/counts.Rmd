@@ -1,0 +1,668 @@
+---
+title: "Counts and rates: analysis of deviance with anova_count()"
+description: >
+  A walkthrough of anova_count() on the warpbreaks and insurance-claims data:
+  Poisson or negative binomial, rate ratios, marginal rates, exposure offsets,
+  frequency weights and groups with no events.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+`anova_count()` fits a regression for a count response (the number of
+breaks, claims, visits or incidents) across one or more grouping variables. It
+starts from a Poisson model, checks it for overdispersion, moves to a negative
+binomial model when the counts are more variable than a Poisson allows, and
+reports an analysis of deviance table, incidence rate ratios, estimated
+marginal rates and pairwise rate ratios. With an exposure column (time at
+risk, number of policies) it compares rates rather than counts. For a yes/no
+outcome use `anova_bin()` ([walkthrough](binary.html)); for other response
+distributions, `anova_glm()` ([walkthrough](glm.html)). The
+[decision guide](choosing.html) covers the choice in more detail.
+
+## The data
+
+`warpbreaks` records the number of warp breaks on each of 54 looms, where a
+loom corresponds to a fixed length of yarn, for two types of wool (`A`, `B`)
+at three levels of tension (`L`, `M`, `H`): a 2 by 3 factorial experiment with
+9 looms in each cell.
+
+```{r data}
+head(warpbreaks)
+table(warpbreaks$wool, warpbreaks$tension)
+aggregate(breaks ~ wool + tension, data = warpbreaks,
+          FUN = function(x) round(c(mean = mean(x), variance = var(x)), 1))
+```
+
+```{r data-inline, include = FALSE}
+cell_stats <- aggregate(breaks ~ wool + tension, data = warpbreaks,
+                        FUN = function(x) var(x) / mean(x))
+```
+
+The breaks are counts, so a Poisson model is the natural starting point. A
+Poisson distribution has its variance equal to its mean, and here the variance
+within each cell is between `r round(min(cell_stats$breaks), 1)` and
+`r round(max(cell_stats$breaks), 1)` times the mean. The counts are
+*overdispersed*, and dealing with that is the first thing the function does.
+
+## Fitting the model
+
+Columns are named as character strings: the response, then the grouping
+variables. This is a designed factorial experiment, and whether the effect of
+tension depends on the wool is part of the question, so the model includes the
+interaction:
+
+```{r fit}
+fit <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                   interaction = TRUE)
+fit
+```
+
+Reading the printout from the top:
+
+- The method names the model actually fitted: a negative binomial regression,
+  not the Poisson one you might have expected.
+- `Observations used: 54`, all of them.
+- The omnibus table, headed with what it holds: Type II tests,
+  likelihood-ratio chi-square statistics.
+- The notes: why the model is negative binomial, and a warning about what its
+  tests are worth with 9 looms per cell. Both are discussed in the next
+  section and [below](#what-the-notes-say).
+- The plots that were built (they are not drawn until you ask).
+
+`summary(fit)` prints this plus the assumption checks, the rate ratios, the
+marginal means and the pairwise comparisons.
+
+## Poisson, negative binomial or quasi-Poisson?
+
+The `model` argument decides the model. Its default, `"auto"`, fits a Poisson
+model first and computes its Pearson dispersion: the sum of squared Pearson
+residuals divided by the residual degrees of freedom, which is about 1 when the
+Poisson variance is right. Above `overdispersion_threshold` (1.5 by default)
+the function fits a negative binomial model instead, which needs the **MASS**
+package (without it, or if that fit fails, it uses quasi-Poisson).
+`$model_type` records the outcome:
+
+```{r model-type}
+fit$model_type
+fit$dispersion
+fit$model_dispersion
+```
+
+`$dispersion` is the Pearson dispersion of the *Poisson* fit, the statistic
+the decision was made on: `r round(fit$dispersion, 2)`, well above 1.5.
+`$model_dispersion` is the same statistic for the model actually returned. At
+`r round(fit$model_dispersion, 2)` it says the negative binomial's variance
+function, `mu + mu^2 / theta`, has absorbed the extra variation. The second
+note gives theta, `r round(fit$model$theta, 1)`, and goes on to say something
+important: with 9 observations per cell the negative binomial's
+likelihood-ratio tests and Wald intervals are markedly anti-conservative, and
+quasi-Poisson F tests are better calibrated at this size.
+
+Set `model` yourself to take the decision out of the function's hands. Here
+is the interaction test under each of the three models:
+
+```{r model-compare}
+models <- c("poisson", "quasipoisson", "negbin")
+fits <- lapply(models, function(m)
+  anova_count(warpbreaks, "breaks", c("wool", "tension"), interaction = TRUE,
+              model = m, plots = FALSE))
+data.frame(model = vapply(fits, `[[`, "", "model_type"),
+           test = vapply(fits, function(f) attr(f$anova, "statistic"), ""),
+           statistic = vapply(fits, function(f) f$anova$statistic[3], 0),
+           p_value = vapply(fits, function(f) f$anova$p_value[3], 0))
+```
+
+The Poisson model, which ignores the overdispersion, puts the p-value for the
+interaction below one in a million. Both models that allow for it put it
+between 0.01 and 0.05. An explicit `model = "poisson"` is kept even on data
+like these, but not silently:
+
+```{r model-poisson-notes}
+fits[[1]]$notes[1]
+```
+
+The note puts a size on the problem: at a dispersion of
+`r round(fits[[1]]$dispersion, 2)`, a nominal 5% test rejects roughly 31% of
+true null hypotheses, six times as often as it should.
+
+The quasi-Poisson model keeps the Poisson estimates and scales their variance
+by the estimated dispersion. It has no likelihood, so its table uses F tests:
+
+```{r model-quasi}
+fits[[2]]$anova
+fits[[2]]$notes
+```
+
+`overdispersion_threshold` moves the cut-off for `model = "auto"`. It is a
+fixed cut-off, not a test, and a Poisson model kept below it still gets the
+note on inflated statistics when the dispersion is beyond what chance would
+produce:
+
+```{r model-threshold}
+lenient <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                       interaction = TRUE, overdispersion_threshold = 5,
+                       plots = FALSE)
+lenient$model_type
+lenient$notes
+```
+
+Which to use? The negative binomial is a full likelihood model, and with more
+data per group it is usually the better choice. With groups as small as these,
+the note's advice to prefer quasi-Poisson is worth taking for the tests; the
+rest of this article stays with the automatic choice so that you can see what
+it reports.
+
+## The omnibus test
+
+```{r anova}
+fit$anova
+```
+
+Each row is a likelihood-ratio test: `statistic` is the increase in deviance
+when the term is dropped (with theta held at its estimate), referred to a
+chi-square distribution on `df` degrees of freedom. Type II means each main
+effect is tested after the other and without the interaction, and the
+interaction after both. The `wool:tension` row says the effect of tension
+depends on the wool (p = `r signif(fit$anova$p_value[3], 2)`), so the main
+effects cannot be read on their own; the rate ratios and marginal means below
+show what the interaction looks like.
+
+## Effect sizes: rate ratios
+
+`$effect_sizes` holds incidence rate ratios (IRRs), each a level of a factor
+against its reference (first) level:
+
+```{r effect-sizes}
+print(fit$effect_sizes, digits = 3)
+```
+
+An IRR is the ratio of two expected counts (or two rates, with an offset): 1
+means no difference, 0.5 half as many, 2 twice as many. `factor` names the
+grouping variable and `comparison` says what is compared. In a model with an
+interaction, a main-effect ratio holds at the reference level of the factor it
+interacts with: `B vs A at tension = L` says wool B has
+`r round(fit$effect_sizes$IRR[1], 2)` times the breaks of wool A *at low
+tension*. The interaction rows are ratios of rate ratios:
+`(B vs A) x (M vs L)` is `r round(fit$effect_sizes$IRR[4], 2)`, meaning the
+B-to-A ratio at medium tension is `r round(fit$effect_sizes$IRR[4], 2)` times
+the B-to-A ratio at low tension.
+
+The intervals are Wald intervals on the log scale, exponentiated, and
+`p_value` tests each ratio against 1. They are always computed under
+treatment (reference) coding, whatever `type` or the global `contrasts`
+option; `term` gives the name of the coefficient in that coding.
+
+## Marginal means and comparisons
+
+`$emmeans` holds the estimated marginal means on the count scale, here the
+expected breaks per loom in each cell, with intervals built on the log scale
+and back-transformed:
+
+```{r emmeans}
+print(fit$emmeans, digits = 3)
+```
+
+With the full interaction in the model these are the cell means of the data;
+the model's contribution is the intervals. `$posthoc` compares every pair of
+cells, as rate ratios:
+
+```{r posthoc}
+print(fit$posthoc[, c("contrast", "IRR", "conf_low", "conf_high", "p_value",
+                      "p_adjusted", "adjustment")], digits = 3)
+```
+
+`IRR` is the rate of the first cell in `contrast` divided by the rate of the
+second. `p_value` is unadjusted and `p_adjusted` is adjusted for all
+`r nrow(fit$posthoc)` comparisons by the method in `adjustment` (Tukey by
+default; `adjust` changes it). The intervals are simultaneous.
+
+Most of those comparisons (`A L / B M`, say) answer no question anyone asked.
+For the comparisons of tensions within each wool, pass `$emmeans_object` to
+**emmeans**:
+
+```{r posthoc-by}
+emmeans::contrast(fit$emmeans_object, method = "pairwise", by = "wool")
+```
+
+With wool A, low tension gives clearly more breaks than medium or high, which
+do not differ. With wool B, high tension gives fewer breaks than the other two,
+less decisively.
+
+## Rates: counts with an exposure
+
+Counts are often collected over different amounts of exposure: more
+policyholders, longer follow-up, larger areas. `MASS::Insurance` gives the
+number of car insurance claims in 64 groups of policyholders, by district, car
+group (engine size) and driver age, together with the number of policyholders
+in each group. `District` is left out below to keep the example small.
+
+```{r ins-data}
+ins <- MASS::Insurance
+head(ins)
+```
+
+A group with 1,000 policyholders will have more claims than one with 100, so
+the counts must be compared per policyholder. Name the exposure column in
+`offset`. Give it on its natural scale: the function takes the logarithm
+itself and enters it as `offset(log(Holders))` in the model formula.
+
+```{r ins-fit}
+ins_fit <- anova_count(ins, "Claims", c("Group", "Age"), offset = "Holders")
+ins_fit
+print(formula(ins_fit$model), showEnv = FALSE)
+```
+
+```{r ins-inline, include = FALSE}
+ins_dfr <- df.residual(ins_fit$model)
+ins_p_over <- pchisq(ins_fit$dispersion * ins_dfr, ins_dfr, lower.tail = FALSE)
+```
+
+Here the Poisson model was kept: the dispersion,
+`r round(ins_fit$dispersion, 2)`, is below the threshold and within what
+chance produces (a Pearson test of overdispersion on its `r ins_dfr` residual
+degrees of freedom gives p = `r round(ins_p_over, 2)`), so there is no note on
+inflation. Both factors matter:
+
+```{r ins-es}
+print(ins_fit$effect_sizes, digits = 3)
+```
+
+The rate ratios are now ratios of claims *per policyholder*: drivers aged over
+35 make `r round(ins_fit$effect_sizes$IRR[6], 2)` times as many claims per
+policy as drivers under 25 with the same size of car, and cars over 2 litres
+`r round(ins_fit$effect_sizes$IRR[3], 2)` times as many as cars under 1 litre.
+(`Group` and `Age` are ordered factors. The rate ratios compare levels with
+the first level all the same, as they would for unordered factors.)
+
+The marginal means are rates at an exposure of 1, which a note records: claims
+per policyholder. The unit of the exposure is the unit of the rate, so to
+report claims per thousand policyholders, give the exposure in thousands:
+
+```{r ins-rates}
+ins$thousands <- ins$Holders / 1000
+per_1000 <- anova_count(ins, "Claims", c("Group", "Age"),
+                        offset = "thousands", plots = FALSE)
+print(per_1000$emmeans, digits = 3)
+grep("exposure", per_1000$notes, value = TRUE)
+all.equal(per_1000$effect_sizes, ins_fit$effect_sizes)
+```
+
+The rate ratios, and everything else except the scale of the marginal means,
+are unchanged. The model is additive, so the marginal rates are reported for
+each factor separately, averaged over the other (the `term` column), and
+`$posthoc` compares levels within each factor:
+
+```{r ins-posthoc}
+print(per_1000$posthoc[, c("term", "contrast", "IRR", "conf_low", "conf_high",
+                           "p_adjusted")], digits = 3)
+```
+
+## Checking assumptions
+
+`$assumptions` has three elements, each documented in `?anova_count`:
+
+```{r assumptions}
+fit$assumptions
+```
+
+- `poisson_dispersion` is the Pearson dispersion of the Poisson fit (the same
+  number as `$dispersion`). Near 1 the Poisson variance is adequate; well
+  above it, the counts are overdispersed. Below 1 they are underdispersed,
+  which is rarer and makes Poisson tests conservative.
+- `model_dispersion` is the same statistic for the model returned (the same
+  number as `$model_dispersion`). For a negative binomial fit, a value near 1
+  says the variance function fits; one well above 1 says it does not, and that
+  a model for the source of the extra variation (a missing grouping variable,
+  clustering) is needed.
+- `cell_counts` is the number of observations in each cell of the design
+  (with frequency weights it adds the number of table rows; see
+  [below](#frequency-weights)). Small cells are where the asymptotic tests are
+  least trustworthy, as the note on theta said.
+
+The model also assumes independent counts and that the log rate is additive
+in the terms included, which the interaction test checks for the grouping
+factors. More on the checks across the package is in the
+[diagnostics article](diagnostics.html).
+
+### A group with no events
+
+When a group has no events at all, its fitted rate is zero, the log of it is
+minus infinity, and every rate ratio involving it is undefined. `glm()` still
+reports convergence, with an enormous negative coefficient. To show what the
+function does, here are simulated weekly incident counts at three sites; the
+true rate at `east` is 0.05 a week, small but not zero, and in ten weeks it had
+no incidents:
+
+```{r zero-data}
+set.seed(1)
+incidents <- data.frame(
+  site = factor(rep(c("north", "south", "east"), each = 10),
+                levels = c("north", "south", "east")),
+  events = c(rpois(10, 2), rpois(10, 4), rpois(10, 0.05))
+)
+tapply(incidents$events, incidents$site, sum)
+zero_fit <- anova_count(incidents, "events", "site")
+zero_fit
+```
+
+Two notes flag the problem. The first counts the groups with fewer than 5
+events in total, whose rates rest on very little information. The third names
+the group with no events, says that the rate ratios involving it, its marginal
+mean and the comparisons involving it are unreliable, and says what still
+works. The results bear it out:
+
+```{r zero-es}
+print(zero_fit$effect_sizes, digits = 3)
+print(zero_fit$posthoc[, c("contrast", "IRR", "conf_low", "conf_high",
+                           "p_adjusted")], digits = 3)
+```
+
+`east vs north` is estimated as practically zero, with an interval from 0 to
+infinity and a p-value of `r round(zero_fit$effect_sizes$p_value[2], 2)`:
+the Wald machinery has nothing to work with, however clear the difference.
+The likelihood-ratio test in the omnibus table does work, and it is the number
+to report for the overall comparison. For the rate ratios involving `east`,
+follow the note's advice: collapse the level with another, or use an exact
+method. A robust covariance would fail here too, and `vcov_type` falls back
+to the model-based one with a note saying so:
+
+```{r zero-robust}
+grep("Robust", anova_count(incidents, "events", "site", vcov_type = "HC3",
+                           plots = FALSE)$notes, value = TRUE)
+```
+
+## Plots
+
+`fit$plots` holds two **ggplot2** objects, returned rather than drawn. Use
+`plot(fit, "name")` or `fit$plots$name` to get one.
+
+```{r plot-emmeans}
+plot(fit, "emmeans")
+```
+
+The `emmeans` plot shows the estimated marginal means with their intervals.
+The first grouping variable goes on the x axis and the second becomes the
+colour, one line per level. What to look for: lines that are not parallel
+show an interaction. For wool A, low tension stands well above medium and
+high; for wool B, low and medium are together and high is lowest. The
+low-tension line falls steeply from A to B while the medium one rises, so the
+lines are far from parallel.
+
+```{r plot-observed}
+plot(fit, "observed")
+```
+
+The `observed` plot is a box plot of the raw counts in each cell, ordered by
+median and labelled with the cell's number of observations. What to look for:
+spread that grows with the median (expected for counts, and what the negative
+binomial's variance function allows for), outlying looms, and whether the
+order of the medians agrees with the marginal means.
+
+With an offset, raw counts would mostly show where the exposure is, so the
+plot shows observed rates instead: each row's count divided by its exposure,
+here claims per policyholder.
+
+```{r plot-observed-ins, fig.height = 5}
+plot(ins_fit, "observed")
+```
+
+The title and the y axis name the rate. The order of the boxes follows the
+rate ratios: the lowest median is for drivers over 35 with the smallest cars
+(`<1l : >35`), the highest for drivers under 25 with the largest
+(`>2l : <25`). What to look for is the same as before, plus one thing: a rate
+computed from a small exposure is noisy. The widest box, `>2l : <25`, comes
+from the four groups of young drivers of large cars, which hold between
+`r min(ins$Holders[ins$Group == ">2l" & ins$Age == "<25"])` and
+`r max(ins$Holders[ins$Group == ">2l" & ins$Age == "<25"])` policyholders each.
+
+The plot should tell the same story as the marginal rates. A quick check is to
+pool the claims and policyholders by age band:
+
+```{r plot-observed-check}
+by_age <- aggregate(cbind(Claims, Holders) ~ Age, data = ins, FUN = sum)
+by_age$rate <- by_age$Claims / by_age$Holders
+by_age
+ins_fit$emmeans[ins_fit$emmeans$term == "Age", c("Age", "estimate")]
+```
+
+The pooled rates fall with age, as the marginal rates do. They are not the same
+numbers: the marginal rates are adjusted for car group and average over the
+four car groups equally, while the pooled rates are weighted by where the
+policyholders are. Each plot is a ggplot and can be modified with `+`; the
+[plots article](visuals.html) has more.
+
+## Options worth knowing
+
+### `interaction`
+
+The model is additive by default. An additive model gives each factor's
+effect averaged over the other, which is what you want when the interaction is
+absent and misleading when it is not. For comparison, the additive fit of the
+same data reports marginal means for each factor separately:
+
+```{r additive}
+additive <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                        plots = FALSE)
+additive$anova
+print(additive$emmeans, digits = 3)
+```
+
+The wool rows average over tensions, hiding the fact that the wool difference
+runs in opposite directions at low and medium tension. Decide on the
+interaction before looking at the answers, as the design here justified.
+
+### `test_statistic`
+
+`"LR"` (the default) gives likelihood-ratio tests; `"Wald"` gives Wald
+chi-square tests; `"F"` gives F tests, which is what a quasi-Poisson model
+uses anyway. On a negative binomial (or Poisson) model, `"F"` estimates a
+dispersion from the Pearson residuals and divides the deviances by it, which
+makes the table a quasi-likelihood test while the rate ratios still assume the
+model's own dispersion. The note says so:
+
+```{r test-statistic}
+wald_fit <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                        interaction = TRUE, test_statistic = "Wald",
+                        plots = FALSE)
+wald_fit$anova
+f_fit <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                     interaction = TRUE, test_statistic = "F", plots = FALSE)
+f_fit$anova
+grep("test_statistic", f_fit$notes, value = TRUE)
+```
+
+For quasi-likelihood inference throughout, use `model = "quasipoisson"`.
+
+### `vcov_type`
+
+`vcov_type` requests heteroskedasticity-consistent (sandwich) standard errors,
+`"HC0"` to `"HC4"`, from the **sandwich** package. They reach the rate ratios,
+the marginal means and the comparisons. A likelihood-ratio test compares
+deviances and cannot use them, so the omnibus table uses them only with
+`test_statistic = "Wald"`:
+
+```{r vcov}
+robust <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                      interaction = TRUE, vcov_type = "HC3",
+                      test_statistic = "Wald", plots = FALSE)
+robust$anova
+data.frame(comparison = fit$effect_sizes$comparison,
+           model_low = fit$effect_sizes$conf_low,
+           model_high = fit$effect_sizes$conf_high,
+           hc3_low = robust$effect_sizes$conf_low,
+           hc3_high = robust$effect_sizes$conf_high)
+grep("robust", robust$notes, value = TRUE)
+```
+
+The robust intervals are wider here: with 9 looms a cell, the sandwich
+estimate is noisy, and it is better used as a check on the model-based
+standard errors than as a replacement for them.
+
+### Frequency weights
+
+A table of counts with a column saying how often each count occurred is a
+frequency table. `weights` names that column, and whole-number weights (some
+above 1) are read as frequencies: each row stands for that many identical
+observations. `InsectSprays` has 12 insect counts for each of six sprays;
+here it is as a frequency table:
+
+```{r weights-table}
+spray_tab <- as.data.frame(table(spray = InsectSprays$spray,
+                                 count = InsectSprays$count),
+                           stringsAsFactors = FALSE)
+spray_tab <- spray_tab[spray_tab$Freq > 0, ]
+spray_tab$count <- as.numeric(spray_tab$count)
+head(spray_tab)
+c(rows = nrow(spray_tab), observations = sum(spray_tab$Freq))
+```
+
+The frequency table and the original 72 rows give the same analysis:
+
+```{r weights-fit}
+from_rows <- anova_count(InsectSprays, "count", "spray", plots = FALSE)
+from_table <- anova_count(spray_tab, "count", "spray", weights = "Freq",
+                          plots = FALSE)
+c(rows = from_rows$dispersion, table = from_table$dispersion)
+c(rows = from_rows$model_type, table = from_table$model_type)
+all.equal(from_rows$anova, from_table$anova)
+all.equal(from_rows$effect_sizes, from_table$effect_sizes)
+all.equal(from_rows$emmeans, from_table$emmeans)
+from_table$notes
+```
+
+The dispersion is the same in both, because with frequency weights it divides
+by the number of observations the weights represent (minus the number of
+parameters), not by the number of rows. Dividing by rows, as `glm()`'s own
+residual degrees of freedom would, inflates it:
+
+```{r weights-rows}
+pois_table <- glm(count ~ spray, family = poisson, data = spray_tab,
+                  weights = Freq)
+sum(residuals(pois_table, type = "pearson")^2) / df.residual(pois_table)
+```
+
+That inflation could switch a Poisson model to a negative binomial one for no
+reason. (Here both values are above the threshold, so the choice would be the
+same either way; the correct one, `r round(from_rows$dispersion, 3)`, is only
+just above it, and the theta note says the negative binomial has only weakly
+overdispersed data to work with.) With `vcov_type`, the sandwich is also
+computed as it would be on the expanded data:
+
+```{r weights-robust}
+hc_rows <- anova_count(InsectSprays, "count", "spray", vcov_type = "HC3",
+                       plots = FALSE)
+hc_table <- anova_count(spray_tab, "count", "spray", weights = "Freq",
+                        vcov_type = "HC3", plots = FALSE)
+all.equal(hc_rows$effect_sizes, hc_table$effect_sizes)
+```
+
+With frequency weights, `$assumptions$cell_counts` gives both sizes: `n` is
+the number of observations in each cell (the sum of the weights) and `rows` the
+number of rows of the table behind them.
+
+```{r weights-cells}
+from_table$assumptions$cell_counts
+```
+
+The `observed` plot draws the observations too, expanding the table, so it is
+the same plot the 72 original rows give, with 12 observations per spray:
+
+```{r weights-plot}
+plot(anova_count(spray_tab, "count", "spray", weights = "Freq"), "observed")
+```
+
+A table that stands for more than 200,000 observations is not expanded; the
+plot then shows one point per row, and a note says so:
+
+```{r weights-big}
+big_tab <- transform(spray_tab, Freq = Freq * 5000)
+big_fit <- anova_count(big_tab, "count", "spray", weights = "Freq")
+grep("200,000", big_fit$notes, value = TRUE)
+```
+
+### `type`, `adjust`, `conf_level` and `posthoc`
+
+`type = "III"` fits the model under sum-to-zero contrasts, which changes the
+main-effect rows of `$anova` when there is an interaction; the rate ratios are
+unchanged.
+`posthoc = FALSE` skips the pairwise comparisons, with a note:
+
+```{r type3}
+type3 <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                     interaction = TRUE, type = "III", posthoc = FALSE,
+                     plots = FALSE)
+type3$anova
+all.equal(type3$effect_sizes, fit$effect_sizes)
+grep("posthoc|still reports", type3$notes, value = TRUE)
+```
+
+`adjust` sets the multiplicity adjustment for `$posthoc` and `conf_level` the
+level of every interval, as in the other model-based functions; the
+[binary-outcomes walkthrough](binary.html) shows both.
+
+## What the notes say
+
+```{r notes}
+fit$notes
+```
+
+- The first note records the model choice: the Poisson dispersion, the
+  threshold, and the model fitted instead. It is also how to override it.
+- The second gives the negative binomial's theta, the variance function it
+  implies, and how far to trust the tests and intervals given the size of the
+  smallest group. With 9 looms per cell it recommends quasi-Poisson F tests,
+  and in a write-up of these data that is the version of the interaction test
+  worth reporting alongside (or instead of) this one.
+
+There is no note on the layout of the marginal means, because with the
+interaction in the model they are cells; an additive fit (the insurance model,
+for one) adds a note explaining the per-factor layout. Other fits in this
+article showed the notes on an explicit Poisson model with overdispersion, on
+quasi-Poisson F tests, on exposure, on sparse and empty groups, on robust
+standard errors, and on frequency weights (including a table too large to plot
+one point per observation). The [results article](results.html) explains how
+`$notes` fits with the rest of the object.
+
+## Reporting the result
+
+```{r report-inline, include = FALSE}
+a <- fit$anova
+qp <- fits[[2]]$anova
+es <- fit$effect_sizes
+fmt_p <- function(p) {
+  if (p < 0.001) "< 0.001" else paste("=", sprintf("%.3f", p))
+}
+```
+
+A write-up might read:
+
+> Warp breaks were analysed with a negative binomial regression on wool,
+> tension and their interaction (Pearson dispersion of the Poisson model
+> `r sprintf("%.2f", fit$dispersion)`; theta =
+> `r sprintf("%.1f", fit$model$theta)`).
+> The effect of tension depended on the wool (likelihood-ratio
+> χ²(`r a$df[3]`) = `r sprintf("%.2f", a$statistic[3])`, p
+> `r fmt_p(a$p_value[3])`; quasi-Poisson F(`r qp$df[3]`, `r qp$df[4]`) =
+> `r sprintf("%.2f", qp$statistic[3])`, p `r fmt_p(qp$p_value[3])`). At low
+> tension wool B produced fewer breaks than wool A (rate ratio
+> `r sprintf("%.2f", es$IRR[1])`, 95% CI `r sprintf("%.2f", es$conf_low[1])`
+> to `r sprintf("%.2f", es$conf_high[1])`), and with wool A both medium and
+> high tension reduced breaks by about half relative to low tension (rate
+> ratios `r sprintf("%.2f", es$IRR[2])` and `r sprintf("%.2f", es$IRR[3])`).
+
+## See also
+
+- `?anova_count` for every argument, and `?anovakit_fit` for the returned
+  object.
+- [Binary outcomes with `anova_bin()`](binary.html), the companion function
+  for yes/no responses.
+- [Generalised linear models with `anova_glm()`](glm.html) for other families.
+- [Working with results](results.html) and [Diagnostics](diagnostics.html).
+- [Plots and visual customisation](visuals.html).

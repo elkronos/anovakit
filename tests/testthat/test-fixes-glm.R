@@ -252,23 +252,29 @@ test_that("F046: the two-cell note claims equivalence only when t^2 = F", {
 
 # F051 -------------------------------------------------------------------------
 
-test_that("F051: a Gaussian fit whose ANOVA table fails never reports McFadden", {
+test_that("F051: a Gaussian fit with no Type III table never reports McFadden", {
   d <- withr::with_seed(11, {
     dd <- expand.grid(A = c("a1", "a2", "a3"), B = c("b1", "b2", "b3"), rep = 1:6)
     dd <- dd[!(dd$A == "a3" & dd$B == "b3"), ]
     dd$y <- stats::rnorm(nrow(dd)) + (dd$A == "a2") + 0.5 * (dd$B == "b2")
     dd
   })
-  # car refuses the same model, so there is no table to take sums of squares from
+  # car refuses Type III tests for the same model, so the function falls back
+  # to Type II ones; the effect sizes then come from that table, and are still
+  # partial eta and omega squared rather than McFadden's R squared.
   m <- withr::with_options(list(contrasts = c("contr.sum", "contr.poly")),
                            stats::glm(y ~ A * B, data = d))
   expect_error(car::Anova(m, type = 3, test.statistic = "F"), "aliased")
   fit <- anova_glm(d, "y", c("A", "B"), interaction = TRUE, type = "III",
                    plots = FALSE, ci_method = "wald")
-  expect_identical(nrow(fit$effect_sizes), 0L)
+  expect_identical(attr(fit$anova, "ss_type"), "II")
+  expect_identical(nrow(fit$effect_sizes), 3L)
   expect_true("partial_eta_sq" %in% names(fit$effect_sizes))
   expect_false("measure" %in% names(fit$effect_sizes))
-  expect_true(any(grepl("Partial eta and omega squared could not be computed", fit$notes)))
+  expect_false(any(grepl("McFadden", fit$notes)))
+  ss <- fit$anova$sum_sq
+  expect_equal(fit$effect_sizes$partial_eta_sq,
+               ss[1:3] / (ss[1:3] + ss[fit$anova$term == "Residuals"]))
 })
 
 test_that("F051: a Gaussian LR or Wald test still gets partial eta squared", {

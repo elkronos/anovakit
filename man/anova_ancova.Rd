@@ -50,7 +50,11 @@ a single grouping variable. The covariate slopes are allowed to differ
 across every grouping term this includes. See Details.}
 
 \item{type}{Character. \code{"III"} (default) or \code{"II"} sums of squares.
-The model is fitted under sum-to-zero contrasts when \code{"III"}.}
+The model is fitted under sum-to-zero contrasts when \code{"III"}.
+A model with aliased coefficients (an empty cell of the design, or
+collinear predictors) has no Type III tests; Type II tests are then
+computed instead, and \code{$notes}, the method and the table heading
+say so.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned,
 including the bands of the covariate plot. Default \code{0.95}.}

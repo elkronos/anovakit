@@ -10,3 +10,5 @@
 ^CRAN-SUBMISSION$
 ^.*\.Rcheck$
 ^.*\.tar\.gz$
+^vignettes/articles$
+^pkgdown$
