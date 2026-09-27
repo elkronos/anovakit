@@ -440,8 +440,16 @@ carry one more message worth reading:
 two$notes[3]
 ```
 
-The mothers' weights differ between the cells, so a slope difference the test
-missed would bias the comparisons. Since smoking and race were not randomised,
+```{r birthwt-gap, include = FALSE}
+cell <- interaction(bw$race, bw$smoke)
+sd_within <- sqrt(sum((bw$lwt - ave(bw$lwt, cell))^2) /
+                    (nrow(bw) - nlevels(cell)))
+imb_gap <- diff(range(tapply(bw$lwt, cell, mean))) / sd_within
+```
+
+The mothers' mean weights differ between the cells by up to
+`r sprintf("%.2f", imb_gap)` pooled within-group SDs, so a slope difference
+the test missed would bias the comparisons. Since smoking and race were not randomised,
 this is the situation where `force_interaction = TRUE` is the safer choice.
 
 ### The rest

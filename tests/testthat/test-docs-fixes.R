@@ -90,3 +90,43 @@ test_that("with an offset the observed plot shows rates", {
   ref <- tapply(d$y / d$hours, d$g, stats::median)
   expect_equal(sort(ld$middle), sort(as.numeric(ref)))
 })
+
+test_that("print() shows a long call without deparse's indentation", {
+  fit <- anova_welch(warpbreaks, "breaks", c("wool", "tension"), plots = FALSE)
+  out <- utils::capture.output(print(fit))
+  call_line <- grep("^Call: ", out, value = TRUE)
+  expect_length(call_line, 1L)
+  expect_no_match(call_line, "  ")
+})
+
+test_that("the box plot draws infinite responses without warning", {
+  worst <- data.frame(g = rep(c("a", "b"), each = 5),
+                      y = c(1:5, 6, 7, Inf, Inf, Inf))
+  fit <- anova_kw(worst, "y", "g")
+  expect_no_warning(ggplot2::ggplot_build(fit$plots$box))
+  ld <- ggplot2::layer_data(fit$plots$box, 1)
+  expect_true(all(is.finite(ld$ymax)))
+})
+
+test_that("anova_glm's table has one column order whatever the statistic", {
+  skip_if_not_installed("MASS")
+  cols <- lapply(c("F", "LR", "Wald"), function(ts) {
+    names(anova_glm(MASS::Cars93, "Price", "Type", family = Gamma(link = "log"),
+                    test_statistic = ts, plots = FALSE)$anova)
+  })
+  expect_identical(cols[[1]], c("term", "sum_sq", "df", "statistic", "p_value"))
+  expect_identical(cols[[2]], c("term", "df", "statistic", "p_value"))
+  expect_identical(cols[[3]], cols[[2]])
+})
+
+test_that("marginal-means plots join points only across a second factor", {
+  one <- anova_glm(chickwts, "weight", "feed")
+  geoms <- vapply(one$plots$emmeans$layers, function(l) class(l$geom)[1],
+                  character(1))
+  expect_false("GeomLine" %in% geoms)
+  tg <- transform(ToothGrowth, dose = factor(dose))
+  two <- anova_glm(tg, "len", c("dose", "supp"), interaction = TRUE)
+  geoms2 <- vapply(two$plots$emmeans$layers, function(l) class(l$geom)[1],
+                   character(1))
+  expect_true("GeomLine" %in% geoms2)
+})
