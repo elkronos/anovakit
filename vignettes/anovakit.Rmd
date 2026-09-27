@@ -277,6 +277,10 @@ cnt$notes
 
 ## Where to go next
 
+The package website, <https://elkronos.github.io/anovakit/>, has a
+walkthrough for every function, guides to the diagnostics and the plots, and a
+guide to choosing between the functions.
+
 `?anovakit_fit` documents every component of the returned object, including
 the ones each function adds for itself. `names(fit)` lists them for any fit you
 have in hand.
