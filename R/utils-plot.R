@@ -100,6 +100,10 @@
   df <- data.frame(value = data[[response]],
                    cell  = droplevels(as.factor(data[[cell]])),
                    stringsAsFactors = FALSE)
+  # anova_kw() keeps infinite responses, which a box plot cannot place; drawn
+  # as they are, ggplot2 warns about them every time the plot is printed.
+  # The labels count what is drawn.
+  df <- df[is.finite(df$value), , drop = FALSE]
   counts <- table(df$cell)
   med <- tapply(df$value, df$cell, stats::median, na.rm = TRUE)
   # Look levels up by position, not by name: a level that is the empty string
@@ -183,9 +187,13 @@
     lab_colour <- NULL
   }
 
-  p <- p +
-    ggplot2::geom_line(linewidth = 0.7) +
-    ggplot2::geom_point(size = 2.5)
+  # Lines connect the levels of the other factors, which is what shows an
+  # interaction; for a single unordered factor they would suggest a trend
+  # between categories that have no order, so only the points are drawn.
+  if (length(factors) > 1L || is.ordered(emm[[xvar]])) {
+    p <- p + ggplot2::geom_line(linewidth = 0.7)
+  }
+  p <- p + ggplot2::geom_point(size = 2.5)
   if (has_ci) {
     p <- p + ggplot2::geom_errorbar(
       ggplot2::aes(ymin = .data[[lower]], ymax = .data[[upper]]),

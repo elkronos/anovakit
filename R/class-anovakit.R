@@ -159,7 +159,7 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
   cat(x$method, "\n")
   cat(strrep("-", nchar(x$method)), "\n", sep = "")
   if (!is.null(x$call)) {
-    cat("Call: ", paste(deparse(x$call), collapse = " "), "\n", sep = "")
+    cat("Call: ", paste(trimws(deparse(x$call)), collapse = " "), "\n", sep = "")
   }
   n <- if (!is.null(x$data_used)) nrow(x$data_used) else NA_integer_
   cat(sprintf("Observations used: %s%s\n",

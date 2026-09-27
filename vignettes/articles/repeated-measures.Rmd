@@ -493,9 +493,12 @@ sl
 
 With a two-level factor there is only one difference per subject, so
 sphericity holds automatically: `$sphericity` is `NULL` and the note says why.
-(The heading of the table still names the default Greenhouse-Geisser
-correction, but there is nothing to correct: the degrees of freedom are the
-uncorrected `r sl$anova$num_df` and `r sl$anova$den_df`.) The ANOVA is then the paired t-test in another form, with F = t^2^:
+The heading of the table says "no sphericity correction", and
+`attr(sl$anova, "correction")` is "`r attr(sl$anova, "correction")`", even
+though `correction` was left at its default: there is nothing to correct, and
+the degrees of freedom are the uncorrected `r sl$anova$num_df` and
+`r sl$anova$den_df`. The ANOVA is then the paired t-test in another form, with
+F = t^2^:
 
 ```{r sleep-t}
 d <- with(datasets::sleep, extra[group == "2"] - extra[group == "1"])

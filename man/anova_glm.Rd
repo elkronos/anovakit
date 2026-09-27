@@ -109,6 +109,12 @@ Default \code{FALSE}.}
 An \code{\link{anovakit_fit}} object, with \code{$family} (the
   family object actually used) and \code{$model_stats} (AIC, BIC, the null
   and residual deviances, and the residual degrees of freedom).
+  \code{$anova} has the columns \code{term}, \code{sum_sq} (F tests only),
+  \code{df}, \code{statistic} and \code{p_value}, in that order whatever
+  \code{test_statistic}. In an F table of a non-Gaussian family, as
+  \pkg{car} computes it, a term's \code{sum_sq} is its change in deviance
+  and the \code{Residuals} row holds the Pearson chi-square, from which the
+  dispersion the F statistic divides by is estimated.
   \code{$assumptions} holds \code{coefficients} -- the coefficient table,
   with the intervals \code{ci_method} selects -- and \code{dispersion}.
   \code{$effect_sizes} depends on the family:

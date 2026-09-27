@@ -121,7 +121,7 @@ lower bound, and a note says so:
 
 ```{r roy}
 roy <- anova_manova(iris, resp, "Species", test = "Roy", plots = FALSE)
-roy$notes[1]
+roy$notes
 roy$test
 ```
 
@@ -284,7 +284,9 @@ covariance difference combines with the group sizes. With equal group sizes, as
 here, Pillai's trace is robust to unequal covariance matrices; with unequal
 sizes and unequal covariances, the test is liberal when the smaller groups have
 the larger covariances, and Pillai's trace is still the safest choice. The
-function's notes give the same advice. With a separation this strong, no
+Box's M note makes the same distinction: it checks whether the group sizes are
+equal and says whether Pillai's trace is the statistic in use (see
+[What the notes say](#what-the-notes-say)). With a separation this strong, no
 reasonable violation would change the conclusion.
 
 The [diagnostics article](diagnostics.html) covers the checks across the
@@ -355,7 +357,8 @@ so the distance between centroids is in within-group standard deviations. What
 to look for: how far apart the groups are along each axis. Here the species are
 spread along `Can1` with setosa well clear of the other two, while `Can2`
 separates them far less, as its eigenvalue says. With only one estimable axis
-the plot becomes a box plot of `Can1` by group, as in the examples below.
+the plot becomes a box plot of `Can1` by group, subtitled "Only one
+discriminant axis is estimable", as in the examples below.
 
 ## MANCOVA: adding covariates
 
@@ -430,13 +433,13 @@ mc$notes
 ```
 
 `Sex` has one degree of freedom, so there is one canonical axis, and the
-canonical plot shows it as a box plot by group. The subtitle the function
-gives it mentions centroid crosses, which a box plot does not draw, so it is
-replaced here, which also shows how any plot can be modified with `+`:
+canonical plot shows it as a box plot by group, subtitled "Only one
+discriminant axis is estimable". Because the model has two terms, the subtitle
+also names the term the axis describes and says that the other terms' effects
+(here, height's) were removed:
 
 ```{r mancova-canonical}
-plot(mc, "canonical") +
-  ggplot2::labs(subtitle = "Axis for the Sex term, with the effect of height removed")
+plot(mc, "canonical")
 ```
 
 Men score higher on the axis, but the boxes overlap: at the same height, hand
@@ -478,12 +481,11 @@ the interaction alone:
 ```{r crabs-canonical}
 cr$canonical_term
 cr$canonical
-plot(cr, "canonical") + ggplot2::labs(subtitle = "Axis for the sp:sex term")
+plot(cr, "canonical")
 ```
 
-`sp:sex` has one degree of freedom, so there is one axis (and, as above, the
-default subtitle's mention of crosses is replaced). With the main effects
-removed, the scores show the interaction contrast itself: blue females and
+`sp:sex` has one degree of freedom, so there is one axis, and the subtitle says
+so. With the main effects removed, the scores show the interaction contrast itself: blue females and
 orange males on one side, orange females and blue males on the other. Without the
 interaction, the analysis describes the main effect of the first grouping
 variable; list another variable first in `groups` to describe it instead. In
@@ -522,12 +524,17 @@ head(cr_add$emmeans[, c("response", "term", "sex", "sp", "estimate")], 4)
 fit$notes
 ```
 
-1. Mardia's tests reject multivariate normality, and the note points to
-   Pillai's trace as the most robust statistic, which is already in use.
+1. Mardia's tests reject multivariate normality, and the note says that the
+   table already uses Pillai's trace, the most robust of the four statistics
+   to this.
 2. Box's M rejects equal covariance matrices. The note reminds you that the
-   test is very sensitive to non-normality, asks you to inspect the group
-   covariances, and again points to Pillai's trace for unequal group sizes
-   (they are equal here).
+   test is very sensitive to non-normality and asks you to inspect the group
+   covariances. Because the group sizes are equal, it adds that the
+   multivariate tests are then fairly robust to unequal covariances, Pillai's
+   trace most of all, and that Pillai's trace is the statistic used here.
+
+With another `test`, both notes recommend `test = "Pillai"` instead, as the
+`roy` fit [above](#which-statistic-test) shows.
 
 Other notes you may see: dropped rows, centred covariates, a rejected slopes
 test, the Roy bound, which term the canonical analysis describes, a term whose

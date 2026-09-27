@@ -183,6 +183,11 @@
     if (!target %in% names(out)) out[[target]] <- df[[nm]]
   }
   out <- out[!out$term %in% "(Intercept)", , drop = FALSE]
+  # car orders its columns by statistic (Df first for Wald, last for LR); one
+  # order whatever the test keeps positional access and printing stable.
+  lead <- intersect(c("term", "sum_sq", "mean_sq", "df", "statistic"), names(out))
+  tail <- intersect("p_value", names(out))
+  out <- out[c(lead, setdiff(names(out), c(lead, tail)), tail)]
   row.names(out) <- NULL
   if (!is.na(type)) attr(out, "ss_type") <- type
   if (!is.na(stat_name)) {
