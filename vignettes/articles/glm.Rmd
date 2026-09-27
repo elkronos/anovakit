@@ -1,0 +1,721 @@
+---
+title: "Analysis of deviance: factorial designs and non-normal responses"
+description: >
+  A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and
+  Type III tests, then a Gamma model for a positive, right-skewed response,
+  with its coefficient table, dispersion, robust standard errors and weights.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+```{r helpers, include = FALSE}
+# Formatting helpers for numbers quoted in the prose.
+f2 <- function(x) formatC(x, format = "f", digits = 2)
+f3 <- function(x) formatC(x, format = "f", digits = 3)
+fp <- function(p) if (p < 0.001) "< 0.001" else paste("=", f3(p))
+```
+
+`anova_glm()` fits a generalised linear model of a response on one or more
+grouping factors, in any `family`, and reports an analysis-of-deviance table,
+effect sizes, estimated marginal means and pairwise comparisons. With the
+default Gaussian family it is an ordinary factorial analysis of variance.
+Other families model responses whose spread changes with their mean. It is the
+general tool. For a one-way comparison of means with unequal variances,
+`anova_welch()` is better calibrated ([walkthrough](welch.html)). For 0/1
+outcomes use `anova_bin()` ([walkthrough](binary.html)), and for counts use
+`anova_count()` ([walkthrough](counts.html)): both add diagnostics and effect
+sizes that this function does not. To adjust for a numeric covariate use
+`anova_ancova()` ([walkthrough](ancova.html)).
+
+## The data
+
+`ToothGrowth` records the length of odontoblasts (the cells responsible for
+tooth growth) in 60 guinea pigs. Each animal received vitamin C at one of three
+doses (0.5, 1 or 2 mg/day) by one of two delivery methods: orange juice (`OJ`)
+or ascorbic acid (`VC`). `dose` is stored as a number, so make it a factor:
+it is a grouping variable here, with three levels.
+
+```{r data}
+tg <- ToothGrowth
+tg$dose <- factor(tg$dose)
+head(tg)
+table(tg$supp, tg$dose)
+round(tapply(tg$len, list(tg$supp, tg$dose), mean), 2)
+```
+
+This is a balanced 2 x 3 factorial design with ten animals per cell. The
+interesting question is not just whether dose and supplement matter, but
+whether the effect of the supplement depends on the dose. The cell means
+suggest it does: orange juice is ahead at the two lower doses, but not at
+2 mg/day.
+
+## Fitting the model
+
+Columns are named as character strings. With `interaction = TRUE` the model
+contains both factors and their interaction. Listing `dose` first puts it on
+the x axis of the marginal-means plot.
+
+```{r fit}
+fit <- anova_glm(tg, "len", c("dose", "supp"), interaction = TRUE)
+fit
+```
+
+Reading the printout from the top:
+
+- The first line names the family, the link and the type of sums of
+  squares. A Gaussian family with the identity link is an ordinary linear
+  model.
+- `Call:` records how the fit was made, and `Observations used: 60` says no
+  rows were dropped.
+- The heading `Omnibus test (Type II, F)` names the type of sums of squares
+  and the test statistic. Both change what the numbers mean, and neither can
+  be read off the table itself.
+- There is no `Notes` block, because nothing needed saying. See
+  [What the notes say](#what-the-notes-say).
+- `Plots available` lists the four plots in `$plots`.
+
+`summary(fit)` adds the assumption checks (the dispersion and the coefficient
+table), the effect sizes, the marginal means and the pairwise comparisons.
+
+## The omnibus test
+
+```{r anova}
+fit$anova
+```
+
+- `term` names the effect. `dose:supp` is the interaction.
+- `sum_sq` and `df` are the sum of squares and degrees of freedom of each term.
+  The `Residuals` row holds the error sum of squares and its degrees of
+  freedom.
+- `statistic` is the F statistic, the term's mean square divided by the
+  residual mean square.
+- `p_value` is its p-value.
+
+The interaction is significant (F = `r f2(fit$anova$statistic[3])`,
+p `r fp(fit$anova$p_value[3])`): the supplement effect is not the same at
+every dose. When an interaction is present, a main-effect row averages over a
+pattern that changes, so read the cell means below rather than the main
+effects alone.
+
+### Type II or Type III
+
+With `type = "II"` (the default) each main effect is tested after the other
+main effect, but not after the interaction. With `type = "III"` every term is
+tested after every other, interaction included. In a balanced design like this
+one the two coincide:
+
+```{r type-balanced}
+fit3 <- anova_glm(tg, "len", c("dose", "supp"), interaction = TRUE,
+                  type = "III", plots = FALSE)
+fit3$anova
+```
+
+They part company when the cells are unequal. Suppose four animals had been
+lost from the `VC`, 2 mg cell and two from the `OJ`, 0.5 mg cell:
+
+```{r type-unbalanced}
+lost <- c(which(tg$supp == "VC" & tg$dose == "2")[1:4],
+          which(tg$supp == "OJ" & tg$dose == "0.5")[1:2])
+tg_u <- tg[-lost, ]
+table(tg_u$supp, tg_u$dose)
+anova_glm(tg_u, "len", c("dose", "supp"), interaction = TRUE,
+          plots = FALSE)$anova
+anova_glm(tg_u, "len", c("dose", "supp"), interaction = TRUE,
+          type = "III", plots = FALSE)$anova
+```
+
+The interaction row is the same in both, because it is adjusted for
+everything either way. The main-effect rows differ. Type II is the more
+powerful test of a main effect when there is no interaction. Type III tests
+each main effect averaged over the levels of the other factor, weighting each
+cell equally. Some analysts prefer that when an interaction is present, since
+it does not depend on the cell sizes.
+
+**Why Type III is fitted under sum-to-zero contrasts.** A Type III test of
+`supp` removes the columns that code `supp` while keeping the interaction. What
+that tests depends on how the factors are coded. Under R's default treatment
+contrasts, the `supp` columns describe the supplement effect at the reference
+dose only, and the "Type III" row for `supp` becomes a test of the supplement
+at 0.5 mg/day. Under sum-to-zero contrasts it is the supplement effect averaged
+over the doses, which is what a main effect is supposed to be. So when you ask
+for `type = "III"`, `anova_glm()` fits the model under `contr.sum`. Setting
+`options(contrasts = )` afterwards would not help, because the contrasts are
+stored on the fitted model. Here is what you would get by fitting with the
+defaults and asking `car::Anova()` for Type III:
+
+```{r naive-type3}
+naive <- glm(len ~ dose * supp, data = tg)    # treatment contrasts
+naive_tab <- car::Anova(naive, type = 3, test.statistic = "F")
+naive_tab
+unlist(fit3$model$contrasts)
+```
+
+The `supp` row has F = `r f2(naive_tab["supp", "F values"])`, the test of the
+supplement at the reference dose, not the
+F = `r f2(fit3$anova$statistic[2])` of the averaged main effect. The data are
+the same, and the table carries the same label. The contrasts stored on
+`fit3$model` show how `anova_glm()` avoids this.
+
+## Effect sizes
+
+For a Gaussian model `$effect_sizes` holds partial eta squared and partial
+omega squared for each term, computed from the sums of squares of the table
+above:
+
+```{r effect-sizes}
+fit$effect_sizes
+```
+
+- `partial_eta_sq` is the term's sum of squares divided by itself plus the
+  residual sum of squares: the share of the variance not explained by the
+  other terms that this term explains. Dose accounts for
+  `r round(100 * fit$effect_sizes$partial_eta_sq[1])`% of it.
+- `partial_omega_sq` is the same idea with a correction for the upward bias of
+  eta squared in samples, so it is a little smaller. A negative value
+  is floored at 0, with a note.
+
+Both are *partial*: they do not add up to 1 across terms, and they should not
+be read as a partition of the total variance.
+
+## Marginal means and comparisons
+
+Because the model contains the interaction, the estimated marginal means are
+for the six cells. For a Gaussian model with the identity link they are the
+cell means, with intervals that use the pooled residual variance:
+
+```{r emmeans}
+fit$emmeans
+```
+
+`$posthoc` compares every pair of cells, 15 in all, with a Tukey adjustment by
+default. The three comparisons of the supplements at the same dose are:
+
+```{r posthoc}
+same_dose <- c("dose0.5 OJ - dose0.5 VC", "dose1 OJ - dose1 VC",
+               "dose2 OJ - dose2 VC")
+ph <- fit$posthoc
+print(ph[ph$contrast %in% same_dose, ], digits = 3)
+```
+
+`estimate` is the first cell minus the second. `conf_low` and `conf_high` are
+Tukey-adjusted (simultaneous) intervals. `p_value` is unadjusted, and
+`p_adjusted` is adjusted across all 15 comparisons. Orange juice gives longer
+odontoblasts than ascorbic acid at 0.5 and 1 mg/day, and the two are
+indistinguishable at 2 mg/day.
+
+If only those three comparisons interest you, adjusting for all 15 is more
+conservative than it needs to be. `$emmeans_object` is the **emmeans** grid, so
+you can ask for exactly the family you want. It carries **emmeans**' own default
+level, so give `level =` explicitly:
+
+```{r emm-object}
+by_dose <- emmeans::contrast(fit$emmeans_object, method = "pairwise",
+                             by = "dose")
+summary(by_dose, infer = TRUE, level = 0.95)
+```
+
+With one comparison per dose there is nothing to adjust within each family.
+The [results article](results.html) covers `$emmeans_object` further.
+
+## Checking assumptions
+
+A Gaussian model assumes independent observations, normally distributed
+errors and the same error variance in every cell. `$assumptions` holds two
+elements, and the residual plots in the next section do the rest.
+
+```{r dispersion}
+fit$assumptions$dispersion
+sqrt(fit$assumptions$dispersion)
+```
+
+`dispersion` is the Pearson dispersion: the sum of squared Pearson residuals
+divided by the residual degrees of freedom. For a Gaussian model that is the
+residual mean square, so its square root,
+`r f2(sqrt(fit$assumptions$dispersion))`, is the residual standard deviation
+in the units of the response.
+
+```{r coefficients}
+fit$assumptions$coefficients
+```
+
+`coefficients` is the coefficient table, with t statistics (the dispersion is
+estimated) and profile-likelihood intervals by default, which for a Gaussian
+model equal `confint(lm())`. Under the default treatment contrasts the
+intercept is the mean of the reference cell (0.5 mg/day, orange juice), and
+the other coefficients are differences from it. `fit3`, fitted under
+sum-to-zero contrasts, has different coefficients describing the same fitted
+values. There the intercept is the average of the six cell means, `dose1` is
+the average for 0.5 mg/day minus that grand mean, and `supp1` is the average
+for orange juice minus it:
+
+```{r coefficients-sum}
+fit3$assumptions$coefficients[, c("term", "estimate")]
+mean(fit$emmeans$estimate)
+```
+
+There is no formal normality test. Read the Q-Q plot below. For equal
+variances, compare the cell standard deviations:
+
+```{r cell-sds}
+cell_sd <- tapply(tg$len, list(tg$supp, tg$dose), sd)
+round(cell_sd, 2)
+```
+
+They range from `r f2(min(cell_sd))` to `r f2(max(cell_sd))`, so the largest
+cell variance is `r f2((max(cell_sd) / min(cell_sd))^2)` times the smallest.
+With equal cell sizes of ten, a balanced design tolerates that well. If the
+variances differed badly, you could use heteroskedasticity-consistent
+standard errors (`vcov_type`, below) or, for a one-way design,
+`anova_welch()`. The [diagnostics article](diagnostics.html) covers the checks
+across the package.
+
+## Plots
+
+```{r plot-box}
+plot(fit, "box")
+```
+
+The `box` plot shows the observed response in each cell, ordered by median and
+labelled with its size. Use it to see the raw data behind the means: spreads,
+skewness and outliers.
+
+```{r plot-emmeans}
+plot(fit, "emmeans")
+```
+
+The `emmeans` plot shows the estimated marginal means with their 95% intervals.
+The first grouping factor is on the x axis and the second sets the colour, one
+line per supplement. Lines that are not parallel are the interaction: the gap
+between the supplements closes at 2 mg/day.
+
+```{r plot-residuals}
+plot(fit, "residuals")
+```
+
+The `residuals` plot shows deviance residuals (for a Gaussian model, ordinary
+residuals) against fitted values. The points fall in vertical stripes, one per
+cell mean. The two 2 mg/day cells have almost the same mean, so their stripes
+overlap at about 26. Look for stripes of clearly different heights (unequal
+variances) or a funnel that widens with the fitted value (a variance that
+grows with the mean, which suggests another family). Here the heights vary
+somewhat, as the cell standard deviations did, but there is no funnel.
+
+```{r plot-qq}
+plot(fit, "qq")
+```
+
+The `qq` plot compares the deviance residuals with a normal distribution.
+Points close to the dashed line support the normal-errors assumption, and
+systematic curvature at the ends suggests skewness or heavy tails. Here the
+points follow the line well. The lower tail is a little shorter than a normal
+one, a mild departure for a balanced design with 60 observations.
+
+All four are **ggplot2** objects that you can modify with `+`. See
+[Plots and visual customisation](visuals.html).
+
+## A non-Gaussian family: Gamma
+
+### The data
+
+`MASS::Cars93` lists 93 car models on sale in the US in 1993. Their `Price`
+(in thousands of dollars) is positive and right-skewed, and within each `Type`
+of car the spread grows with the typical price:
+
+```{r cars}
+cars <- MASS::Cars93[, c("Manufacturer", "Model", "Type", "Price")]
+price <- split(cars$Price, cars$Type)
+round(t(sapply(price, function(x) c(n = length(x), median = median(x),
+                                     mean = mean(x), sd = sd(x),
+                                     cv = sd(x) / mean(x)))), 2)
+```
+
+A Gaussian model assumes the same standard deviation in every group. It is
+about 2 for small cars and about 12 for midsize ones. A Gamma family assumes
+instead that the standard deviation is proportional to the mean: a constant
+coefficient of variation (`cv`). The `cv` column shows that fits better,
+though not perfectly (vans are unusually uniform). A log link makes the group
+effects multiplicative, so comparisons come out as ratios of means.
+
+### Fitting and the omnibus test
+
+```{r gamma-fit}
+gam <- anova_glm(cars, "Price", "Type", family = Gamma(link = "log"))
+gam
+```
+
+`family` accepts a family object, as here, a family function, or a name such
+as `"Gamma"`. The name alone gives the Gamma family's default inverse link,
+which is rarely what you want for group comparisons (see
+[below](#the-link-decides-what-a-comparison-is)).
+
+**`test_statistic`.** By default the test is chosen after fitting. A family
+that estimates its dispersion, like the Gaussian and the Gamma, gets an F test,
+and a family whose dispersion is fixed at 1 (binomial, Poisson) gets a
+likelihood-ratio test. For a GLM, `car::Anova()` reports deviances in the
+`sum_sq` column. The `Type` row is the drop in deviance when `Type` is added.
+The `Residuals` row is the Pearson chi-squared statistic, and dividing it by
+its degrees of freedom gives the dispersion. F is the ratio of the two per
+degree of freedom:
+
+```{r f-by-hand}
+a <- gam$anova
+(a$sum_sq[1] / a$df[1]) / (a$sum_sq[2] / a$df[2])
+```
+
+You can ask for the likelihood-ratio or Wald statistic instead:
+
+```{r test-statistic}
+for (ts in c("LR", "Wald")) {
+  g <- anova_glm(cars, "Price", "Type", family = Gamma(link = "log"),
+                 test_statistic = ts, plots = FALSE)
+  cat("\n", attr(g$anova, "statistic"), "\n", sep = "")
+  print(g$anova)
+}
+```
+
+The likelihood-ratio statistic is the deviance drop divided by the estimated
+dispersion, referred to a chi-squared distribution. That ignores the
+uncertainty in the dispersion estimate, which the F test allows for, so for a
+family that estimates its dispersion F is the better default. The Wald test is
+built from the coefficients and their covariance matrix. It is the only one of
+the three that can use a robust covariance (see
+[`vcov_type`](#vcov_type-robust-standard-errors)). Here all three agree that
+the car types differ.
+
+### Effect sizes
+
+```{r gamma-effects}
+gam$effect_sizes
+```
+
+For a non-Gaussian family there are no sums of squares, so the effect size is
+the `deviance_explained`: 1 minus the residual deviance over the null
+deviance. Car type explains `r round(100 * gam$effect_sizes$estimate[1])`% of
+the deviance. McFadden's pseudo R squared is reported only for the binomial,
+Poisson and negative binomial families. For a Gamma model it is `NA`, and the
+note in the printout explains why.
+
+### The coefficient table and `ci_method`
+
+```{r gamma-coefficients}
+co <- gam$assumptions$coefficients
+co
+```
+
+The coefficients are on the log scale. The intercept is the log of the mean
+price of the reference type, `Compact`, and each other coefficient is the log
+of a ratio to it: small cars cost exp(`r f3(co$estimate[4])`) =
+`r f2(exp(co$estimate[4]))` times as much as compact ones on average. The
+`distribution` column says the tests use t, because the dispersion is
+estimated.
+
+`ci_method = "profile"` (the default) gives profile-likelihood intervals, cut
+at t quantiles so that they agree with the t tests beside them.
+`ci_method = "wald"` gives estimate ± t × SE:
+
+```{r ci-method}
+wald <- anova_glm(cars, "Price", "Type", family = Gamma(link = "log"),
+                  ci_method = "wald", plots = FALSE)$assumptions$coefficients
+cbind(co[, c("term", "estimate")],
+      profile = co[, c("conf_low", "conf_high")],
+      wald = wald[, c("conf_low", "conf_high")])
+```
+
+The two differ in the third decimal place here. Profile intervals follow the
+shape of the likelihood, which matters more in small samples or near a
+boundary. Wald intervals are symmetric on the log scale. Exponentiate either to
+get an interval for the ratio.
+
+### Dispersion
+
+```{r gamma-dispersion}
+gam$assumptions$dispersion
+sqrt(gam$assumptions$dispersion)
+```
+
+For a Gamma family the dispersion is the squared coefficient of variation. The
+model therefore puts the standard deviation of prices at about
+`r round(100 * sqrt(gam$assumptions$dispersion))`% of the mean in every car
+type. The observed values above range from 10% (vans) to 45% (midsize cars), so
+the constant-CV assumption is only roughly true. The
+[`vcov_type`](#vcov_type-robust-standard-errors) section shows how to make the
+comparisons robust to that.
+
+### `$model_stats` and `$family`
+
+```{r model-stats}
+str(gam$model_stats)
+gam$family
+```
+
+`$model_stats` holds the AIC, BIC, null and residual deviances and residual
+degrees of freedom. `$family` is the family object actually used. Because
+the Gaussian and Gamma fits are full likelihoods for the same response, their
+AICs can be compared directly:
+
+```{r aic}
+gau <- anova_glm(cars, "Price", "Type", plots = FALSE)
+c(gaussian = gau$model_stats$AIC, gamma = gam$model_stats$AIC)
+```
+
+The Gamma model is much better supported.
+
+### Marginal means on the response scale
+
+```{r gamma-emmeans}
+gam$emmeans
+```
+
+The marginal means are on the response scale, in thousands of dollars. In a
+one-factor model they are the group means. Their intervals are computed on the
+log scale and back-transformed, so they are not symmetric about the estimate.
+
+With a log link, a pairwise comparison is a **ratio** of means, in a column
+called `ratio`, tested against a null value of 1:
+
+```{r gamma-posthoc}
+gph <- gam$posthoc
+print(gph[gph$p_adjusted < 0.05,
+          c("contrast", "ratio", "conf_low", "conf_high", "p_adjusted")],
+      digits = 3)
+```
+
+Those are the comparisons that survive Tukey's adjustment. Midsize cars, for
+example, average
+`r f2(gph$ratio[gph$contrast == "Midsize / Small"])` times the price of small
+ones.
+
+### The link decides what a comparison is
+
+With the log link comparisons are ratios, and with the logit link they are odds
+ratios. With any other non-identity link they are differences between the
+means on the response scale, and `$notes` says so. The Gamma family's default
+link is the inverse:
+
+```{r inverse-link}
+inv <- anova_glm(cars, "Price", "Type", family = "Gamma", plots = FALSE)
+inv$method
+inv$notes[grepl("link", inv$notes)]
+head(inv$posthoc[, c("contrast", "estimate", "conf_low", "conf_high")], 3)
+```
+
+### Plots for the Gamma fit
+
+```{r gamma-residuals}
+plot(gam, "residuals")
+```
+
+If the variance really is proportional to the mean squared, the deviance
+residuals of a Gamma model have roughly the same spread at every fitted
+value. Here the stripes differ in height. Two sit side by side at about 19:
+vans (19.1) on the left and sporty cars (19.4) on the right. The vans' stripe
+is by far the shortest, because their prices vary much less than the model
+assumes. The midsize stripe, at about 27, is the tallest.
+
+```{r gamma-qq}
+plot(gam, "qq")
+```
+
+The deviance residuals of a Gamma model are approximately normal when the
+model fits. Here the middle follows the line and the upper tail rises above
+it: a few cars are dearer than a Gamma distribution with this dispersion
+would suggest. `gam$model` is an ordinary `glm`, so you can find them
+directly:
+
+```{r gamma-top}
+res <- residuals(gam$model, type = "deviance")
+head(cars[order(res, decreasing = TRUE), ], 3)
+```
+
+```{r gamma-emm-plot}
+plot(gam, "emmeans")
+```
+
+The `emmeans` plot shows the means on the response scale, with their
+asymmetric intervals. `Type` has no natural order, so the line joining the
+points is only a guide for the eye. `plot(gam, "box")` shows the raw prices
+by type, as for the Gaussian fit.
+
+## Options worth knowing
+
+### `vcov_type`: robust standard errors
+
+`vcov_type` takes an HC type (`"HC0"` to `"HC4"`) from the **sandwich**
+package. The robust covariance does not rely on the family's variance
+function, so it protects the marginal means and comparisons when that function
+is wrong, as the vans suggest it is here:
+
+```{r vcov}
+rob <- anova_glm(cars, "Price", "Type", family = Gamma(link = "log"),
+                 vcov_type = "HC3", plots = FALSE)
+cbind(rob$emmeans[, "Type", drop = FALSE],
+      se_model = gam$emmeans$se, se_HC3 = rob$emmeans$se)
+rob$notes
+```
+
+The standard error for vans shrinks and the one for midsize cars grows: each
+now reflects that type's own spread. The notes spell out where the robust
+covariance is used. It goes into the coefficient table (with Wald intervals,
+since profile intervals cannot use it), the marginal means and the comparisons.
+The omnibus F test compares deviances and cannot use it. To make the omnibus
+test robust too, set `test_statistic = "Wald"`:
+
+```{r vcov-wald}
+anova_glm(cars, "Price", "Type", family = Gamma(link = "log"),
+          vcov_type = "HC3", test_statistic = "Wald", plots = FALSE)$anova
+```
+
+### `weights`
+
+`weights` names a column of prior weights. It is given as a column name, not a
+vector, so the weights are subsetted with the data and cannot misalign when a
+row is dropped. A natural use with the Gamma family is a response that is
+itself an average. The mean of m prices has variance φμ²/m, so its prior
+weight is m. Suppose you had only the average price per manufacturer and type,
+with the number of models behind each average:
+
+```{r weights-data}
+agg <- aggregate(Price ~ Manufacturer + Type, data = cars, FUN = mean)
+agg$n_models <- aggregate(Price ~ Manufacturer + Type, data = cars,
+                          FUN = length)$Price
+nrow(agg)
+table(agg$n_models)
+```
+
+Weighting each average by its count recovers the means of the full data
+exactly. Ignoring the counts does not:
+
+```{r weights-fit}
+w_fit <- anova_glm(agg, "Price", "Type", family = Gamma(link = "log"),
+                   weights = "n_models", plots = FALSE)
+u_fit <- anova_glm(agg, "Price", "Type", family = Gamma(link = "log"),
+                   plots = FALSE)
+data.frame(Type = gam$emmeans$Type, full_data = gam$emmeans$estimate,
+           weighted = w_fit$emmeans$estimate,
+           unweighted = u_fit$emmeans$estimate)
+```
+
+The standard errors differ slightly from the full-data fit, because the
+dispersion is now estimated from `r nrow(agg)` averages rather than
+`r nrow(cars)` cars.
+
+A row with a weight of zero contributes nothing to the fit, so it is dropped
+before fitting, counted in `$n_removed` and named in `$notes`:
+
+```{r weights-zero}
+agg0 <- agg
+agg0$n_models[1] <- 0
+z_fit <- anova_glm(agg0, "Price", "Type", family = Gamma(link = "log"),
+                   weights = "n_models", plots = FALSE)
+z_fit$n_removed
+z_fit$notes[1]
+```
+
+### `interaction`
+
+The default, `interaction = FALSE`, fits the grouping factors additively. The
+marginal means and comparisons are then reported for each factor on its own,
+averaged over the others, with a `term` column saying which, and each
+factor's comparisons form their own multiplicity family:
+
+```{r additive}
+add <- anova_glm(tg, "len", c("dose", "supp"), plots = FALSE)
+add$emmeans
+add$notes
+```
+
+`interaction = TRUE` fits the full factorial. With three or more factors a
+whole number sets the highest order of interaction: `interaction = 2` keeps
+the two-way interactions and drops the rest.
+
+### `adjust` and `conf_level`
+
+`adjust` is applied by **emmeans** and accepts `"tukey"` (the default),
+`"sidak"`, `"scheffe"`, `"dunnettx"`, `"bonferroni"`, `"holm"`, `"hochberg"`,
+`"hommel"`, `"BH"`, `"BY"`, `"fdr"` or `"none"`. A step-down method such as
+Holm cannot be turned into intervals, so **emmeans** uses Bonferroni intervals
+beside Holm p-values, and `$notes` says so:
+
+```{r adjust}
+holm <- anova_glm(tg, "len", c("dose", "supp"), interaction = TRUE,
+                  adjust = "holm", plots = FALSE)
+holm$notes
+```
+
+`conf_level` sets the level of every interval: the coefficient table, the
+marginal means and the comparisons.
+
+## What the notes say
+
+```{r notes}
+fit$notes
+gam$notes
+```
+
+The ToothGrowth fit has no notes. No rows were dropped, the model is far from
+saturated, nothing failed to compute, and the Gaussian family has partial eta
+squared to report. The Gamma fit has one, explaining why McFadden's pseudo R
+squared is `NA`. Other notes you have seen above: the robust covariance and
+where it is used, the per-factor reporting of an additive model, Bonferroni
+intervals beside Holm p-values, and differences rather than ratios under the
+inverse link. Read `$notes` on every fit.
+
+## Reporting the result
+
+```{r report-values, include = FALSE}
+tga <- fit$anova
+ga <- gam$anova
+tph <- fit$posthoc
+row_of <- function(x) tph[tph$contrast == x, ]
+r05 <- row_of("dose0.5 OJ - dose0.5 VC")
+r1 <- row_of("dose1 OJ - dose1 VC")
+r2 <- row_of("dose2 OJ - dose2 VC")
+ms <- gph[gph$contrast == "Midsize / Small", ]
+```
+
+Write-ups built from the fits with inline R, so the numbers cannot drift from
+the analysis:
+
+> A two-way analysis of variance (Type II) found that odontoblast length
+> depended on the dose of vitamin C,
+> F(`r tga$df[1]`, `r tga$df[4]`) = `r f2(tga$statistic[1])`,
+> p `r fp(tga$p_value[1])`,
+> partial η² = `r f2(fit$effect_sizes$partial_eta_sq[1])`, and on the
+> supplement, F(`r tga$df[2]`, `r tga$df[4]`) =
+> `r f2(tga$statistic[2])`, p `r fp(tga$p_value[2])`, with an interaction
+> between them, F(`r tga$df[3]`, `r tga$df[4]`) = `r f2(tga$statistic[3])`,
+> p `r fp(tga$p_value[3])`. Orange juice produced longer odontoblasts than
+> ascorbic acid at 0.5 mg/day (difference `r f2(r05$estimate)`,
+> Tukey-adjusted p `r fp(r05$p_adjusted)`) and 1 mg/day
+> (`r f2(r1$estimate)`, adjusted p `r fp(r1$p_adjusted)`), but not at
+> 2 mg/day (`r f2(r2$estimate)`, adjusted p `r fp(r2$p_adjusted)`).
+
+> In a Gamma model with a log link, car prices differed by type,
+> F(`r ga$df[1]`, `r ga$df[2]`) = `r f2(ga$statistic[1])`,
+> p `r fp(ga$p_value[1])`, with type explaining
+> `r round(100 * gam$effect_sizes$estimate[1])`% of the deviance. Midsize cars
+> cost `r f2(ms$ratio)` times as much as small cars on average (95% CI
+> `r f2(ms$conf_low)` to `r f2(ms$conf_high)`, Tukey-adjusted).
+
+For a model on a non-identity link, say which family and link you used, and
+report comparisons in the form they take on it: ratios for a log link.
+
+## See also
+
+- `anova_bin()` ([walkthrough](binary.html)) and `anova_count()`
+  ([walkthrough](counts.html)) for binary and count responses.
+- `anova_ancova()` ([walkthrough](ancova.html)) to add a numeric covariate.
+- `anova_welch()` ([walkthrough](welch.html)) for a one-way comparison of
+  means with unequal variances.
+- [Working with results](results.html) for the fit object, `$emmeans_object`
+  and reporting.
+- [Diagnostics across the package](diagnostics.html) and
+  [Plots and visual customisation](visuals.html).
+- The [Get Started vignette](anovakit.html) for a tour of every function.

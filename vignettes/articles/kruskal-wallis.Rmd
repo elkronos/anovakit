@@ -1,0 +1,502 @@
+---
+title: "Kruskal-Wallis: comparing groups by ranks"
+description: >
+  A walkthrough of anova_kw(): the Kruskal-Wallis test, epsilon squared,
+  Dunn's comparisons with the tie correction, missing and infinite values,
+  and the optional diagnostics.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+```{r helpers, include = FALSE}
+# Formatting helpers for numbers quoted in the prose.
+f2 <- function(x) formatC(x, format = "f", digits = 2)
+f3 <- function(x) formatC(x, format = "f", digits = 3)
+f4 <- function(x) formatC(x, format = "f", digits = 4)
+fp <- function(p) if (p < 0.001) "< 0.001" else paste("=", f3(p))
+```
+
+`anova_kw()` compares a numeric response across groups using ranks rather
+than the values themselves: the Kruskal-Wallis test across all groups, then
+Dunn's pairwise comparisons. Because only the order of the values matters, it
+suits responses that are skewed, have outliers, are measured on a coarse or
+ordinal scale, or include values that are known only to be "more extreme than
+everything else". It asks whether values in some groups tend to rank higher than
+in others. That is not a test of means, and it is a test of medians only when
+the groups' distributions have the same shape. When the means are the question,
+use `anova_welch()` ([walkthrough](welch.html)). The
+[decision guide](choosing.html) covers the choice in more detail.
+
+## The data
+
+`airquality` holds daily air-quality readings from New York between May and
+September 1973. The response here is `Ozone`, the mean ozone concentration in
+parts per billion. The month is stored as a number, so give it readable labels
+first. A factor keeps its level order, so the months stay in calendar order.
+
+```{r data}
+aq <- airquality
+aq$Month <- factor(month.abb[aq$Month], levels = month.abb[5:9])
+head(aq[, c("Ozone", "Month", "Day")])
+
+oz <- split(aq$Ozone, aq$Month)
+round(t(sapply(oz, function(x) c(days = length(x), missing = sum(is.na(x)),
+                                  median = median(x, na.rm = TRUE),
+                                  mean = mean(x, na.rm = TRUE),
+                                  max = max(x, na.rm = TRUE)))), 1)
+```
+
+Two features make a rank analysis attractive. The readings are right-skewed:
+in four of the five months the mean is above the median, and in every month
+the largest reading is more than twice the median. And
+`r sum(is.na(aq$Ozone))` of the `r nrow(aq)` days have no reading,
+`r sum(is.na(aq$Ozone[aq$Month == "Jun"]))` of them in June, so the groups are
+unequal in size.
+
+## Fitting the model
+
+Columns are named as character strings: the response, then one or more grouping
+columns.
+
+```{r fit}
+kw <- anova_kw(aq, "Ozone", "Month")
+kw
+```
+
+Reading the printout from the top:
+
+- The first line names the method, and `Call:` records how the fit was made.
+- `Observations used: 116` counts the rows analysed. The
+  `r kw$n_removed` rows with no ozone reading were dropped, and the printout
+  points to `$notes` for the details.
+- `Omnibus test` is the Kruskal-Wallis test, described in the next section.
+- `Notes` says what was dropped and why.
+- `Plots available` lists what is in `$plots`: only the box plot, unless you
+  ask for the optional diagnostics.
+
+Only the analysed columns count towards missingness. `Solar.R` also has
+missing values, but it was not part of the analysis, so it removed nothing:
+
+```{r removed}
+kw$n_removed
+nrow(kw$data_used) + kw$n_removed == nrow(aq)
+```
+
+`summary(kw)` prints the same header followed by the effect sizes, the group
+summaries and Dunn's comparisons. The sections below take them one at a time.
+
+## The omnibus test
+
+```{r anova}
+kw$anova
+```
+
+- `term` is the grouping column (or a label for the combined cells when there
+  are several; see [below](#several-grouping-columns)).
+- `statistic` is the Kruskal-Wallis H. All `r nrow(kw$data_used)` values are
+  ranked together, and H measures how far each month's mean rank lies from the
+  overall mean rank, weighted by the month's size. It includes the correction
+  for tied values.
+- `df` is the number of groups minus one. H is referred to a chi-squared
+  distribution on these degrees of freedom.
+- `p_value` is the probability of an H at least this large if all five months
+  shared one distribution of ozone.
+
+The test is `stats::kruskal.test()`, and its `htest` object is kept in
+`$model`. Here it agrees with calling `kruskal.test()` directly:
+
+```{r kruskal-check}
+kruskal.test(Ozone ~ Month, data = aq)$statistic
+```
+
+(`anova_kw()` passes `kruskal.test()` the ranks rather than the raw values, so
+that ties are counted exactly as they were ranked. The two can differ slightly
+only when the data contain values that differ by floating-point error alone;
+see [below](#values-that-differ-only-by-rounding-error).)
+
+The mean ranks differ between months far more than chance would produce
+(p `r fp(kw$anova$p_value)`). The test does not say which months differ. That
+is what Dunn's comparisons are for.
+
+## Effect sizes
+
+```{r effect-sizes}
+kw$effect_sizes
+```
+
+With H the tie-corrected statistic, n observations and k groups:
+
+- `epsilon_squared` is H / (n - 1). It is exactly the proportion of the
+  variance of the ranks that lies between groups: the R² of a one-way analysis
+  of variance on the ranks. You can check that:
+
+  ```{r r-squared}
+  summary(lm(rank(Ozone) ~ Month, data = kw$data_used))$r.squared
+  ```
+
+- `eta_squared_H` is (H - k + 1) / (n - k), a bias-adjusted version that
+  subtracts what k groups would produce by chance. A negative value is reported
+  as 0, with a note.
+
+Take care with the names, which follow Tomczak and Tomczak (2014) and the
+**effectsize** package. Here epsilon squared is the unadjusted measure and
+therefore never smaller than eta squared, which is the reverse of what the same
+two names mean in a parametric analysis. Whichever you report, name it.
+
+About `r round(100 * kw$effect_sizes$estimate[1])`% of the variation in the
+ranks of the ozone readings lies between months. No interval is reported for
+either measure.
+
+## Group summaries and Dunn's comparisons
+
+No model is fitted, so `$emmeans` holds plain group summaries:
+
+```{r emmeans}
+print(kw$emmeans, digits = 3)
+```
+
+The `mean_rank` column is the quantity Dunn's comparisons are built from.
+The `median` is usually the more useful summary to report alongside them. The
+`mean`, `sd` and the t interval for the mean (`conf_low`, `conf_high`) are
+there for reference. They describe the raw values, and play no part in the
+test.
+
+`$posthoc` holds Dunn's comparisons, one row per pair of months:
+
+```{r posthoc}
+print(kw$posthoc, digits = 3)
+```
+
+- `mean_rank_diff` is the mean rank of `group1` minus that of `group2`.
+- `z` is that difference divided by its standard error, so it has the same
+  sign.
+- `p_value` is the two-sided p-value from the normal distribution, unadjusted.
+- `p_adjusted` is adjusted by the method in `adjustment`: Benjamini-Hochberg
+  (`"BH"`) by default.
+
+Dunn's test uses the ranks from the single joint ranking of all
+`r nrow(kw$data_used)` observations. It does not re-rank each pair, so it is not
+the same as running a Wilcoxon rank-sum test on each pair: the comparisons
+use the same ranking as the omnibus test. `rstatix::dunn_test()` reports the
+same comparisons as `group2` minus `group1`, so its statistics have the
+opposite sign.
+
+### The tie correction
+
+Ozone was recorded in whole parts per billion, so many days share a value, and
+tied values share their average rank. Ties reduce the variance of the ranks, and
+Dunn's standard error allows for it. For groups i and j,
+
+$$
+\mathrm{SE}_{ij} = \sqrt{\left(\frac{N(N+1)}{12} -
+  \frac{\sum_t (t^3 - t)}{12(N-1)}\right)\left(\frac{1}{n_i} +
+  \frac{1}{n_j}\right)},
+$$
+
+where the sum runs over the sets of tied values and t is the size of each set.
+Reproducing the May against July comparison by hand:
+
+```{r dunn-by-hand}
+d <- kw$data_used
+N <- nrow(d)
+r <- rank(d$Ozone)
+t_sizes <- table(r)                     # one entry per distinct value
+tie_term <- sum(t_sizes^3 - t_sizes) / (12 * (N - 1))
+c(tied_values = sum(t_sizes > 1), untied = N * (N + 1) / 12,
+  tie_term = tie_term)
+
+rbar <- tapply(r, d$Month, mean)
+n <- table(d$Month)
+se <- sqrt((N * (N + 1) / 12 - tie_term) * (1 / n[["May"]] + 1 / n[["Jul"]]))
+(rbar[["May"]] - rbar[["Jul"]]) / se
+```
+
+That matches the `z` for May against July in `$posthoc`. Here
+`r sum(t_sizes > 1)` distinct values are shared by two or more days, but the
+correction is small against the untied variance, so it barely changes any
+comparison. It matters more when a few values account for much of the data,
+as with ratings on a five-point scale.
+
+### Reading the comparisons
+
+```{r posthoc-values, include = FALSE}
+ph <- kw$posthoc
+row_of <- function(a, b) ph[ph$group1 == a & ph$group2 == b, ]
+p_may <- max(row_of("May", "Jul")$p_adjusted, row_of("May", "Aug")$p_adjusted)
+```
+
+July and August both rank well above May (both adjusted p `r fp(p_may)`)
+and above September (adjusted p `r fp(row_of("Jul", "Sep")$p_adjusted)` and
+`r f3(row_of("Aug", "Sep")$p_adjusted)`). July and August do not differ from
+each other (adjusted p `r fp(row_of("Jul", "Aug")$p_adjusted)`), and neither
+do May, June and September. June sits between: its difference from July is
+just inside 5% after adjustment
+(`r f4(row_of("Jun", "Jul")$p_adjusted)`), and from August just outside
+(`r f4(row_of("Jun", "Aug")$p_adjusted)`). With only
+`r kw$emmeans$n[kw$emmeans$group == "Jun"]` June readings, the June
+comparisons are the least precise in the table.
+
+### Choosing `adjust`
+
+The default, Benjamini-Hochberg, controls the false discovery rate: among the
+comparisons you call significant, the expected proportion of false ones. That
+suits the usual follow-up question "which of these pairs differ?" When you
+need control of the chance of even one false positive (the family-wise error
+rate), use `"holm"`, which is uniformly more powerful than `"bonferroni"`. Any
+`stats::p.adjust()` method is accepted, spelled out in full. `"tukey"` is not:
+Dunn's test is a comparison of ranks, not a linear contrast.
+
+```{r adjust}
+adj <- sapply(c("BH", "holm", "bonferroni", "none"), function(a)
+  anova_kw(aq, "Ozone", "Month", adjust = a, plots = FALSE)$posthoc$p_adjusted)
+cbind(ph[, c("group1", "group2")], signif(adj, 3))
+```
+
+Only `p_adjusted` changes. Under Holm, the June against July comparison no
+longer passes at 5%
+(`r f4(adj[ph$group1 == "Jun" & ph$group2 == "Jul", "holm"])`), while the
+comparisons of July and August with May and September all still do.
+
+## Checking assumptions
+
+Kruskal-Wallis assumes no particular distribution, so `$assumptions` is empty
+by default:
+
+```{r assumptions}
+kw$assumptions
+```
+
+The test does rest on two things no diagnostic in the fit checks. The first
+is that the observations are independent. Daily readings are not: a
+high-ozone day tends to be followed by another.
+
+```{r autocorrelation}
+# Each day's reading against the next day's, within the same month
+o <- aq$Ozone
+same_month <- aq$Month[-1] == aq$Month[-nrow(aq)]
+lag1 <- cor(o[-1][same_month], o[-nrow(aq)][same_month],
+            use = "complete.obs")
+lag1
+```
+
+With a day-to-day correlation of `r f2(lag1)`, the `r nrow(kw$data_used)`
+readings carry less independent information than their number suggests, so
+treat the p-values here as somewhat optimistic. The second is that if you want
+to read a difference as a shift in the median, the groups' distributions need
+similar shapes. The box plot below is the place to judge that.
+
+With `diagnostics = TRUE` the function adds a per-group Shapiro-Wilk table in
+`$assumptions$normality`, a Q-Q plot in `$plots$qq`, and a note:
+
+```{r diagnostics}
+kwd <- anova_kw(aq, "Ozone", "Month", diagnostics = TRUE)
+kwd$assumptions$normality
+kwd$notes
+names(kwd$plots)
+```
+
+As the note says, these are context only: nothing in the test depends on them.
+They can help you explain why you chose a rank test. Here May and September are
+clearly non-normal, which is the kind of evidence that argues against comparing
+means with `anova_welch()`. The [diagnostics article](diagnostics.html) covers
+the checks across the whole package.
+
+## Plots
+
+```{r plot-box}
+plot(kw, "box")
+```
+
+The `box` plot is always built. It shows the distribution of each group,
+ordered by median and labelled with its size. What to look for:
+
+- **Where the groups sit.** July and August sit clearly above the other three
+  months, the pattern Dunn's comparisons found (with the June comparisons the
+  least certain).
+- **Shape.** In most months the upper whisker is longer than the lower one,
+  and May, June, September and August each have at least one high outlier.
+  That long upper tail is what pulls the means above the medians.
+- **Spread.** The spreads differ: the boxes for July and August are much
+  taller than those for the other three months. So the groups differ in more
+  than location, and the result is best read as "ozone tends to be higher in
+  July and August" rather than as a statement about medians alone.
+
+```{r plot-qq}
+plot(kwd, "qq")
+```
+
+The `qq` plot appears only with `diagnostics = TRUE`. Each value is expressed
+as its deviation from its own group's mean, divided by its own group's
+standard deviation, and the points are compared with a normal distribution.
+Here the upper tail curves well above the dashed line and the lowest points
+also sit above it, the pattern of right skew: a long upper tail and a short
+lower one. Like the Shapiro-Wilk table, it is context only.
+
+Both are ordinary **ggplot2** objects that you can modify with `+`:
+
+```{r plot-modify}
+plot(kw, "box") +
+  ggplot2::labs(title = "Daily ozone by month, New York 1973",
+                x = NULL, y = "Ozone (ppb)")
+```
+
+See [Plots and visual customisation](visuals.html) for more.
+
+## Infinite values
+
+Missing values are dropped and counted in `$n_removed`, as above. Infinite
+values are not. In a rank analysis `Inf` is simply larger than everything else,
+which is how you might record, say, a participant who never completed a task.
+The small constructed example below records the minutes taken to solve a
+puzzle, with three kinds of hint. Anyone who gave up is recorded as `Inf`:
+
+```{r inf-data}
+puzzle <- data.frame(
+  hint = factor(rep(c("none", "text", "video"), each = 8),
+                levels = c("none", "text", "video")),
+  minutes = c(20.8, Inf, 13.9, 15.5, Inf, 11.5, Inf, 11.6,
+              20.2, 8.8, 15.2, Inf, 5.2, 8.1, 8.5, 11.6,
+              5.4, 2.1, 2.3, 10.2, 5.3, 2.9, 5.6, 9.8)
+)
+pz <- anova_kw(puzzle, "minutes", "hint")
+pz
+pz$emmeans
+```
+
+All 24 rows are used. The four people who gave up rank above everyone who
+finished, and take a tied rank among themselves. The mean ranks and medians are
+exact. A group containing `Inf` has an infinite mean and no standard deviation,
+so those columns are reported as `Inf` and `NA`. The note records that the
+infinite values were kept and ranked, and warns that the box plot cannot draw
+them, so for data like these read the medians and mean ranks rather than the
+plot.
+
+A comparison of means has no use for an infinite value. `anova_welch()` drops
+those rows, as it does missing ones:
+
+```{r inf-welch}
+anova_welch(puzzle, "minutes", "hint", plots = FALSE)$n_removed
+```
+
+## Options worth knowing
+
+### `conf_level`
+
+`conf_level` affects only the t intervals for the group means in `$emmeans`.
+Nothing in the test or in Dunn's comparisons depends on it:
+
+```{r conf-level}
+k90 <- anova_kw(aq, "Ozone", "Month", conf_level = 0.90, plots = FALSE)
+k90$emmeans[, c("group", "mean", "conf_low", "conf_high")]
+```
+
+### `posthoc`
+
+There are `choose(k, 2)` comparisons, so with many groups you may want only the
+omnibus test. The effect sizes come from H, so they are still reported:
+
+```{r posthoc-false}
+anova_kw(aq, "Ozone", "Month", posthoc = FALSE, plots = FALSE)$notes
+```
+
+### Several grouping columns
+
+Given several grouping columns, `anova_kw()` combines them into one factor of
+the level combinations that contain data, and runs one test across those
+cells. `warpbreaks` has two wools at three tensions:
+
+```{r cells}
+wk <- anova_kw(warpbreaks, "breaks", c("wool", "tension"), plots = FALSE)
+wk$anova
+wk$notes
+```
+
+The test compares the six cells. As the note says, it cannot separate a wool
+effect from a tension effect or test their interaction.
+
+### Values that differ only by rounding error
+
+Values are ranked exactly as stored. Two numbers that should be equal but
+were computed differently, such as `0.1 + 0.2` and `0.3`, are therefore ranked
+as distinct values, not as a tie. The function looks for such near-ties and
+says when it finds them:
+
+```{r near-ties}
+nt <- data.frame(g = rep(c("a", "b"), each = 3),
+                 y = c(0.1 + 0.2, 0.2, 0.25, 0.3, 0.9, 1.1))
+nt_fit <- anova_kw(nt, "y", "g", plots = FALSE)
+nt_fit$notes
+c(anova_kw = nt_fit$anova$statistic,
+  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
+```
+
+`kruskal.test()` on the raw values ranks the two numbers as distinct but counts
+them as a tie when it corrects for ties, because it counts ties on the printed
+values. That is why its statistic differs slightly from the one `anova_kw()`
+reports, which counts ties on the ranks it actually used. If such values are
+meant to be equal, round the response before the analysis. They then become a
+genuine tie, the note goes away, and the two statistics agree:
+
+```{r near-ties-rounded}
+nt$y <- round(nt$y, 10)
+nt_round <- anova_kw(nt, "y", "g", plots = FALSE)
+nt_round$notes
+c(anova_kw = nt_round$anova$statistic,
+  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
+```
+
+## What the notes say
+
+```{r notes}
+kw$notes
+```
+
+For the ozone fit the only note records the `r kw$n_removed` rows dropped for
+missing values, and names the columns that were checked. Other notes you have
+seen above: infinite values kept, the contextual status of the diagnostics,
+`posthoc = FALSE`, combined cells, and near-ties. The function also writes a
+note when `eta_squared_H` is negative (and floored at 0) or undefined. Read
+`$notes` on every fit.
+
+## Reporting the result
+
+```{r report-values, include = FALSE}
+a <- kw$anova
+es <- kw$effect_sizes
+med <- setNames(kw$emmeans$median, kw$emmeans$group)
+```
+
+A write-up built from the fit with inline R, so the numbers cannot drift from
+the analysis:
+
+> Daily ozone concentrations differed between months (Kruskal-Wallis
+> H(`r a$df`) = `r f2(a$statistic)`, p `r fp(a$p_value)`,
+> ε² = `r f2(es$estimate[1])`; n = `r nrow(kw$data_used)` days with a
+> reading). Median ozone was `r med[["Jul"]]` ppb in July and `r med[["Aug"]]`
+> ppb in August, against `r med[["May"]]` ppb in May and `r med[["Sep"]]` ppb
+> in September. In Dunn's comparisons with Benjamini-Hochberg adjustment, July
+> and August each ranked higher than May (both adjusted p `r fp(p_may)`)
+> and than September (adjusted p `r fp(row_of("Jul", "Sep")$p_adjusted)` and
+> `r f3(row_of("Aug", "Sep")$p_adjusted)` respectively).
+
+Say which effect size you report (epsilon squared as defined here) and which
+adjustment you used. Also say that readings were missing on
+`r kw$n_removed` days, mostly in June.
+
+## See also
+
+- `anova_welch()` and the [Welch walkthrough](welch.html) for comparing means.
+- `anova_glm()` and the [analysis-of-deviance walkthrough](glm.html) for a
+  model of a skewed response, with a Gamma family for example.
+- [Working with results](results.html) for the structure of the returned
+  object and more on reporting.
+- [Diagnostics across the package](diagnostics.html) and
+  [Plots and visual customisation](visuals.html).
+- The [Get Started vignette](anovakit.html) for a tour of every function.
