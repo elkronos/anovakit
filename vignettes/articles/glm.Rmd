@@ -358,18 +358,20 @@ which is rarely what you want for group comparisons (see
 **`test_statistic`.** By default the test is chosen after fitting. A family
 that estimates its dispersion, like the Gaussian and the Gamma, gets an F test,
 and a family whose dispersion is fixed at 1 (binomial, Poisson) gets a
-likelihood-ratio test. For a GLM, `car::Anova()` reports deviances in the
-`sum_sq` column. The `Type` row is the drop in deviance when `Type` is added.
-The `Residuals` row is the Pearson chi-squared statistic, and dividing it by
-its degrees of freedom gives the dispersion. F is the ratio of the two per
-degree of freedom:
+likelihood-ratio test. In the F table of a non-Gaussian family the `sum_sq`
+column holds deviances, as the `anova_glm()` help page explains. The `Type`
+row is the drop in deviance when `Type` is added. The `Residuals` row is the
+Pearson chi-squared statistic, and dividing it by its degrees of freedom gives
+the dispersion. F is the ratio of the two per degree of freedom:
 
 ```{r f-by-hand}
 a <- gam$anova
 (a$sum_sq[1] / a$df[1]) / (a$sum_sq[2] / a$df[2])
 ```
 
-You can ask for the likelihood-ratio or Wald statistic instead:
+You can ask for the likelihood-ratio or Wald statistic instead. The columns
+come in the same order whatever the statistic, and only an F table has
+`sum_sq` and a `Residuals` row:
 
 ```{r test-statistic}
 for (ts in c("LR", "Wald")) {
@@ -539,9 +541,10 @@ plot(gam, "emmeans")
 ```
 
 The `emmeans` plot shows the means on the response scale, with their
-asymmetric intervals. `Type` has no natural order, so the line joining the
-points is only a guide for the eye. `plot(gam, "box")` shows the raw prices
-by type, as for the Gaussian fit.
+asymmetric intervals. `Type` has no natural order, so the points are not
+joined by a line. Lines appear only across a second grouping factor, as in the
+ToothGrowth plot, or along an ordered factor on the x axis.
+`plot(gam, "box")` shows the raw prices by type, as for the Gaussian fit.
 
 ## Options worth knowing
 

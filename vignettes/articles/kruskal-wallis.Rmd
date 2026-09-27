@@ -374,9 +374,23 @@ All 24 rows are used. The four people who gave up rank above everyone who
 finished, and take a tied rank among themselves. The mean ranks and medians are
 exact. A group containing `Inf` has an infinite mean and no standard deviation,
 so those columns are reported as `Inf` and `NA`. The note records that the
-infinite values were kept and ranked, and warns that the box plot cannot draw
-them, so for data like these read the medians and mean ranks rather than the
-plot.
+infinite values were kept and ranked, and that the box plot does not draw
+them. A box plot has nowhere to put an infinite value, so it shows only the
+finite ones, and its labels count what is drawn:
+
+```{r inf-box}
+plot(pz, "box")
+```
+
+Here the labels read `r sum(is.finite(puzzle$minutes[puzzle$hint == "none"]))`
+for `none` and `r sum(is.finite(puzzle$minutes[puzzle$hint == "text"]))` for
+`text`, not 8: the people who gave up are missing from the picture, although
+they hold the highest ranks in the test. The boxes' medians are those of the
+finishers only, so the `none` box sits at
+`r median(puzzle$minutes[puzzle$hint == "none" & is.finite(puzzle$minutes)])`
+minutes against a true median of
+`r pz$emmeans$median[pz$emmeans$group == "none"]` in `$emmeans`. For data like
+these, read the medians and mean ranks in `$emmeans` alongside the plot.
 
 A comparison of means has no use for an infinite value. `anova_welch()` drops
 those rows, as it does missing ones:

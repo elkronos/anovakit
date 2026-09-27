@@ -47,7 +47,11 @@ unordered, with a note; its levels are never reordered as a scale.}
 \item{interaction}{\code{FALSE} (additive, the default), \code{TRUE} (full
 factorial), or a whole number giving the highest interaction order.}
 
-\item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.}
+\item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.
+A model with aliased coefficients (an empty cell of the design, or
+collinear predictors) has no Type III tests; Type II tests are then
+computed instead, and \code{$notes}, the method and the table heading
+say so.}
 
 \item{test_statistic}{Character. \code{"LR"} (default) or \code{"Wald"},
 passed to \code{\link[car]{Anova}}.}
