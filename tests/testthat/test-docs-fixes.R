@@ -130,3 +130,45 @@ test_that("marginal-means plots join points only across a second factor", {
                    character(1))
   expect_true("GeomLine" %in% geoms2)
 })
+
+test_that("a Type III model with an empty cell falls back to Type II tests", {
+  mt <- transform(mtcars, cyl = factor(cyl), gear = factor(gear))
+  a <- anova_ancova(mt, "mpg", c("cyl", "gear"), "wt", plots = FALSE)
+  expect_false(is.null(a$anova))
+  expect_identical(attr(a$anova, "ss_type"), "II")
+  expect_match(a$method, "Type II")
+  expect_true(any(grepl("Type II tests were computed instead", a$notes)))
+  g <- anova_glm(mt, "mpg", c("cyl", "gear"), interaction = TRUE, type = "III",
+                 plots = FALSE)
+  ref <- suppressMessages(car::Anova(stats::lm(mpg ~ cyl * gear, data = mt), type = 2))
+  expect_equal(g$anova$statistic[1:3], unname(ref[["F value"]][1:3]))
+})
+
+test_that("a rate ratio against a cell with no events has a one-sided profile interval", {
+  set.seed(10)
+  traps <- data.frame(site = factor(rep(c("A", "B", "C"), each = 10)))
+  traps$n <- rpois(30, c(A = 4, B = 2, C = 0.1)[as.character(traps$site)])
+  expect_identical(sum(traps$n[traps$site == "C"]), 0L)
+  fit <- anova_count(traps, "n", "site", model = "poisson", plots = FALSE)
+  es <- fit$effect_sizes
+  ref <- anova_glm(traps, "n", "site", family = "poisson", plots = FALSE)
+  ref_ct <- ref$assumptions$coefficients
+  expect_identical(es$conf_low[es$term == "siteC"], 0)
+  expect_equal(es$conf_high[es$term == "siteC"],
+               exp(ref_ct$conf_high[ref_ct$term == "siteC"]), tolerance = 1e-5)
+  expect_true(is.finite(es$conf_high[es$term == "siteC"]))
+  expect_true(any(grepl("profiling the likelihood directly", fit$notes)))
+})
+
+test_that("Shapiro-Wilk is skipped for a group with fewer than three distinct values", {
+  w <- anova_welch(mtcars, "mpg", c("cyl", "am"), plots = FALSE)
+  row <- w$assumptions$normality[w$assumptions$normality$group == "6 : 1", ]
+  expect_true(is.na(row$p_value))
+  expect_match(row$note, "distinct value")
+})
+
+test_that("anova_kw's diagnostics name the groups they could not test", {
+  k <- anova_kw(mtcars, "mpg", c("cyl", "am"), diagnostics = TRUE, plots = FALSE)
+  expect_true(any(grepl("Shapiro-Wilk was not run for group \"8 : 1\"", k$notes,
+                        fixed = TRUE)))
+})

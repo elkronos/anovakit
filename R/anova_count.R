@@ -91,6 +91,10 @@
 #' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
 #'   With \code{"III"} the model is fitted under sum-to-zero contrasts; this
 #'   changes \code{$anova} only.
+#'   A model with aliased coefficients (an empty cell of the design, or
+#'   collinear predictors) has no Type III tests; Type II tests are then
+#'   computed instead, and \code{$notes}, the method and the table heading
+#'   say so.
 #' @param test_statistic Character. \code{"LR"} (default), \code{"Wald"} or
 #'   \code{"F"}, passed to \code{\link[car]{Anova}}. \code{"F"} is the right
 #'   choice for a quasi-Poisson model, which has no likelihood and is given it
@@ -344,7 +348,11 @@ anova_count <- function(data, response, groups,
     notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
   }
   notes <- c(notes, .check_model_size(fit))
-  notes <- c(notes, .check_separation(fit))
+  tt <- .type_for_model(fit, type)
+  type <- tt$type
+  notes <- c(notes, tt$note)
+  sep_note <- .check_separation(fit)
+  notes <- c(notes, sep_note)
 
   ## Analysis of deviance -----------------------------------------------------
   rv <- .robust_vcov(fit, vcov_type, freq_weights = freq_w)
@@ -388,7 +396,8 @@ anova_count <- function(data, response, groups,
   }
 
   ## Incidence rate ratios against the reference level -----------------------
-  irr <- .irr_table(fit, groups, rv$matrix, conf_level)
+  irr <- .irr_table(fit, groups, rv$matrix, conf_level,
+                    separated = length(sep_note) > 0L)
   notes <- c(notes, irr$note)
 
   ## Plots --------------------------------------------------------------------
@@ -737,7 +746,8 @@ anova_count <- function(data, response, groups,
 #' @param vcov_matrix a robust covariance, or \code{NULL} for model-based.
 #' @return list with \code{table} and \code{note}.
 #' @noRd
-.irr_table <- function(fit, groups, vcov_matrix = NULL, conf_level = 0.95) {
+.irr_table <- function(fit, groups, vcov_matrix = NULL, conf_level = 0.95,
+                       separated = FALSE) {
   got <- tryCatch(.treatment_coefficients(fit, groups, vcov_matrix),
                   error = function(e) e)
   if (inherits(got, "error")) {
@@ -754,15 +764,42 @@ anova_count <- function(data, response, groups,
   } else {
     2 * stats::pnorm(-abs(stat))
   }
+  lo <- got$estimate - crit * got$se
+  hi <- got$estimate + crit * got$se
+  note <- character(0)
+  # A zero-count cell drives its log rate ratio towards -Inf, and a Wald
+  # interval from its huge standard error runs from 0 to Inf. The profile
+  # likelihood is open only on the side the estimate diverged in; its finite
+  # end is found directly on the treatment-coded design of the same fit.
+  diverged <- which(separated & is.finite(got$se) & got$se > 10 &
+                      got$term != "(Intercept)")
+  if (length(diverged) > 0L && is.finite(crit)) {
+    ok <- !is.na(got$estimate)
+    design <- list(X = got$X[, ok, drop = FALSE],
+                   coef = stats::setNames(got$estimate[ok], colnames(got$X)[ok]))
+    disp <- if (use_t) .dispersion(fit) else 1
+    for (k in diverged) {
+      ends <- tryCatch(
+        .separated_profile(fit, colnames(got$X)[k], conf_level,
+                           cutoff = crit^2, dispersion = disp, design = design),
+        error = function(e) c(NA_real_, NA_real_))
+      lo[k] <- ends[1L]
+      hi[k] <- ends[2L]
+    }
+    note <- sprintf(
+      "The rate ratio(s) for %s involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf%s.",
+      paste(got$term[diverged], collapse = ", "),
+      if (anyNA(c(lo[diverged], hi[diverged]))) "; it is NA where that search failed" else "")
+  }
   tab <- data.frame(
     term = got$term, factor = got$factor, comparison = got$comparison,
     IRR = exp(got$estimate),
-    conf_low = exp(got$estimate - crit * got$se),
-    conf_high = exp(got$estimate + crit * got$se),
+    conf_low = exp(lo),
+    conf_high = exp(hi),
     p_value = p, stringsAsFactors = FALSE)
   tab <- tab[tab$term != "(Intercept)", , drop = FALSE]
   row.names(tab) <- NULL
-  list(table = tab, note = character(0))
+  list(table = tab, note = note)
 }
 
 #' Map a fitted model's coefficients onto treatment coding
@@ -802,7 +839,7 @@ anova_count <- function(data, response, groups,
   lab <- .treatment_labels(Xt, tt, mf, facs)
   list(term = gsub("`", "", colnames(Xt), fixed = TRUE),
        factor = lab$factor, comparison = lab$comparison,
-       estimate = estimate, se = se)
+       estimate = estimate, se = se, X = Xt)
 }
 
 #' Say what each treatment-coded coefficient compares

@@ -46,6 +46,10 @@
 #' @param interaction \code{FALSE} (additive, the default), \code{TRUE} (full
 #'   factorial), or a whole number giving the highest interaction order.
 #' @param type Character. \code{"II"} (default) or \code{"III"} sums of squares.
+#'   A model with aliased coefficients (an empty cell of the design, or
+#'   collinear predictors) has no Type III tests; Type II tests are then
+#'   computed instead, and \code{$notes}, the method and the table heading
+#'   say so.
 #' @param test_statistic Character or \code{NULL}. One of \code{"LR"},
 #'   \code{"Wald"} or \code{"F"}, passed to \code{\link[car]{Anova}}. When
 #'   \code{NULL} (the default) it is chosen after fitting: an F test when the
@@ -261,6 +265,9 @@ anova_glm <- function(data, response, groups,
     model$df.residual <- freq_n - model$rank
   }
   notes <- c(notes, .check_model_size(model))
+  tt <- .type_for_model(model, type)
+  type <- tt$type
+  notes <- c(notes, tt$note)
   sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
                   grepl("^Negative Binomial", fam_name)) {
     .check_separation(model)

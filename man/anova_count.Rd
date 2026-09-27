@@ -47,7 +47,11 @@ factorial), or a whole number giving the highest interaction order.}
 
 \item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.
 With \code{"III"} the model is fitted under sum-to-zero contrasts; this
-changes \code{$anova} only.}
+changes \code{$anova} only.
+A model with aliased coefficients (an empty cell of the design, or
+collinear predictors) has no Type III tests; Type II tests are then
+computed instead, and \code{$notes}, the method and the table heading
+say so.}
 
 \item{test_statistic}{Character. \code{"LR"} (default), \code{"Wald"} or
 \code{"F"}, passed to \code{\link[car]{Anova}}. \code{"F"} is the right

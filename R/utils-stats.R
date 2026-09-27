@@ -31,6 +31,14 @@
     return(list(test = NULL, n = n,
                 note = "Shapiro-Wilk skipped: the values have no usable variation."))
   }
+  # Three values of which two are tied give W at its minimum of 0.75 and a
+  # p-value of exactly 0 whatever the distribution; with fewer than three
+  # distinct values the test has nothing to measure.
+  if (length(unique(x)) < 3L) {
+    return(list(test = NULL, n = n, note = sprintf(
+      "Shapiro-Wilk skipped: only %d distinct value(s), too few for the test to mean anything.",
+      length(unique(x)))))
+  }
   list(test = stats::shapiro.test(x), n = n, note = character(0))
 }
 

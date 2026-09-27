@@ -41,7 +41,11 @@ name of one as a character string. Default \code{stats::gaussian()}.}
 \item{interaction}{\code{FALSE} (additive, the default), \code{TRUE} (full
 factorial), or a whole number giving the highest interaction order.}
 
-\item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.}
+\item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.
+A model with aliased coefficients (an empty cell of the design, or
+collinear predictors) has no Type III tests; Type II tests are then
+computed instead, and \code{$notes}, the method and the table heading
+say so.}
 
 \item{test_statistic}{Character or \code{NULL}. One of \code{"LR"},
 \code{"Wald"} or \code{"F"}, passed to \code{\link[car]{Anova}}. When

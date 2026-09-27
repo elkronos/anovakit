@@ -66,6 +66,22 @@
        note = .said_note(said, "car::Anova()"))
 }
 
+#' Fall back to Type II tests when Type III ones are undefined
+#'
+#' A model with aliased coefficients (an empty cell of the design, or
+#' collinear predictors) has no Type III tests: car refuses them, and the
+#' function would otherwise return no omnibus table at all -- by default, in
+#' anova_ancova(). Type II tests are defined, so they are computed instead,
+#' as anova_manova() does, and the method label and table heading say so.
+#' @return list with \code{type} (the type to use) and \code{note}.
+#' @noRd
+.type_for_model <- function(model, type) {
+  if (identical(type, "III") && anyNA(stats::coef(model))) {
+    return(list(type = "II", note = "The model has aliased coefficients (an empty cell of the design, or collinear predictors), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead."))
+  }
+  list(type = type, note = character(0))
+}
+
 #' Say whether the omnibus test uses a robust covariance
 #'
 #' Likelihood-ratio and F tests compare deviances or residual sums of squares
