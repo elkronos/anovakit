@@ -268,7 +268,8 @@ note_with(irm, "^Mardia")
 
 Both reject. The four multivariate statistics differ in how much they suffer
 from non-normality, and Pillai's trace (the default, `test = "Pillai"`) is the
-most robust of them; the note says so. Mardia's kurtosis test in particular
+most robust of them; the note says so, and that it is the statistic in use.
+With another `test`, the note suggests switching to it. Mardia's kurtosis test in particular
 rejects too often when the sample is small relative to the square of the
 number of responses, and both tests are skipped, with a note, unless the
 residual degrees of freedom exceed the number of responses by at least 10
@@ -304,10 +305,11 @@ robust <- anova_glm(InsectSprays, "count", "spray", vcov_type = "HC3",
 data.frame(spray = pooled$emmeans$spray,
            se_pooled = pooled$emmeans$se,
            se_HC3 = robust$emmeans$se)
+note_with(robust, "anova_welch")
 ```
 
-For a one-way design, `anova_welch()` remains the better calibrated choice;
-the note `vcov_type` adds says so.
+For a one-way design, `anova_welch()` remains the better calibrated choice,
+as the note says.
 
 ### Levene's test: `anova_ancova()`
 
@@ -354,6 +356,7 @@ that:
 
 ```{r boxm}
 irm$assumptions$box_m
+note_with(irm, "^Box")
 ```
 
 It rejects decisively for `iris`. Box's M is notoriously sensitive to
@@ -366,10 +369,10 @@ sapply(split(iris[1:4], iris$Species), function(x) round(apply(x, 2, sd), 2))
 ```
 
 The petal measurements of setosa vary far less than those of the other two
-species. With groups of equal size, as here, the multivariate tests are fairly
-robust to unequal covariance matrices, and Pillai's trace most of all; with
-unequal groups as well, use Pillai's trace and treat a borderline result with
-caution.
+species. As the note says, with groups of equal size, as here, the
+multivariate tests are fairly robust to unequal covariance matrices, and
+Pillai's trace most of all. With unequal groups as well that robustness is
+weaker: use Pillai's trace and treat a borderline result with caution.
 
 ## Homogeneity of regression slopes
 
@@ -514,8 +517,12 @@ so sphericity holds automatically. The `sleep` fit above is an example:
 
 ```{r sleep-sph}
 is.null(sl$sphericity)
+attr(sl$anova, "correction")
 sl$notes
 ```
+
+The table records that no correction was applied, whatever `correction`
+asks for, and `print()` labels it that way.
 
 ## Dispersion
 
@@ -675,8 +682,8 @@ tk <- anova_bin(kids, "Survived", "Class", weights = "Freq",
 tk$notes
 ```
 
-The eight rows with a frequency of zero (the crew, and the children of first
-and second class who died) are dropped first. The separation note names the
+The eight rows with a frequency of zero (the crew's, and those for first- and
+second-class children who died, of whom there were none) are dropped first. The separation note names the
 cells and the coefficients. The next note describes what
 `anova_bin()` does about the odds ratios: their profile-likelihood intervals
 are open on the side the estimate ran off to, and the finite end is found by
@@ -692,8 +699,10 @@ by the `r 100 * tk$conf_level`% profile intervals, the odds of survival for a
 first-class child were at least `r f2(tk$effect_sizes$conf_low[1])` times those
 of a third-class child, and for a second-class child at least
 `r f2(tk$effect_sizes$conf_low[2])` times. The
-Wald p-values beside them are useless, as the note warns. So are the Wald
-intervals in `$emmeans` and `$posthoc`, which get no profile treatment:
+Wald p-values beside them are useless, as the note warns. The separation note
+also warns that the same goes for the separated cells' marginal
+probabilities and the comparisons involving them: the intervals in `$emmeans`
+and `$posthoc` are Wald intervals and get no profile treatment.
 
 ```{r titanic-emm}
 tk$emmeans[, c("Class", "estimate", "conf_low", "conf_high")]
@@ -733,26 +742,28 @@ traps <- data.frame(site = factor(rep(c("A", "B", "C"), each = 10)))
 traps$n <- rpois(30, c(A = 4, B = 2, C = 0.1)[as.character(traps$site)])
 tapply(traps$n, traps$site, sum)
 tr <- anova_count(traps, "n", "site", plots = FALSE)
-note_with(tr, "^No events|fewer than 5 events")
+note_with(tr, "^No events|fewer than 5 events|profiling")
 tr$effect_sizes[, c("comparison", "IRR", "conf_low", "conf_high", "p_value")]
 ```
 
-The rate ratio for site C against A is numerically zero, and the Wald interval
-in `$effect_sizes` runs from 0 to infinity. `anova_glm()` with a Poisson
-family profiles a diverged coefficient directly, which gives the interval a
-finite end:
+The rate ratio for site C against A is numerically zero and its Wald p-value
+is near 1, as the note warns. Its interval, though, is one-sided: the lower
+end is 0, and the upper end was found by profiling the likelihood directly,
+where a Wald interval would run from 0 to infinity. So, by the
+`r 100 * tr$conf_level`% profile interval, site C's rate is at most
+`r f3(tr$effect_sizes$conf_high[tr$effect_sizes$comparison == "C vs A"])`
+times site A's. `anova_glm()` with a Poisson family profiles the diverged
+coefficient in its coefficient table the same way and finds the same end:
 
 ```{r traps-glm}
 trg <- anova_glm(traps, "n", "site", family = "poisson", plots = FALSE)
 co <- trg$assumptions$coefficients
-data.frame(term = co$term, rate_ratio = exp(co$estimate),
-           conf_low = exp(co$conf_low), conf_high = exp(co$conf_high))[-1, ]
+exp(co[co$term == "siteC", c("conf_low", "conf_high")])
 ```
 
-So site C's rate is at most `r f3(exp(co$conf_high[co$term == "siteC"]))`
-times site A's. The likelihood-ratio omnibus test remains usable. If a zero
-group is a structural zero (a species that cannot occur there), drop it; if
-not, report the one-sided interval, or collapse the level.
+The likelihood-ratio omnibus test remains usable. If a zero group is a
+structural zero (a species that cannot occur there), drop it; if not, report
+the one-sided interval, or collapse the level.
 
 ## Sparse cells and cell counts
 
@@ -798,24 +809,32 @@ note_with(anova_count(MASS::quine, "Days", c("Age", "Lrn"), plots = FALSE),
           "possible group")
 ```
 
-**Small groups for normality tests.** Shapiro-Wilk needs at least 3 values.
-`anova_welch()` names any group it could not test, with the reason, both in
-the table's `note` column and in `$notes`. In `mtcars`, by cylinders and
-transmission:
+**Small groups for normality tests.** Shapiro-Wilk needs at least 3 values,
+and at least 3 distinct ones to mean anything. `anova_welch()` names any group
+it could not test, with the reason, both in the table's `note` column and in
+`$notes`. In `mtcars`, by cylinders and transmission:
 
 ```{r mt-small}
 mw <- anova_welch(mtcars, "mpg", c("cyl", "am"), plots = FALSE)
-mw$assumptions$normality
+mw$assumptions$normality[, c("group", "n", "p_value", "note")]
 note_with(mw, "^Shapiro")
-mtcars$mpg[mtcars$cyl == 6 & mtcars$am == 1]
 ```
 
-The group with two cars is skipped. The group with three cars shows why tests
-on groups this small say nothing: two of its three values are equal, so W takes
-its smallest possible value for three observations,
-`r mw$assumptions$normality$statistic[mw$assumptions$normality$group == "6 : 1"]`,
-and the p-value is exactly `r mw$assumptions$normality$p_value[mw$assumptions$normality$group == "6 : 1"]`.
-`anova_rm()` does the same for within-subject cells.
+The group with two cars is skipped, and so is a group of three cars, two of
+which have the same fuel economy. Run on those three values anyway, the test
+shows why:
+
+```{r mt-small-sw}
+six_manual <- mtcars$mpg[mtcars$cyl == 6 & mtcars$am == 1]
+six_manual
+shapiro.test(six_manual)[c("statistic", "p.value")]
+```
+
+W takes its smallest possible value for three observations and the p-value is
+exactly `r shapiro.test(six_manual)$p.value`: a "rejection" produced by the tie,
+not by the shape of any distribution. `anova_kw()` with
+`diagnostics = TRUE` and `anova_rm()` name the groups and within-subject cells
+they could not test in the same way.
 
 **Small groups for the multivariate checks.** Box's M needs more observations
 in every group than there are responses, and Mardia's tests need the residual
@@ -884,28 +903,41 @@ Under Type II (the default for `anova_glm()`), the table is computed and the
 interaction is tested on
 `r lev$anova$df[lev$anova$term == "cyl:gear"]` degrees of freedom instead of 4.
 Type III tests are not defined when coefficients are aliased, and
-`car::Anova()` refuses them, so `anova_glm()` and `anova_ancova()` then return
-no ANOVA table and say why:
+`car::Anova()` refuses them. Ask for them anyway and the function computes
+Type II tests instead, says so, and labels the result accordingly:
 
 ```{r alias-iii}
 lev3 <- anova_glm(mt, "mpg", c("cyl", "gear"), interaction = TRUE,
                   type = "III", plots = FALSE)
-is.null(lev3$anova)
-note_with(lev3, "could not be computed")
+lev3$method
+attr(lev3$anova, "ss_type")
+note_with(lev3, "Type III tests are not defined")
 ```
 
-`anova_ancova()` uses Type III by default, so with an empty cell there set
-`type = "II"`. `anova_manova()` switches to Type II by itself, and says so:
+`anova_bin()`, `anova_count()` and `anova_ancova()` do the same, and so does
+`anova_manova()`, for its multivariate table and its univariate follow-ups.
+That matters most for `anova_ancova()`, which uses Type III by default: an
+ANCOVA with an empty cell gets Type II tests without being asked.
 
-```{r alias-manova}
-note_with(anova_manova(mt, c("mpg", "qsec"), c("cyl", "gear"),
-                       interaction = TRUE, type = "III", plots = FALSE),
-          "Type III tests are not defined")
+```{r alias-ancova}
+anova_ancova(mt, "mpg", c("cyl", "gear"), "wt", plots = FALSE)$method
+# Days absent (no slow learner is in age group F3), and the Titanic (no
+# child was crew): both ask for Type III and get Type II
+c(anova_count = attr(anova_count(MASS::quine, "Days", c("Age", "Lrn"),
+                                 interaction = TRUE, type = "III",
+                                 plots = FALSE)$anova, "ss_type"),
+  anova_bin = attr(anova_bin(as.data.frame(Titanic), "Survived",
+                             c("Class", "Age"), interaction = TRUE,
+                             type = "III", weights = "Freq",
+                             plots = FALSE)$anova, "ss_type"))
 ```
 
-The other remedies are to drop the interaction (`interaction = FALSE`) or to
-analyse only the combinations that exist, for example by combining the
-grouping variables into one factor of the populated cells.
+Under Type II a main effect is tested ignoring the interaction terms that
+contain it, which is a different hypothesis from the Type III one, so report
+which type you have. The other remedies are to drop the interaction
+(`interaction = FALSE`) or to analyse only the combinations that exist, for
+example by combining the grouping variables into one factor of the populated
+cells.
 
 ### Saturated models
 
@@ -959,10 +991,10 @@ are no residual degrees of freedom to compute it from.
 | Overdispersion (other families) | `anova_glm()` | `$assumptions$dispersion` | `family = "quasipoisson"` or `"quasibinomial"`; `anova_count(model = "negbin")`; a missing predictor |
 | Dispersion of 0/1 data | `anova_bin()`, `anova_glm()` | `$assumptions$dispersion` (`NA`) | Nothing to check; model clustering if there is any |
 | Separation | `anova_bin()`, `anova_glm()` | `$notes`, `$effect_sizes` or `$assumptions$coefficients` (open intervals) | Exact test; one-sided profile intervals; collapse levels; `logistf::logistf()` |
-| Zero-count cells | `anova_count()`, `anova_glm()` | `$notes`, `$effect_sizes`, `$assumptions$coefficients` | Profile intervals from `anova_glm(family = "poisson")`; collapse or drop structural zeros |
-| Sparse cells | `anova_bin()`, `anova_count()`, `anova_manova()`, `anova_welch()`, `anova_rm()` | `$notes`, `$assumptions$cell_counts`, `$assumptions$proportions` | `interaction = FALSE`; collapse levels; exact or score tests |
+| Zero-count cells | `anova_count()`, `anova_glm()` | `$notes`, `$effect_sizes`, `$assumptions$coefficients` (one-sided profile intervals) | Report the one-sided interval; collapse levels or drop structural zeros |
+| Sparse cells | `anova_bin()`, `anova_count()`, `anova_manova()`, `anova_welch()`, `anova_kw()`, `anova_rm()` | `$notes`, `$assumptions$cell_counts`, `$assumptions$proportions` | `interaction = FALSE`; collapse levels; exact or score tests |
 | Leverage 1 | `anova_ancova()`, `anova_glm()`, `anova_bin()`, `anova_count()` (with `vcov_type`) | `$notes` | Additive model; collapse levels; `anova_welch()` for one-way |
-| Aliased coefficients | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes` | `type = "II"`; `interaction = FALSE`; analyse populated cells only |
+| Aliased coefficients | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes`, `attr(fit$anova, "ss_type")` | Type III falls back to Type II by itself; `interaction = FALSE`; analyse populated cells only |
 | Saturated model | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes` | Fewer terms or more data (Gaussian); fine for tests with a fixed dispersion |
 
 ## See also

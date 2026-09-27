@@ -183,7 +183,11 @@ test_that("F027: the plot facets on the response even when a group is called res
     d
   })
   fit <- anova_manova(d, c("score1", "score2"), "response", assumptions = FALSE)
-  pts <- ggplot2::layer_data(fit$plots$emmeans, 2L)
+  layers <- fit$plots$emmeans$layers
+  pt <- which(vapply(layers, function(l) inherits(l$geom, "GeomPoint"), logical(1)))
+  expect_false(any(vapply(layers, function(l) inherits(l$geom, "GeomLine"),
+                          logical(1))))
+  pts <- ggplot2::layer_data(fit$plots$emmeans, pt[1L])
   expect_identical(length(unique(pts$PANEL)), 2L)
   expect_identical(as.integer(table(pts$PANEL)), c(3L, 3L))
   ref <- as.data.frame(emmeans::emmeans(stats::lm(score2 ~ response, data = d), ~ response))

@@ -67,26 +67,26 @@ articles:
   navbar: ~
   contents:
   - anovakit
-  - choosing
-  - results
+  - articles/choosing
+  - articles/results
 - title: Walkthroughs
   desc: >
     One article per function: the data, the fit, the output, effect sizes,
     comparisons, diagnostics, plots, options and a model write-up.
   contents:
-  - welch
-  - kruskal-wallis
-  - ancova
-  - repeated-measures
-  - manova
-  - binary
-  - counts
-  - glm
+  - articles/welch
+  - articles/kruskal-wallis
+  - articles/ancova
+  - articles/repeated-measures
+  - articles/manova
+  - articles/binary
+  - articles/counts
+  - articles/glm
 - title: Guides
   desc: Topics that cut across every function.
   contents:
-  - diagnostics
-  - visuals
+  - articles/diagnostics
+  - articles/visuals
 
 reference:
 - title: Analysis functions
