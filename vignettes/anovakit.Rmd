@@ -107,9 +107,12 @@ c(centred = p_of(), uncentred = p_of(center_covariates = FALSE))
 ```
 
 The additive model fitted above is not affected — there the group row is the
-same either way, and what centring buys is that `$emmeans` and the intercept are
-read at the covariate mean rather than at zero. Use `force_interaction` to fix
-the model in advance rather than letting a test on the same data choose it.
+same either way. `$emmeans` are evaluated at the covariate mean whether or not
+it is centred; centring only moves the intercept there. Use `force_interaction`
+to fix the model in advance rather than letting a test on the same data choose
+it; for groups that were not randomised, `force_interaction = TRUE` is the
+safer choice, because a slope difference the test misses biases the adjusted
+comparisons when covariate means differ between the groups.
 
 ## A binary outcome
 
@@ -150,9 +153,13 @@ that decision yourself.
 
 ## Two grouping variables
 
-Every function accepts several grouping variables. They are combined into a
-single cell factor, and level combinations that never occur are dropped, so the
-number of groups reported is the number that contain data.
+Every function accepts several grouping variables. `anova_welch()` and
+`anova_kw()` combine them into a single cell factor of the combinations that
+contain data. The model-based functions fit them as factors: with
+`interaction = TRUE` the marginal means and comparisons are for the cells (a
+combination with no data is left out, or named in `$notes` when the model
+estimates it by extrapolation), and in an additive model they are reported
+for each factor on its own.
 
 ```{r twoway}
 tw <- anova_glm(trial, "score", c("arm", "site"), interaction = TRUE,
@@ -182,9 +189,13 @@ mv$canonical_term
 ```
 
 Mardia's tests, Box's M and the canonical discriminant analysis are computed
-directly, so none of them adds a dependency. With covariates present, all three
-are computed on the responses with the covariate effect removed — the space the
-multivariate test actually operates in.
+directly, so none of them adds a dependency. With covariates present they work
+in the space the multivariate test operates in: Mardia's tests on the residuals
+of the multivariate model, Box's M on the responses with the covariate effect
+removed, and the canonical scores on the responses with every other model
+term removed. The multivariate table is Type II or III, as `type` says, and
+with covariates `$slopes_test` checks that their slopes are the same in every
+group.
 
 The follow-up univariate analyses are kept individually as well as stacked, so
 each response has its own model and its own emmeans grid:

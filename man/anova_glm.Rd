@@ -26,7 +26,12 @@ anova_glm(
 \item{data}{A data frame, or anything inheriting from one, such as a
 \code{data.table} or a tibble.}
 
-\item{response}{Character. Name of the response column.}
+\item{response}{Character. Name of the response column. For a binomial or
+quasi-binomial family it may be 0/1, logical, a proportion (with
+\code{weights} giving the numbers of trials), or a factor or character
+column with exactly two observed values; the model is then for the
+second level (in C-locale order for a character column), and
+\code{$notes} names it.}
 
 \item{groups}{Character vector. One or more grouping columns.}
 
@@ -38,20 +43,37 @@ factorial), or a whole number giving the highest interaction order.}
 
 \item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares.}
 
-\item{test_statistic}{Character or \code{NULL}. Passed to
-\code{\link[car]{Anova}}. When \code{NULL} (the default) an F test is used
-for the Gaussian, Gamma, inverse Gaussian, quasi, quasi-Poisson and
-quasi-binomial families -- every family whose dispersion is estimated --
-and a likelihood ratio test otherwise.}
+\item{test_statistic}{Character or \code{NULL}. One of \code{"LR"},
+\code{"Wald"} or \code{"F"}, passed to \code{\link[car]{Anova}}. When
+\code{NULL} (the default) it is chosen after fitting: an F test when the
+fitted model estimates its dispersion -- the Gaussian, Gamma, inverse
+Gaussian, quasi, quasi-Poisson and quasi-binomial families, and
+\code{MASS::negative.binomial(theta)}, whose coefficient table also uses
+t -- and a likelihood ratio test when the dispersion is fixed (binomial,
+Poisson).}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
 Default \code{0.95}.}
 
 \item{ci_method}{Character. \code{"profile"} (default) or \code{"wald"} for
-the coefficient intervals.}
+the coefficient intervals. Both use the reference distribution of the
+coefficient table's p-values. For a family with a fixed dispersion
+(binomial, Poisson) the profile interval is \code{stats::confint()}'s,
+which cuts the signed-root deviance profile at normal quantiles. For a
+family that estimates its dispersion the same profile is cut at
+\code{qt(., df.residual)} instead, so that the interval agrees with the
+t test beside it; for the Gaussian identity model it equals
+\code{confint(lm())}. If profiling fails, Wald intervals are used, with a
+note. A bound the profile cannot reach (as under separation) is
+\code{NA}, also with a note.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
-(\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.}
+(\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
+The robust covariance is used by the coefficient table (with Wald
+intervals), the marginal means and the comparisons. The omnibus
+likelihood ratio and F tests are computed from the likelihood and cannot
+use it; with \code{test_statistic = "Wald"} the omnibus test uses it too.
+\code{$notes} says which applies.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
 comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
@@ -71,7 +93,14 @@ of cells is large; \code{$notes} records that they were skipped. Default
 weights. Given as a column name rather than a vector so that it is
 subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
-dropped for missing values.}
+dropped for missing values. Rows with weight zero contribute nothing to
+the fit; they are dropped before fitting and counted in
+\code{$n_removed}. Whole-number weights (some above 1) on a count or 0/1
+response are read as frequency weights, each row standing for that many
+identical observations: the robust covariance (\code{vcov_type}) and, for
+the Poisson families, the residual degrees of freedom are then those of
+the data expanded to one row per observation. Other weights (precision
+weights, or the trials behind a proportion) keep each row as one unit.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
@@ -82,9 +111,28 @@ An \code{\link{anovakit_fit}} object, with \code{$family} (the
   and residual deviances, and the residual degrees of freedom).
   \code{$assumptions} holds \code{coefficients} -- the coefficient table,
   with the intervals \code{ci_method} selects -- and \code{dispersion}.
-  \code{$effect_sizes} is partial eta squared and partial omega squared for a
-  Gaussian family, and the deviance explained with McFadden's pseudo R
-  squared otherwise.
+  \code{$effect_sizes} depends on the family:
+  \itemize{
+    \item Gaussian: partial eta squared and partial omega squared for each
+      term, from the F table's sums of squares whatever
+      \code{test_statistic} is. Partial omega squared is floored at 0, with
+      a note. When the ANOVA table cannot be computed (a Type III table
+      with an empty cell, say) the table is empty and a note says why.
+    \item Any other family: \code{deviance_explained},
+      \code{1 - deviance / null deviance}, and \code{mcfadden_r2},
+      McFadden's pseudo R squared \code{1 - logLik(model) /
+      logLik(intercept-only model)}. McFadden's measure is reported only for
+      the binomial, Poisson and negative binomial families, whose
+      log-likelihoods are probabilities; for a binomial response it is
+      computed from the Bernoulli log-likelihood, so it is the same whether
+      the data are given one row per trial or aggregated as proportions
+      with trial weights (and for a 0/1 response it equals the deviance
+      explained). For the Gamma, inverse Gaussian and quasi families
+      it is \code{NA} with a note: a density's log-likelihood changes with
+      the units of the response, and a quasi family has none. The deviance
+      explained is measured against the saturated model, so for binomial
+      data it does depend on the aggregation.
+  }
 }
 \description{
 Fits a generalised linear model of a response on one or more grouping
@@ -99,9 +147,21 @@ comparisons.
 the contrasts stored on it, so \code{car::Anova(type = 3)} would silently
 report simple effects at the reference level under the label "Type III".
 
-\strong{Post-hoc.} Comparisons come from \pkg{emmeans} and are available for
-every design, including factorial ones. When more than one grouping variable
-is present, comparisons are made across the cells of the full grid.
+\strong{Post-hoc.} Marginal means and comparisons come from \pkg{emmeans}
+and are on the response scale. When the grouping variables enter the model
+additively (the default with more than one), they are reported for each
+factor on its own, averaged over the others; with an interaction they are
+made across the cells of the grid. With a log or logit link a comparison is
+a ratio (of means, or of odds); with any other non-identity link (inverse,
+probit, square root, ...) it is a difference between the marginal means on
+the response scale. Families that estimate their dispersion use t with the
+residual degrees of freedom, as the coefficient table does.
+
+\strong{Separation.} For binomial, quasi-binomial, Poisson, quasi-Poisson
+and negative binomial families the fit is checked for groups whose fitted
+probability is numerically 0 or 1 (or whose fitted rate is numerically 0),
+where coefficients, Wald tests and comparisons are not identified;
+\code{$notes} says so when it happens.
 
 For binary responses see \code{\link{anova_bin}}, and for counts see
 \code{\link{anova_count}}: both add family-specific diagnostics and effect

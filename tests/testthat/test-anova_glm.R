@@ -121,3 +121,60 @@ test_that("nothing is written to stdout and no deprecation warnings fire", {
   fit <- anova_glm(d, "value", "group")
   expect_true(all(vapply(fit$plots, inherits, logical(1), "ggplot")))
 })
+
+test_that("deviance explained is 1 - deviance / null deviance", {
+  d <- fx_counts()
+  fit <- anova_glm(d, "count", "g1", family = "poisson", plots = FALSE)
+  m <- stats::glm(count ~ g1, family = stats::poisson(), data = d)
+  expect_equal(fit$effect_sizes$estimate[fit$effect_sizes$measure == "deviance_explained"],
+               1 - m$deviance / m$null.deviance)
+})
+
+test_that("a Gamma fit gets car's F test by default", {
+  d <- fx_oneway()
+  d$pos <- abs(d$value) + 1
+  fit <- anova_glm(d, "pos", "group", family = stats::Gamma(link = "log"),
+                   plots = FALSE)
+  m <- stats::glm(pos ~ group, data = d, family = stats::Gamma(link = "log"))
+  ref <- car::Anova(m, test.statistic = "F")
+  expect_identical(attr(fit$anova, "statistic"), "F")
+  expect_equal(fit$anova$statistic[1], ref$`F value`[1])
+  expect_equal(fit$anova$p_value[1], ref$`Pr(>F)`[1])
+})
+
+test_that("a log link gives ratios of marginal means in a 'ratio' column", {
+  d <- fx_counts()
+  fit <- anova_glm(d, "count", "g1", family = "poisson", plots = FALSE)
+  expect_true("ratio" %in% names(fit$posthoc))
+  mu <- tapply(d$count, d$g1, mean)
+  expect_equal(fit$posthoc$ratio, unname(mu["A"] / mu["B"]), tolerance = 1e-6)
+})
+
+test_that("robust standard errors reach the marginal means", {
+  skip_if_not_installed("sandwich")
+  d <- fx_oneway(sds = c(1, 2, 4))
+  fit <- anova_glm(d, "value", "group", vcov_type = "HC3", plots = FALSE)
+  m <- stats::glm(value ~ group, data = d)
+  ref <- as.data.frame(emmeans::emmeans(m, "group",
+                                        vcov. = sandwich::vcovHC(m, type = "HC3")))
+  expect_equal(fit$emmeans$se, ref$SE, tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(
+    fit$emmeans$se, anova_glm(d, "value", "group", plots = FALSE)$emmeans$se)))
+})
+
+test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.2", {
+  d <- fx_overdispersed()
+  fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
+  m <- stats::glm(y ~ g, family = stats::poisson(), data = d)
+  phi <- sum(stats::residuals(m, type = "pearson")^2) / stats::df.residual(m)
+  expect_equal(fit$assumptions$dispersion, phi)
+  expect_gt(phi, 1.5)
+  expect_lt(phi, 15)
+  expect_true(any(grepl(sprintf("Pearson dispersion is %.2f", phi), fit$notes,
+                        fixed = TRUE)))
+  expect_true(any(grepl("family = \"quasipoisson\"", fit$notes, fixed = TRUE)))
+  ok <- anova_glm(fx_counts(), "count", c("g1", "g2"), interaction = TRUE,
+                  family = "poisson", plots = FALSE)
+  expect_lt(ok$assumptions$dispersion, 1.2)
+  expect_false(any(grepl("^Pearson dispersion is", ok$notes)))
+})

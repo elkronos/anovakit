@@ -91,6 +91,13 @@ test_that("the offset lives in the formula, so emmeans and terms can see it", {
   ref <- stats::glm(count ~ g1 + offset(log(hours)), data = d,
                     family = stats::poisson())
   expect_equal(unname(stats::coef(fit$model)), unname(stats::coef(ref)))
+
+  # The rates really are at one unit of exposure, as the note says, and not
+  # at the mean log exposure emmeans would otherwise use
+  emm <- as.data.frame(emmeans::emmeans(ref, ~ g1, type = "response", offset = 0))
+  expect_equal(fit$emmeans$estimate, emm$rate)
+  expect_equal(fit$emmeans$estimate, unname(exp(cumsum(stats::coef(ref)))))
+  expect_equal(fit$emmeans$estimate, c(3.431959, 7.874468), tolerance = 1e-6)
 })
 
 test_that("the model choice can be forced and is always reported", {
@@ -105,6 +112,34 @@ test_that("the model choice can be forced and is always reported", {
 
   auto <- anova_count(d, "y", "g", plots = FALSE)
   expect_true(any(grepl("Pearson dispersion is", auto$notes)))
+})
+
+test_that("overdispersion_threshold decides the automatic model choice", {
+  skip_if_not_installed("MASS")
+  d <- fx_overdispersed()
+  phi <- anova_count(d, "y", "g", model = "poisson", plots = FALSE)$dispersion
+  above <- anova_count(d, "y", "g", overdispersion_threshold = phi + 0.01,
+                       plots = FALSE)
+  below <- anova_count(d, "y", "g", overdispersion_threshold = phi - 0.01,
+                       plots = FALSE)
+  expect_identical(above$model_type, "poisson")
+  expect_true(any(grepl(sprintf("at or below the threshold of %.2f", phi + 0.01),
+                        above$notes)))
+  expect_identical(below$model_type, "negbin")
+  expect_true(any(grepl(sprintf("above the threshold of %.2f", phi - 0.01),
+                        below$notes)))
+})
+
+test_that("a quasi-Poisson model is tested with F, as car::Anova does", {
+  d <- fx_overdispersed()
+  fit <- anova_count(d, "y", "g", model = "quasipoisson", plots = FALSE)
+  ref <- car::Anova(stats::glm(y ~ g, family = stats::quasipoisson(), data = d),
+                    type = 2, test.statistic = "F")
+  expect_identical(attr(fit$anova, "statistic"), "F")
+  expect_equal(fit$anova$statistic[1], ref$`F value`[1])
+  expect_equal(fit$anova$p_value[1], ref$`Pr(>F)`[1])
+  expect_true(any(grepl("has no likelihood, so the analysis of deviance uses an F test",
+                        fit$notes)))
 })
 
 test_that("dispersion is the Pearson statistic", {
@@ -132,6 +167,30 @@ test_that("type and test_statistic are separate arguments", {
     type = 3, test.statistic = "LR"))
   expect_equal(t3$anova$statistic, ref$`LR Chisq`)
   expect_false(isTRUE(all.equal(t2$anova$statistic[1], t3$anova$statistic[1])))
+
+  # test_statistic varies independently of type
+  wald <- anova_count(d, "count", c("g1", "g2"), interaction = TRUE, type = "II",
+                      model = "poisson", test_statistic = "Wald", plots = FALSE)
+  wref <- as.data.frame(car::Anova(
+    stats::glm(count ~ g1 * g2, data = d, family = stats::poisson()),
+    type = 2, test.statistic = "Wald"))
+  expect_identical(attr(wald$anova, "statistic"), "Wald chi-square")
+  expect_equal(wald$anova$statistic, wref$Chisq)
+  expect_equal(wald$anova$p_value, wref$`Pr(>Chisq)`)
+})
+
+test_that("a theta that collapses towards Poisson is reported as such", {
+  skip_if_not_installed("MASS")
+  # Converges (no th.warn) to a theta above 1000: essentially Poisson data
+  d <- data.frame(g = factor(rep(c("a", "b"), each = 20)),
+                  y = c(3, 3, 6, 9, 4, 2, 4, 7, 4, 2, 4, 7, 5, 3, 4, 5, 1, 3, 5, 9,
+                        8, 5, 6, 6, 8, 5, 7, 10, 12, 6, 11, 9, 7, 12, 2, 8, 3, 5, 10, 6))
+  ref <- MASS::glm.nb(y ~ g, data = d)
+  expect_null(ref$th.warn)
+  expect_gt(ref$theta, 1000)
+  fit <- anova_count(d, "y", "g", model = "negbin", plots = FALSE)
+  expect_true(any(grepl("very large \\(theta = 1\\.18e\\+03\\)", fit$notes)))
+  expect_false(any(grepl("did not converge|theta = [0-9.]+ \\(SE", fit$notes)))
 })
 
 test_that("the model is additive by default even with three factors", {
@@ -166,7 +225,7 @@ test_that("counts are validated", {
 
 test_that("sparse and empty cells are reported", {
   d <- fx_nested()
-  d$count <- stats::rpois(nrow(d), 4)
+  d$count <- withr::with_seed(112, stats::rpois(nrow(d), 4))
   fit <- anova_count(d, "count", c("g1", "g2"), plots = FALSE)
   expect_true(any(grepl("contain no observations", fit$notes)))
 })

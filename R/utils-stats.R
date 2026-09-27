@@ -53,12 +53,39 @@
       n         = nm$n,        # the number the test actually used, not length(v)
       statistic = if (is.null(nm$test)) NA_real_ else unname(nm$test$statistic),
       p_value   = if (is.null(nm$test)) NA_real_ else unname(nm$test$p.value),
+      # Why a group has no test (too few or too many values, or no variation);
+      # an NA with no reason reads as a failure.
+      note      = if (length(nm$note) == 0L) NA_character_ else nm$note,
       stringsAsFactors = FALSE
     )
   })
   out <- do.call(rbind, rows)
   row.names(out) <- NULL
   out
+}
+
+#' A p-value for a sentence: "p = 0.012", or "p < 2.2e-16" at machine precision
+#' @noRd
+.fmt_p <- function(p, digits = 2L) {
+  eps <- .Machine$double.eps
+  ifelse(!is.na(p) & p < eps,
+         paste("p <", format(eps, digits = digits)),
+         paste("p =", format(signif(p, digits))))
+}
+
+#' Is a Pearson dispersion above 1 by more than chance?
+#'
+#' Under the model the Pearson statistic is roughly chi-square on the residual
+#' degrees of freedom, so a dispersion a little above 1 is expected half the
+#' time. A note about overdispersion is worth giving only when the statistic
+#' is beyond what that distribution produces.
+#' @return the upper-tail p-value, or \code{NA} when it cannot be computed.
+#' @noRd
+.overdispersion_p <- function(dispersion, df) {
+  if (!is.finite(dispersion) || is.null(df) || !is.finite(df) || df < 1) {
+    return(NA_real_)
+  }
+  stats::pchisq(dispersion * df, df, lower.tail = FALSE)
 }
 
 #' Pearson dispersion statistic for a fitted GLM
@@ -118,7 +145,7 @@
   ss <- eff[["Sum Sq"]]
   df <- if ("Df" %in% names(eff)) eff[["Df"]] else rep(NA_real_, length(ss))
   out <- data.frame(
-    term           = rownames(eff),
+    term           = gsub("`", "", rownames(eff), fixed = TRUE),
     df             = as.numeric(df),
     sum_sq         = as.numeric(ss),
     partial_eta_sq = as.numeric(ss / (ss + ss_error)),
@@ -132,7 +159,7 @@
     om  <- (out$df * (ms - mse)) / (out$df * ms + (n_obs - out$df) * mse)
     out$partial_omega_sq <- pmax(0, pmin(1, om))
     if (any(om < 0, na.rm = TRUE)) {
-      attr(out, "omega_floored") <- rownames(eff)[which(om < 0)]
+      attr(out, "omega_floored") <- out$term[which(om < 0)]
     }
   }
   out
@@ -167,25 +194,56 @@
 #' Implemented directly rather than taken from a package, so that multivariate
 #' normality can be assessed without adding a dependency.
 #'
-#' @param Y numeric matrix, rows are observations.
-#' @return data.frame with one row per test, or \code{NULL} if \code{Y} is too
-#'   small or singular.
+#' Both statistics are functions of the Mahalanobis forms
+#' \eqn{d_{ij} = y_i' S^{-1} y_j} (ML covariance, divisor \eqn{n}): skewness
+#' \eqn{b_1 = \sum_{ij} d_{ij}^3 / n^2} and kurtosis
+#' \eqn{b_2 = \sum_i d_{ii}^2 / n}. The \eqn{n \times n} matrix of forms is
+#' never built: with whitened scores \eqn{Z} (so that \eqn{d_{ij} = z_i'z_j}),
+#' \eqn{b_1 = \sum_{abc} (\sum_i z_{ia} z_{ib} z_{ic})^2 / n^2}, which takes
+#' \eqn{O(n p^3)} time and \eqn{O(n p)} memory. The forms do not depend on the
+#' scale of the columns, so the columns are standardised first, which keeps
+#' responses on very different scales from making \eqn{S} look singular.
+#'
+#' Applied to model residuals, the statistics carry no information when the
+#' residual degrees of freedom equal the number of columns (the forms are then
+#' a fixed function of the design), and close to it they are dominated by the
+#' design; the test is skipped, with a note, unless the residual degrees of
+#' freedom exceed \code{p} by at least \code{margin}.
+#'
+#' @param Y numeric matrix, rows are observations (typically residuals).
+#' @param df_resid residual degrees of freedom of the model that produced
+#'   \code{Y}, or \code{NULL} for raw data (\code{n - 1}).
+#' @param margin how far \code{df_resid} must exceed the number of columns.
+#' @return list with \code{table} (data.frame with one row per test, or
+#'   \code{NULL}) and \code{note}.
 #' @references Mardia, K. V. (1970). Measures of multivariate skewness and
 #'   kurtosis with applications. \emph{Biometrika}, 57(3), 519-530.
 #' @noRd
-.mardia_test <- function(Y) {
+.mardia_test <- function(Y, df_resid = NULL, margin = 10L) {
   Y <- as.matrix(Y)
   Y <- Y[stats::complete.cases(Y), , drop = FALSE]
   n <- nrow(Y); p <- ncol(Y)
-  if (n < p + 1L || n < 4L) return(NULL)
-  Yc <- scale(Y, center = TRUE, scale = FALSE)
+  dfr <- if (is.null(df_resid)) n - 1L else df_resid
+  if (n < 4L || !is.finite(dfr) || dfr < p + margin) {
+    return(list(table = NULL, note = sprintf(
+      "Mardia's tests were not computed: the residuals have %s degree(s) of freedom for %d responses, and at least %d are needed. At %d they would not depend on the data at all, and close to it they are dominated by the design.",
+      format(dfr), p, p + margin, p)))
+  }
+  singular <- list(table = NULL, note = "Mardia's tests were not computed: the residual covariance matrix is singular (the responses are collinear).")
+  Yc <- sweep(Y, 2L, colMeans(Y), "-")
+  s <- sqrt(colSums(Yc^2) / n)
+  if (any(!is.finite(s) | s <= 0)) return(singular)
+  Yc <- sweep(Yc, 2L, s, "/")                  # the forms are scale-invariant
   S  <- crossprod(Yc) / n                      # ML covariance, Mardia's divisor
-  Si <- tryCatch(solve(S), error = function(e) NULL)
-  if (is.null(Si)) return(NULL)
+  ev <- eigen((S + t(S)) / 2, symmetric = TRUE)
+  if (min(ev$values) <= max(ev$values) * 1e-12) return(singular)
+  # Whitened scores: Z Z' = Yc S^-1 Yc', the matrix of Mahalanobis forms.
+  Z <- Yc %*% ev$vectors %*% diag(1 / sqrt(ev$values), p)
 
-  D  <- Yc %*% Si %*% t(Yc)                    # n x n matrix of Mahalanobis forms
-  b1 <- sum(D^3) / (n^2)
-  b2 <- sum(diag(D)^2) / n
+  b1 <- 0
+  for (a in seq_len(p)) b1 <- b1 + sum(crossprod(Z, Z * Z[, a])^2)
+  b1 <- b1 / n^2
+  b2 <- sum(rowSums(Z^2)^2) / n
 
   skew_stat <- n * b1 / 6
   skew_df   <- p * (p + 1) * (p + 2) / 6
@@ -194,13 +252,13 @@
   kurt_stat <- (b2 - p * (p + 2)) / sqrt(8 * p * (p + 2) / n)
   kurt_p    <- 2 * stats::pnorm(-abs(kurt_stat))
 
-  data.frame(
+  list(table = data.frame(
     test      = c("Mardia skewness", "Mardia kurtosis"),
     statistic = c(skew_stat, kurt_stat),
     df        = c(skew_df, NA_real_),
     p_value   = c(skew_p, kurt_p),
     stringsAsFactors = FALSE
-  )
+  ), note = character(0))
 }
 
 #' Box's M test for homogeneity of covariance matrices
@@ -246,125 +304,192 @@
 
 #' Canonical discriminant analysis from hypothesis and error SSCP matrices
 #'
-#' Solves the generalised eigenproblem for \code{solve(E) \%*\% H} and projects
-#' the centred responses onto the leading discriminant axes.
+#' Solves the generalised eigenproblem \eqn{H v = \lambda E v} and projects
+#' the centred responses onto the leading discriminant axes. The problem is
+#' solved on responses scaled to unit error variance
+#' (\eqn{D^{-1} E D^{-1}} and \eqn{D^{-1} H D^{-1}}, with \eqn{D} the square
+#' roots of \code{diag(E)}), which leaves the eigenvalues unchanged and keeps
+#' responses on very different scales from making \code{E} look singular; the
+#' eigenvectors are transformed back.
 #'
-#' @param Y numeric matrix of responses. For a MANCOVA this must be the
-#'   \emph{residuals} of the responses on the covariates, so that the scores
-#'   live in the same adjusted space as \code{H} and \code{E}. Projecting the
-#'   raw responses onto eigenvectors derived from an adjusted model produces
-#'   scores that discriminate far worse than the eigenvalue printed beside
-#'   them, and structure coefficients that can have the wrong sign.
+#' @param Y numeric matrix of responses. It must live in the same space as
+#'   \code{H} and \code{E}: with covariates, or with other terms in the model,
+#'   their fitted effects must already have been removed, so that the
+#'   deviations of \code{Y} from its means within the levels of the described
+#'   term are the model residuals. Projecting the raw responses onto
+#'   eigenvectors derived from an adjusted model produces scores that
+#'   discriminate far worse than the eigenvalue printed beside them.
 #' @param H hypothesis SSCP matrix.
 #' @param E error SSCP matrix.
 #' @param df_h degrees of freedom of the hypothesis term.
 #' @param df_e residual degrees of freedom, used to scale the axes to unit
-#'   pooled within-group variance, which is the convention that makes the
-#'   spread of the group centroids on the plot mean what it appears to mean.
-#' @param group optional factor, used for the pooled within-group structure
-#'   coefficients that CDA conventionally reports.
-#' @return list with \code{scores}, \code{canonical} and \code{structure}, or
-#'   \code{NULL} on failure.
+#'   pooled within-group variance (\eqn{v'Ev / df_e = 1}), which is the
+#'   convention that makes the spread of the group centroids on the plot mean
+#'   what it appears to mean.
+#' @param group optional factor of the described term's levels, returned with
+#'   the scores for plotting.
+#' @return list with \code{scores}, \code{group}, \code{canonical} (axis,
+#'   eigenvalue, canonical correlation, proportion of the term's between-group
+#'   variation) and \code{structure} (a \code{response} column and one column
+#'   per axis: the pooled within-group correlations between each response and
+#'   each axis, \eqn{diag(E)^{-1/2} E v / \sqrt{v'Ev}}, SAS's "pooled within
+#'   canonical structure"); or, on failure, a list whose \code{canonical} is
+#'   \code{NULL} and whose \code{reason} says why.
 #' @noRd
 .canonical_discriminant <- function(Y, H, E, df_h, df_e = NULL, group = NULL) {
   Y <- as.matrix(Y)
-  Einv <- tryCatch(solve(E), error = function(e) NULL)
-  if (is.null(Einv)) return(NULL)
-  ev <- tryCatch(eigen(Einv %*% H, symmetric = FALSE), error = function(e) NULL)
-  if (is.null(ev)) return(NULL)
-  vals <- Re(ev$values)
-  vecs <- Re(ev$vectors)
-  ord <- order(vals, decreasing = TRUE)
-  vals <- vals[ord]; vecs <- vecs[, ord, drop = FALSE]
-  keep <- min(df_h, ncol(Y), sum(vals > .Machine$double.eps^0.5))
-  if (keep < 1L) return(NULL)
-  vals <- vals[seq_len(keep)]
-  vecs <- vecs[, seq_len(keep), drop = FALSE]
-
-  Yc <- scale(Y, center = TRUE, scale = FALSE)
-  scores <- Yc %*% vecs
-
-  # Unit pooled within-group variance: v' E v / df_e is the within-group
-  # variance of the axis, so dividing by its square root gives unit scale.
-  wsd <- sqrt(pmax(diag(t(vecs) %*% E %*% vecs), 0) /
-                (if (is.null(df_e) || !is.finite(df_e) || df_e <= 0)
-                  max(nrow(Y) - 1L, 1L) else df_e))
-  wsd[!is.finite(wsd) | wsd == 0] <- 1
-  scores <- sweep(scores, 2L, wsd, "/")
-  colnames(scores) <- paste0("Can", seq_len(keep))
-
-  # Pooled within-group correlations between responses and axes: the quantity
-  # conventionally called the structure coefficient.
-  struct <- if (!is.null(group)) {
-    g <- droplevels(as.factor(group))
-    resid_within <- function(M) {
-      M <- as.matrix(M)
-      for (j in seq_len(ncol(M))) M[, j] <- M[, j] - stats::ave(M[, j], g)
-      M
-    }
-    suppressWarnings(stats::cor(resid_within(Y), resid_within(scores)))
-  } else {
-    suppressWarnings(stats::cor(Y, scores))
+  fail <- function(reason) list(canonical = NULL, reason = reason)
+  if (is.null(H) || is.null(E)) {
+    return(fail("its hypothesis or error matrix is unavailable"))
   }
+  if (!is.finite(df_h) || df_h < 1) {
+    return(fail("the term has no estimable degrees of freedom"))
+  }
+  s <- sqrt(diag(E))
+  if (any(!is.finite(s) | s <= 0)) return(fail("the error matrix is singular"))
+  Es <- E / outer(s, s)
+  Hs <- H / outer(s, s)
+  ee <- eigen((Es + t(Es)) / 2, symmetric = TRUE)
+  if (min(ee$values) <= max(ee$values) * 1e-12) {
+    return(fail("the error matrix is singular"))
+  }
+  # Symmetric square root of the scaled error matrix, and its inverse.
+  Es_half  <- ee$vectors %*% (t(ee$vectors) * sqrt(ee$values))
+  Es_ihalf <- ee$vectors %*% (t(ee$vectors) / sqrt(ee$values))
+  M <- Es_ihalf %*% Hs %*% Es_ihalf
+  ev <- eigen((M + t(M)) / 2, symmetric = TRUE)
+  vals <- ev$values
+  keep <- min(df_h, ncol(Y), sum(vals > .Machine$double.eps^0.5))
+  if (keep < 1L) return(fail("the term does not separate the groups on any axis"))
+  vals <- vals[seq_len(keep)]
+  W <- ev$vectors[, seq_len(keep), drop = FALSE]
+  # Structure coefficients diag(E)^-1/2 E v / sqrt(v'Ev), which for these
+  # eigenvectors is Es^1/2 w. The sign of an eigenvector is arbitrary: make
+  # each axis's largest structure coefficient positive, so the orientation of
+  # the plot is reproducible.
+  struct <- Es_half %*% W
+  big <- max.col(t(abs(struct)), ties.method = "first")
+  flip <- sign(struct[cbind(big, seq_len(keep))])
+  flip[flip == 0] <- 1
+  W <- sweep(W, 2L, flip, "*")
+  struct <- sweep(struct, 2L, flip, "*")
+  # Discriminant coefficients on the original scale, normalised to v'Ev = 1.
+  V <- (Es_ihalf %*% W) / s
+
+  dfe <- if (is.null(df_e) || !is.finite(df_e) || df_e <= 0) {
+    max(nrow(Y) - 1L, 1L)
+  } else df_e
+  Yc <- sweep(Y, 2L, colMeans(Y), "-")
+  # v'Ev / df_e is the pooled within-group variance of an axis, so with
+  # v'Ev = 1 multiplying by sqrt(df_e) gives unit pooled within-group variance.
+  scores <- (Yc %*% V) * sqrt(dfe)
+  axes <- paste0("Can", seq_len(keep))
+  colnames(scores) <- axes
+  colnames(struct) <- axes
+  rn <- colnames(Y) %||% rownames(E) %||% paste0("y", seq_len(ncol(Y)))
 
   list(
     scores = scores,
     group = if (is.null(group)) NULL else droplevels(as.factor(group)),
     canonical = data.frame(
-      axis = colnames(scores),
+      axis = axes,
       eigenvalue = vals,
       canonical_r = sqrt(vals / (1 + vals)),
       prop_variance = vals / sum(vals),
       stringsAsFactors = FALSE
     ),
-    structure = as.data.frame(struct)
+    structure = data.frame(response = rn, struct, stringsAsFactors = FALSE,
+                           row.names = NULL, check.names = FALSE),
+    reason = character(0)
   )
 }
 
-#' Detect complete or quasi-complete separation in a binomial GLM
+#' Detect separation in a binary GLM, or an all-zero cell in a count GLM
 #'
-#' Wald statistics collapse under separation: the odds ratio explodes, the
-#' interval covers everything, and the p-value approaches 1. \code{glm()}
-#' reports \code{converged = TRUE} regardless, so this has to be checked
-#' explicitly rather than inferred from the fit.
+#' Wald statistics collapse on the boundary of the parameter space: the odds
+#' ratio or rate ratio explodes, the interval covers everything, and the
+#' p-value approaches 1. \code{glm()} reports \code{converged = TRUE}
+#' regardless, so this has to be checked explicitly rather than inferred from
+#' the fit.
 #'
-#' The test is on the fitted model, not on the design. A homogeneous cell of a
-#' crossed grouping is \emph{not} evidence of separation when the model is
-#' additive: that cell's linear predictor is estimable from the others, and a
-#' cell-based rule flags close to half of all clean additive fits. Separation is
-#' therefore identified from the coefficients themselves — one that has run away
-#' on the log-odds scale together with a standard error that has run away with
-#' it — and from fitted probabilities that have reached the numerical boundary.
-#' The offending coefficients are named, since it is the coefficients, not the
-#' cells, that are unidentified.
+#' The check is made on the fitted linear predictor of each distinct cell of
+#' the design, not on the coefficients. A coefficient depends on the coding: under
+#' sum-to-zero contrasts the divergence of one homogeneous level is spread
+#' across the intercept and every deviation coefficient, none of which need
+#' look extreme on its own. A cell's linear predictor and its standard error do
+#' not depend on the coding. A cell is flagged when its linear predictor has
+#' run away (beyond +/-10 on the logit scale, or below -10 on the log scale)
+#' together with its standard error (above 10). A homogeneous cell of an
+#' additive model whose predictor is estimable from the other cells has a
+#' moderate standard error and is not flagged, and neither is a rare but
+#' well-determined event rate in a large sample.
 #'
-#' @param fit a fitted binomial GLM.
+#' @param fit a fitted binomial, Poisson or negative binomial GLM.
 #' @return a character note, or \code{character(0)}.
 #' @noRd
 .check_separation <- function(fit) {
+  fam <- tryCatch(stats::family(fit)$family, error = function(e) "")
+  is_count <- inherits(fit, "negbin") ||
+    fam %in% c("poisson", "quasipoisson") || grepl("^Negative Binomial", fam)
   co <- stats::coef(fit)
-  se <- suppressWarnings(sqrt(diag(stats::vcov(fit))))
-  keep <- intersect(names(co), names(se))
-  co <- co[keep]; se <- se[keep]
+  ok <- !is.na(co)
+  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
+  V <- tryCatch(suppressWarnings(stats::vcov(fit)), error = function(e) NULL)
+  if (is.null(X) || is.null(V) || !any(ok)) return(character(0))
+  keep <- intersect(names(co)[ok], intersect(colnames(X), colnames(V)))
+  X <- X[, keep, drop = FALSE]
+  V <- V[keep, keep, drop = FALSE]
+  key <- do.call(paste, c(as.data.frame(X), list(sep = "\r")))
+  first <- !duplicated(key)
+  Xu <- X[first, , drop = FALSE]
+  eta <- drop(Xu %*% co[keep])
+  se_eta <- sqrt(pmax(rowSums((Xu %*% V) * Xu), 0))
+  flag <- is.finite(eta) & is.finite(se_eta) & se_eta > 10 &
+    (if (is_count) eta < -10 else abs(eta) > 10)
+  if (!any(flag)) return(character(0))
 
-  runaway <- names(co)[is.finite(co) & is.finite(se) &
-                         abs(co) > 10 & se > 10]
-  mu <- stats::fitted(fit)
-  boundary <- sum(mu < 1e-10 | mu > 1 - 1e-10, na.rm = TRUE)
+  mf <- tryCatch(stats::model.frame(fit), error = function(e) NULL)
+  cells <- if (!is.null(mf)) {
+    facs <- names(mf)[-1L][vapply(mf[-1L], is.factor, logical(1))]
+    if (length(facs) > 0L) {
+      sub <- mf[first, facs, drop = FALSE][flag, , drop = FALSE]
+      apply(sub, 1L, function(r) paste(sprintf("%s = %s", facs, r), collapse = ", "))
+    } else character(0)
+  } else character(0)
+  where <- if (length(cells) > 0L) .abbrev(unname(cells), 5L) else
+    sprintf("%d cell(s) of the design", sum(flag))
 
-  if (length(runaway) == 0L && boundary == 0L) return(character(0))
-
-  detail <- if (length(runaway) > 0L) {
+  co_ok <- co[keep]
+  se_co <- sqrt(pmax(diag(V), 0))
+  # Coefficients are worth naming only under treatment coding, where each one
+  # is a level against its reference; a sum-to-zero or polynomial coefficient
+  # names nothing the reader can find in the data. The cells are named anyway.
+  ctr <- fit$contrasts
+  treatment <- is.null(ctr) || all(vapply(ctr, function(x)
+    identical(x, "contr.treatment"), logical(1)))
+  runaway <- if (treatment) {
+    setdiff(names(co_ok)[abs(co_ok) > 10 & se_co > 10], "(Intercept)")
+  } else character(0)
+  coefs <- if (length(runaway) > 0L) {
     sprintf(" The affected coefficient(s): %s.",
-            paste(setdiff(runaway, "(Intercept)"), collapse = ", "))
-  } else {
-    sprintf(" %d fitted probabilit%s numerically 0 or 1.",
-            boundary, if (boundary == 1L) "y is" else "ies are")
+            paste(gsub("`", "", runaway, fixed = TRUE), collapse = ", "))
+  } else ""
+
+  if (is_count) {
+    return(paste0(
+      "No events were observed in ", where, ", so the fitted rate there is ",
+      "numerically zero.", coefs, " A rate ratio involving such a cell is not ",
+      "identified: it will be near zero or enormous, its interval unbounded on one ",
+      "side, and its Wald p-value near 1 no matter how large the difference is. ",
+      "The likelihood-ratio omnibus test remains usable. Consider collapsing the ",
+      "level, or an exact or penalised method for the affected comparisons."))
   }
   paste0(
-    "Complete or quasi-complete separation detected.", detail,
+    "Complete or quasi-complete separation detected: the fitted probability is ",
+    "numerically 0 or 1 in ", where, ".", coefs,
     " An affected odds ratio is not identified: it will be enormous, its ",
     "interval will be unbounded on one side, and its Wald p-value will be near 1 ",
-    "no matter how strong the association is. Consider a penalised fit such as ",
-    "logistf::logistf(), or collapsing the offending level.")
+    "no matter how strong the association is. With events this sparse the ",
+    "likelihood-ratio omnibus test is also liberal. Consider a penalised fit such ",
+    "as logistf::logistf(), or collapsing the offending level.")
 }

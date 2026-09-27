@@ -1,8 +1,16 @@
+year <- if (!is.null(meta$`Date/Publication`)) {
+  substr(meta$`Date/Publication`, 1L, 4L)
+} else if (!is.null(meta$Date)) {
+  substr(meta$Date, 1L, 4L)
+} else {
+  format(Sys.Date(), "%Y")
+}
+
 bibentry(
   bibtype  = "Manual",
-  title    = "anovakit: Analysis of Variance Workflows with Assumption Checks and Effect Sizes",
+  title    = sprintf("{anovakit}: %s", meta$Title),
   author   = person("Justin", "Chase"),
-  year     = "2026",
-  note     = "R package version 0.1.0",
+  year     = year,
+  note     = sprintf("R package version %s", meta$Version),
   url      = "https://github.com/elkronos/anovakit"
 )

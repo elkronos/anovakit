@@ -12,67 +12,94 @@
 #'   \item{method}{Character. The analysis that was run, as printed.}
 #'   \item{call}{The matched call, so a result can always say how it was made.}
 #'   \item{model}{The fitted model object: an \code{lm} from
-#'     \code{\link{anova_ancova}}, a \code{glm} from \code{\link{anova_bin}},
-#'     \code{\link{anova_count}} and \code{\link{anova_glm}}, a
-#'     \code{manova} from \code{\link{anova_manova}}, an \code{afex_aov} from
-#'     \code{\link{anova_rm}}, and the \code{htest} returned by
+#'     \code{\link{anova_ancova}}, a \code{glm} (or a \code{negbin} from
+#'     \code{MASS::glm.nb()}) from \code{\link{anova_bin}},
+#'     \code{\link{anova_count}} and \code{\link{anova_glm}}, the multivariate
+#'     \code{mlm} from \code{\link{anova_manova}}, an \code{afex_aov} from
+#'     \code{\link{anova_rm}} (fitted on internal names, see its
+#'     \code{$internal_names}), and the \code{htest} returned by
 #'     \code{\link[stats]{oneway.test}} or \code{\link[stats]{kruskal.test}}
 #'     from \code{\link{anova_welch}} and \code{\link{anova_kw}}, which fit no
-#'     model.}
-#'   \item{anova}{Data frame. The omnibus test table.}
+#'     model. The call of a fitted \code{lm} or \code{glm} reaches the
+#'     analysed rows from anywhere, so \code{update()}, \code{step()} and
+#'     \code{lmtest::lrtest()} work on it directly: for instance
+#'     \code{update(fit$model, . ~ 1)}.}
+#'   \item{anova}{Data frame. The omnibus test table. Its attributes record
+#'     the type of sums of squares, the test statistic and (in
+#'     \code{anova_rm}) the sphericity correction; \code{print()} shows them.}
 #'   \item{effect_sizes}{Data frame, or \code{NULL}. What it holds depends on
 #'     the method: partial eta squared with partial omega squared
 #'     (\code{anova_ancova}, \code{anova_manova}, and \code{anova_glm} on a
-#'     Gaussian family), Hedges' g with intervals (\code{anova_welch}), epsilon
+#'     Gaussian family), a standardised mean difference on the average of the
+#'     two group variances, with intervals (\code{anova_welch}), epsilon
 #'     squared and eta squared for the rank statistic (\code{anova_kw}), partial
 #'     and generalised eta squared (\code{anova_rm}), odds ratios
-#'     (\code{anova_bin}), incidence rate ratios (\code{anova_count}), and the
-#'     deviance explained with McFadden's pseudo R squared (\code{anova_glm} on
-#'     any other family). Both variance measures are \emph{partial}: the
+#'     (\code{anova_bin}) and incidence rate ratios (\code{anova_count}), each
+#'     a level against its reference level whatever the contrasts, and the
+#'     deviance explained (\code{anova_glm} on any other family) with
+#'     McFadden's pseudo R squared for the binomial, Poisson and negative
+#'     binomial families only. Both variance measures are \emph{partial}: the
 #'     classical omega squared is only a proportion of variance when the effect
 #'     sums of squares partition the total, which Type II and Type III sums of
 #'     squares do not.}
 #'   \item{emmeans}{Data frame, or \code{NULL}. Estimated marginal means with
-#'     intervals at \code{conf_level}.}
-#'   \item{emmeans_object}{The \code{emmGrid}, or \code{NULL}. Pass this to
-#'     \pkg{emmeans} for contrasts the wrapper does not cover. It carries
+#'     intervals at \code{conf_level} (group summaries for
+#'     \code{anova_welch} and \code{anova_kw}). When grouping factors enter a
+#'     model additively they are reported per factor, with a \code{term}
+#'     column.}
+#'   \item{emmeans_object}{The \code{emmGrid}, a named list of them (one per
+#'     factor) when the means are reported per factor, or \code{NULL}. Pass it
+#'     to \pkg{emmeans} for contrasts the wrapper does not cover. It carries
 #'     \pkg{emmeans}' own default confidence level rather than
 #'     \code{conf_level}, so give \code{level =} when you summarise it. It is
 #'     \code{NULL} for \code{\link{anova_welch}} and \code{\link{anova_kw}},
 #'     which fit no model \pkg{emmeans} can use, and for
 #'     \code{\link{anova_manova}}, where there is one grid per response under
 #'     \code{$univariate[[response]]$emmeans_object}.}
-#'   \item{posthoc}{Data frame, or \code{NULL}. Pairwise comparisons.}
+#'   \item{posthoc}{Data frame, or \code{NULL}. Pairwise comparisons, with the
+#'     unadjusted p-value in \code{p_value}, the adjusted one in
+#'     \code{p_adjusted} and the method in \code{adjustment}.}
 #'   \item{assumptions}{Named list of assumption checks. Contents vary by
 #'     method; each element is a test object, a data frame or \code{NULL}. It is
 #'     empty for \code{\link{anova_kw}} unless \code{diagnostics = TRUE}, since
 #'     the test assumes no distribution.}
 #'   \item{plots}{Named list of \pkg{ggplot2} objects. Empty when
 #'     \code{plots = FALSE}. Nothing is ever drawn as a side effect.}
-#'   \item{data_used}{Data frame. The rows and columns the model was fitted on.}
+#'   \item{data_used}{Data frame. The rows and columns the model was fitted on:
+#'     the analysed columns only, after missing and infinite values, zero
+#'     weights and incomplete subjects are removed. Covariates are mean-centred
+#'     there when \code{anova_ancova} or \code{anova_manova} centred them.}
 #'   \item{n_removed}{Integer. Input rows that are not in \code{data_used}:
-#'     dropped for missing or infinite values or, in \code{\link{anova_rm}},
-#'     for an incomplete within-subject design or because \pkg{afex}
-#'     aggregated duplicated subject-by-cell rows into their means.
+#'     dropped for missing or infinite values (a factor level that is itself
+#'     \code{NA} counts as missing) or a prior weight of zero, or, in
+#'     \code{\link{anova_rm}}, for an incomplete within-subject design or
+#'     because repeated subject-by-cell rows were aggregated (with
+#'     \code{fun_aggregate}, the mean by default).
 #'     \code{nrow(data_used) + n_removed} is always the number of rows given.}
 #'   \item{conf_level}{Numeric. The level used for every interval returned.}
 #'   \item{notes}{Character vector. Everything the function decided on your
 #'     behalf, could not compute, or thinks you should know -- including
-#'     anything \pkg{car}, \code{\link[stats]{glm}} or \pkg{afex} said while
-#'     the model was being fitted. Always read this.}
+#'     anything \pkg{car}, \code{\link[stats]{glm}}, \pkg{emmeans},
+#'     \pkg{sandwich} or \pkg{afex} said while the model was being fitted.
+#'     Always read this.}
 #' }
 #'
 #' @section Components individual functions add:
 #' Each function returns everything above plus whatever its own method
 #' produces. \code{names(fit)} lists them all. \code{\link{anova_ancova}} adds
-#' \code{$slopes_test}, \code{$simple_slopes} and \code{$covariate_means};
-#' \code{\link{anova_rm}} adds \code{$sphericity}, \code{$subjects_dropped} and
-#' the breakdown of \code{$n_removed}; \code{\link{anova_manova}} adds
-#' \code{$multivariate}, \code{$univariate}, \code{$canonical} and
-#' \code{$canonical_term}; \code{\link{anova_count}} adds \code{$model_type},
-#' \code{$dispersion} and \code{$model_dispersion};
-#' \code{\link{anova_bin}} and \code{\link{anova_glm}} add
-#' \code{$model_stats}. Each is documented on the function that produces it.
+#' \code{$slopes_test}, \code{$simple_slopes}, \code{$covariate_means},
+#' \code{$model_additive} and \code{$model_interaction};
+#' \code{\link{anova_rm}} adds \code{$sphericity}, \code{$subjects_dropped},
+#' the breakdown of \code{$n_removed}, \code{$residuals} (within-subject
+#' residuals in the row order of \code{$data_used}) and
+#' \code{$internal_names}; \code{\link{anova_manova}} adds
+#' \code{$multivariate}, \code{$univariate}, \code{$canonical},
+#' \code{$canonical_term}, \code{$slopes_test} (with covariates),
+#' \code{$covariate_means} and \code{$test}; \code{\link{anova_count}} adds
+#' \code{$model_type}, \code{$dispersion} and \code{$model_dispersion};
+#' \code{\link{anova_bin}} adds \code{$model_stats}; \code{\link{anova_glm}}
+#' adds \code{$model_stats} and \code{$family}. Each is documented on the
+#' function that produces it.
 #'
 #' @name anovakit_fit
 #' @seealso \code{\link{print.anovakit_fit}},
@@ -128,6 +155,7 @@ NULL
 #' print(fit)
 #' @export
 print.anovakit_fit <- function(x, digits = 4L, ...) {
+  digits <- .check_digits(digits)
   cat(x$method, "\n")
   cat(strrep("-", nchar(x$method)), "\n", sep = "")
   if (!is.null(x$call)) {
@@ -141,7 +169,7 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
                         x$n_removed)
               else ""))
   if (!is.null(x$anova) && NROW(x$anova) > 0L) {
-    cat("\nOmnibus test\n")
+    cat("\n", .omnibus_header(x$anova), "\n", sep = "")
     .print_df(x$anova, digits)
   }
   if (length(x$notes) > 0L) {
@@ -155,22 +183,54 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
   invisible(x)
 }
 
+#' The heading of the omnibus table, naming what it contains
+#'
+#' The statistic (F, likelihood-ratio or Wald chi-square), the type of sums of
+#' squares and the sphericity correction all change what the numbers mean, and
+#' none of them can be read off the table itself.
+#' @noRd
+.omnibus_header <- function(tab) {
+  bits <- c(
+    if (!is.null(attr(tab, "ss_type"))) sprintf("Type %s", attr(tab, "ss_type")),
+    attr(tab, "statistic"),
+    if (!is.null(attr(tab, "correction"))) {
+      corr <- attr(tab, "correction")
+      if (identical(corr, "none")) "no sphericity correction" else
+        sprintf("%s-corrected degrees of freedom", corr)
+    })
+  if (length(bits) == 0L) "Omnibus test" else
+    sprintf("Omnibus test (%s)", paste(bits, collapse = ", "))
+}
+
 #' Summarise an anovakit result
 #'
 #' Everything \code{print} shows, plus assumption checks, effect sizes,
-#' estimated marginal means and post-hoc comparisons.
+#' marginal means, post-hoc comparisons and whatever further tables the method
+#' produces (simple slopes, sphericity, the multivariate tests and univariate
+#' follow-ups, the canonical axes).
 #'
 #' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
 #'   \code{4}.
 #' @param ... Ignored.
-#' @return \code{object}, invisibly.
+#' @return An object of class \code{summary.anovakit_fit}, which prints the
+#'   summary. Its \code{$fit} element is \code{object}.
 #' @examples
 #' set.seed(1)
 #' d <- data.frame(g = rep(c("a", "b", "c"), each = 20), y = rnorm(60))
 #' summary(anova_welch(d, "y", "g", plots = FALSE))
 #' @export
 summary.anovakit_fit <- function(object, digits = 4L, ...) {
+  structure(list(fit = object, digits = .check_digits(digits)),
+            class = "summary.anovakit_fit")
+}
+
+#' @rdname summary.anovakit_fit
+#' @param x A \code{summary.anovakit_fit} object.
+#' @export
+print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
+  object <- x$fit
+  digits <- .check_digits(digits)
   print(object, digits = digits)
 
   if (length(object$assumptions) > 0L) {
@@ -182,11 +242,14 @@ summary.anovakit_fit <- function(object, digits = 4L, ...) {
       if (inherits(el, "htest")) {
         cat(sprintf("    %s: statistic = %s, p = %s\n", el$method,
                     format(signif(unname(el$statistic), digits)),
-                    format(signif(unname(el$p.value), digits))))
+                    format.pval(unname(el$p.value), digits = digits,
+                                eps = .Machine$double.eps)))
       } else if (is.data.frame(el)) {
         .print_df(el, digits, row.names = FALSE)
+      } else if (is.numeric(el) && length(el) == 1L) {
+        cat("    ", format(signif(el, digits)), "\n", sep = "")
       } else {
-        print(el)
+        print(el, digits = digits)
       }
     }
   }
@@ -195,15 +258,39 @@ summary.anovakit_fit <- function(object, digits = 4L, ...) {
     .print_df(object$effect_sizes, digits, row.names = FALSE)
   }
   if (!is.null(object$emmeans) && NROW(object$emmeans) > 0L) {
-    cat(sprintf("\nEstimated marginal means (%s%% intervals)\n",
-                format(object$conf_level * 100, trim = TRUE)))
+    # anova_welch and anova_kw fit no model: theirs are group summaries.
+    header <- if (inherits(object$model, "htest")) "Group summaries" else
+      "Estimated marginal means"
+    cat(sprintf("\n%s (%s%% intervals)\n", header, .pct(object$conf_level)))
     .print_df(object$emmeans, digits, row.names = FALSE)
   }
   if (!is.null(object$posthoc) && NROW(object$posthoc) > 0L) {
     cat("\nPairwise comparisons\n")
     .print_df(object$posthoc, digits, row.names = FALSE)
   }
-  invisible(object)
+  extra <- c(sphericity = "Sphericity", slopes_test = "Homogeneity of slopes",
+             simple_slopes = "Covariate slopes by group",
+             multivariate = "Multivariate tests", canonical = "Canonical axes")
+  for (nm in names(extra)) {
+    el <- object[[nm]]
+    if (is.data.frame(el) && NROW(el) > 0L) {
+      cat("\n", extra[[nm]], "\n", sep = "")
+      .print_df(el, digits, row.names = FALSE)
+    } else if (is.list(el) && is.data.frame(el$table) && NROW(el$table) > 0L) {
+      cat("\n", extra[[nm]], "\n", sep = "")
+      .print_df(el$table, digits, row.names = FALSE)
+    }
+  }
+  if (is.list(object$univariate) && length(object$univariate) > 0L) {
+    for (r in names(object$univariate)) {
+      tab <- object$univariate[[r]]$anova
+      if (is.data.frame(tab) && NROW(tab) > 0L) {
+        cat("\nUnivariate follow-up: ", r, "\n", sep = "")
+        .print_df(tab, digits, row.names = FALSE)
+      }
+    }
+  }
+  invisible(x)
 }
 
 #' Plot an anovakit result
@@ -246,13 +333,64 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
   x$plots[[as.integer(which)]]
 }
 
+#' Validate a digits argument
+#' @noRd
+.check_digits <- function(digits) {
+  if (!is.numeric(digits) || length(digits) != 1L || !is.finite(digits)) {
+    .stopf("`digits` must be a single whole number between 1 and 22.")
+  }
+  as.integer(min(max(round(digits), 1L), 22L))
+}
+
+#' A confidence level as a percentage, without spurious rounding
+#' @noRd
+.pct <- function(conf_level) {
+  format(conf_level * 100, digits = 8L, drop0trailing = TRUE, trim = TRUE)
+}
+
 #' Round the numeric columns of a data frame for printing
+#'
+#' Counts and degrees of freedom are whole numbers; rounding them to
+#' significant digits would print n = 12345 as 12340, so whole-number columns
+#' are left alone. p-value columns are formatted with \code{format.pval()},
+#' which prints a p-value below machine precision as "< 2.2e-16" rather than as
+#' zero.
 #' @noRd
 .round_df <- function(df, digits = 4L) {
   df <- as.data.frame(df)
-  num <- vapply(df, is.numeric, logical(1))
-  df[num] <- lapply(df[num], function(v) signif(v, digits))
+  for (nm in names(df)) {
+    v <- df[[nm]]
+    if (!is.numeric(v)) next
+    if (.is_p_column(nm)) {
+      # A p-value is printed down to the precision it was computed with, and
+      # below that as "< eps". Most are exact to double precision; emmeans'
+      # Tukey and Dunnett p-values come from ptukey(), whose upper tail has an
+      # absolute error of about 1e-14 (so digits below about 1e-10 are noise),
+      # and its Sidak ones from 1 - (1 - p)^m, which loses everything below
+      # about 1e-13.
+      eps <- rep(.Machine$double.eps, length(v))
+      if (nm == "p_adjusted" && "adjustment" %in% names(df)) {
+        fl <- c(tukey = 1e-10, dunnettx = 1e-10, sidak = 1e-12)[as.character(df$adjustment)]
+        eps[!is.na(fl)] <- fl[!is.na(fl)]
+      }
+      out <- rep("NA", length(v))
+      for (e in unique(eps)) {
+        i <- !is.na(v) & eps == e
+        if (any(i)) out[i] <- format.pval(v[i], digits = digits, eps = e)
+      }
+      df[[nm]] <- out
+      next
+    }
+    if (is.integer(v) || all(is.na(v) | !is.finite(v) | v == round(v))) next
+    df[[nm]] <- signif(v, digits)
+  }
   df
+}
+
+#' Is this column a p-value?
+#' @noRd
+.is_p_column <- function(nm) {
+  grepl("^p_value$|^p_adjusted$|^p_(gg|hf|value_.*)$|^p$", nm)
 }
 
 #' Print a table at the requested number of digits
@@ -262,7 +400,8 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
 #' asked for. Setting the option for the duration of the call fixes that.
 #' @noRd
 .print_df <- function(df, digits = 4L, ...) {
-  old <- options(digits = max(digits, 1L))
+  digits <- .check_digits(digits)
+  old <- options(digits = digits)
   on.exit(options(old), add = TRUE)
   print(.round_df(df, digits), ...)
   invisible(NULL)

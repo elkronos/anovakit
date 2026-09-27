@@ -31,28 +31,34 @@ with a note.}
 \item{groups}{Character vector. One or more grouping columns.}
 
 \item{covariates}{Character vector or \code{NULL}. Numeric covariates, which
-turn the analysis into a MANCOVA.}
+turn the analysis into a MANCOVA. They are mean-centred before fitting.}
 
 \item{test}{Character. Multivariate statistic to report: \code{"Pillai"}
 (default), \code{"Wilks"}, \code{"Hotelling-Lawley"} or \code{"Roy"}.
-Pillai's trace is the most robust to departures from the assumptions.}
+Pillai's trace is the most robust to departures from the assumptions.
+Roy's largest root has only an upper bound for its F statistic when the
+hypothesis has more than one degree of freedom, so its p-value is then a
+lower bound (anti-conservative).}
 
 \item{interaction}{\code{FALSE} (additive, the default), \code{TRUE} (full
 factorial across the grouping variables), or a whole number giving the
 highest interaction order.}
 
-\item{type}{Character. \code{"II"} (default) or \code{"III"} sums of squares
-for the follow-up univariate tests. With \code{"III"} both the multivariate
-model and the univariate ones are fitted under sum-to-zero contrasts.}
+\item{type}{Character. \code{"II"} (default) or \code{"III"}: the type of
+both the multivariate tests and the univariate follow-up tests. With
+\code{"III"} the multivariate model and the univariate ones are fitted
+under sum-to-zero contrasts.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
 Default \code{0.95}.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
-comparisons within each response. Default \code{"tukey"}.}
+comparisons within each response. It does not adjust across responses.
+Default \code{"tukey"}.}
 
 \item{assumptions}{Logical. Compute Mardia's tests and Box's M. Default
-\code{TRUE}.}
+\code{TRUE}. The homogeneity-of-slopes test is computed whenever there are
+covariates.}
 
 \item{posthoc}{Logical. Compute pairwise comparisons within each response.
 Default \code{TRUE}.}
@@ -64,48 +70,122 @@ Default \code{TRUE}.}
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovakit_fit}} object with extra components
-  \code{$univariate} (a named list of per-response fits, each holding that
-  response's own \code{$model}, \code{$anova}, \code{$effect_sizes},
-  \code{$emmeans}, \code{$emmeans_object} and \code{$posthoc}),
-  \code{$multivariate} (the full multivariate table), \code{$canonical} (the
-  discriminant axes), \code{$canonical_term} (the term they describe) and
-  \code{$test} (the multivariate statistic used). The top-level
-  \code{$emmeans} and \code{$posthoc} stack every response's table with a
-  \code{response} column; \code{$emmeans_object} is \code{NULL}, because
-  there is one grid per response -- take them from
-  \code{$univariate[[r]]$emmeans_object}.
+An \code{\link{anovakit_fit}} object. Its \code{$model} is the
+  multivariate linear model (class \code{mlm}; pass it to
+  \code{car::Manova()} for further tests), and its \code{$anova} is the
+  multivariate table. Extra components: \code{$univariate} (a named list of
+  per-response fits, each holding that response's own \code{$model},
+  \code{$anova}, \code{$effect_sizes}, \code{$emmeans},
+  \code{$emmeans_object} and \code{$posthoc}; the univariate p-values are
+  not adjusted across responses), \code{$multivariate} (the Type II or III
+  multivariate table, one row per term, with columns \code{term}, \code{df},
+  \code{statistic}, \code{approx_f}, \code{num_df}, \code{den_df} and
+  \code{p_value}), \code{$canonical} (the discriminant axes),
+  \code{$canonical_term} (the term they describe, spelled as in
+  \code{$multivariate$term}), \code{$slopes_test} (with covariates, the
+  multivariate test of homogeneous regression slopes; otherwise
+  \code{NULL}), \code{$covariate_means} (the means the covariates were
+  centred at) and \code{$test} (the multivariate statistic used).
+  \code{$assumptions$structure_coefficients} has a \code{response} column
+  and one column per axis. The top-level \code{$emmeans} and
+  \code{$posthoc} stack every response's table with a \code{response}
+  column (\code{response.1} if a grouping column is already called
+  \code{response}); \code{$emmeans_object} is \code{NULL}, because there is
+  one grid per response -- take them from
+  \code{$univariate[[r]]$emmeans_object} (a named list of grids, one per
+  factor, when the factors enter additively).
 }
 \description{
 Compares two or more numeric responses jointly across groups, optionally
 adjusting for covariates. Reports the multivariate test, follow-up univariate
 analyses with effect sizes, covariate-adjusted estimated marginal means,
-assumption checks (Mardia's multivariate normality tests and Box's M), and a
+assumption checks (Mardia's multivariate normality tests, Box's M and, with
+covariates, a multivariate test of homogeneous regression slopes), and a
 canonical discriminant analysis with its plot.
 }
 \details{
+\strong{The multivariate tests} are Type II or Type III tests, as
+\code{type} says, computed by \code{car::Manova()} on the multivariate
+linear model \code{lm(cbind(<responses>) ~ <covariates> + <groups>)}. Type
+II tests each term adjusted for every other term that does not contain it,
+so the result does not depend on the order of \code{groups} or
+\code{covariates}; Type III fits under sum-to-zero contrasts and tests each
+term adjusted for all others. (\code{summary(stats::manova())} would give
+sequential, order-dependent tests instead.) When the model has aliased
+coefficients -- an empty cell of a crossed design, or collinear covariates
+-- \code{car::Manova()} refuses the model, so the Type II tests are
+computed by the equivalent model comparisons, and a note says so. Type III
+tests are not defined when coefficients are aliased; Type II tests are then
+reported throughout, with a note.
+
+With \code{test = "Roy"} the F statistic for a term with more than one
+degree of freedom (and more than one response) is an upper bound, so its
+p-value is a lower bound: it is anti-conservative, and a note says so.
+
+\strong{Covariates} are mean-centred before fitting (the means are in
+\code{$covariate_means} and in a note). Centring changes no test; it keeps a
+covariate with a large offset and a small spread (a time stamp, say) from
+being mistaken for a constant by the fitting routine, and it means the
+adjusted marginal means are read at the covariate means. A MANCOVA assumes
+that each covariate has the same slope in every group. That assumption is
+tested by comparing the model with one in which each covariate interacts
+with every grouping term, using the chosen multivariate statistic; the
+result is in \code{$slopes_test}, and a note says when it is rejected at
+the 0.05 level, since the common-slope adjusted means and comparisons are
+then not interpretable as constant group differences.
+
 \strong{Assumption checks.} Mardia's tests of multivariate skewness and
-kurtosis and Box's M test of equality of covariance matrices are computed
-from first principles, so no additional package is required. Box's M is
-notoriously sensitive to non-normality: treat a small p-value as a prompt to
-look at the group covariances rather than as a verdict.
+kurtosis (on the residuals of the multivariate model) and Box's M test of
+equality of covariance matrices (across the cells of the grouping
+variables, with the covariate effects removed) are computed from first
+principles, so no additional package is required. Mardia's tests are
+skipped, with a note, unless the residual degrees of freedom exceed the
+number of responses by at least 10: when they equal it the statistics do not
+depend on the data at all, and close to it they are dominated by the
+design. Both are asymptotic tests, and Mardia's kurtosis test in particular
+rejects too often when the sample is small relative to the square of the
+number of responses. Box's M is notoriously sensitive to non-normality:
+treat a small p-value as a prompt to look at the group covariances rather
+than as a verdict.
+
+\strong{Univariate follow-ups.} One Type II or III ANOVA is fitted per
+response and kept under \code{$univariate}. Their p-values are \emph{not}
+adjusted across responses and are reported whether or not the multivariate
+test is significant; \code{adjust} applies only to the pairwise comparisons
+within each response. A note says when a term's multivariate test is not
+significant at the 0.05 level, since its univariate follow-ups are then not
+protected by it.
 
 \strong{Canonical discriminant analysis.} The hypothesis and error sum of
-squares and cross-products matrices are taken from the fitted model and the
-generalised eigenproblem is solved directly. \code{$canonical} reports the
-eigenvalues, canonical correlations and the proportion of between-group
-variance on each axis; \code{$plots$canonical} plots the first two axes with
-group centroids, and \code{$assumptions$structure_coefficients} gives the
-pooled within-group correlations between each response and each axis. The
-analysis describes \emph{one} term: the full grouping interaction when it is
-in the model, and otherwise the grouping term itself. \code{$canonical_term}
-names it, and a note repeats it. Axes are scaled to unit pooled within-group
-variance, so the spread of the centroids on the plot means what it appears
-to mean.
+squares and cross-products matrices of one term are taken from the same
+\code{car::Manova()} tests as \code{$multivariate}, and the generalised
+eigenproblem is solved directly (on responses scaled to unit error
+variance, so responses on very different scales do not make it singular).
+\code{$canonical} reports the eigenvalues, canonical correlations and the
+proportion of the term's between-group variation on each axis;
+\code{$plots$canonical} plots the first two axes with group centroids, and
+\code{$assumptions$structure_coefficients} gives the pooled within-group
+correlations between each response and each axis, computed from the error
+matrix. The analysis describes \emph{one} term: the full interaction of the
+grouping variables when it is in the model (\code{interaction = TRUE}, or an
+order equal to the number of grouping variables); otherwise the main effect
+of the \emph{first} grouping variable, \code{groups[1]} -- list another
+variable first to describe it instead. \code{$canonical_term} names the
+term, and a note says which term was used and why. The scores are computed
+after removing the fitted effects of every other term in the model (the
+covariates, and the other grouping terms, under sum-to-zero coding), so
+that the plot shows the described term alone. Axes are scaled to unit
+pooled within-group variance (the error matrix divided by its degrees of
+freedom), so the spread of the centroids on the plot means what it appears
+to mean; in a balanced design the between-group to within-group ratio of the
+plotted scores equals the eigenvalue exactly, and in an unbalanced one
+approximately.
 
 \strong{Estimated marginal means} come from \pkg{emmeans} applied to each
 univariate model, so with covariates present they are adjusted means, not
-raw group means.
+raw group means. When several grouping variables enter additively they are
+reported for each factor separately, averaged over the others, with a
+\code{term} column.
 
 Responses and covariates are named as columns rather than composed into a
 formula. If you want a transformed response, create the column first.
@@ -134,9 +214,12 @@ fit$assumptions$structure_coefficients
 # Follow-up tests, one per response, are kept separately as well as stacked
 fit$univariate$score1$anova
 
-# As a MANCOVA: the marginal means are adjusted for age
-anova_manova(d, c("score1", "score2"), "g",
-             covariates = "age", plots = FALSE)$emmeans
+# As a MANCOVA: the marginal means are adjusted for age, and the
+# common-slope assumption is tested
+mc <- anova_manova(d, c("score1", "score2"), "g",
+                   covariates = "age", plots = FALSE)
+mc$emmeans
+mc$slopes_test
 
 }
 \references{
