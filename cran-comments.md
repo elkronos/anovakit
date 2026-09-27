@@ -2,16 +2,26 @@
 
 ## Test environments
 
-* local: macOS 26.5.2, aarch64-apple-darwin23, R 4.6.1 — 0 errors | 0 warnings | 2 notes
-* win-builder devel and release — not yet run
-* macOS builder — not yet run
-* R-hub: windows-x86_64-devel, ubuntu-gcc-release, fedora-clang-devel — not yet run
+* local: macOS 26.5.2, aarch64-apple-darwin23, R 4.6.1
+* Ubuntu 24.04, x86_64-pc-linux-gnu, R 4.3.3 (Ubuntu archive builds of every
+  dependency)
+* GitHub Actions (.github/workflows/R-CMD-check.yaml): macOS, Windows and
+  Ubuntu on R release, Ubuntu on R devel and oldrel-1
 
-Fill in the remaining rows before submitting.
+## Before submitting
+
+These need the maintainer's CRAN-facing accounts, so they are run at
+submission time rather than from the environments above. Replace each line
+with its result:
+
+- [ ] win-builder, R-devel and R-release (`devtools::check_win_devel()`,
+      `devtools::check_win_release()`)
+- [ ] the macOS builder (`devtools::check_mac_release()`)
+- [ ] R-hub (`rhub::rhub_check()`)
 
 ## R CMD check results
 
-Two NOTEs locally, neither of which is a package issue.
+0 errors | 0 warnings | the notes below.
 
 ```
 * checking CRAN incoming feasibility ... NOTE
@@ -33,14 +43,15 @@ this check is skipped rather than failed.
 
 `anova_rm()` requires the suggested package {afex}, so its example is guarded
 with `requireNamespace()`. No example is wrapped in `\donttest{}`: every one
-runs unconditionally, the slowest takes 1.2 seconds, and the full set takes
-under three.
+runs unconditionally.
 
-Every use of a suggested package ({afex}, {MASS}, {sandwich}) is behind
-`requireNamespace()` in R/ and `skip_if_not_installed()` in the tests. The suite
-passes with all three absent.
+Every use of a suggested package is behind `requireNamespace()` in R/ and
+`skip_if_not_installed()` in the tests. The suite passes with {afex} and
+{sandwich} absent. {MASS} is always installed, since {car} and {ggplot2} import
+it, but it is still used only through `requireNamespace()`.
 
-The methods cited in the Description are implemented directly rather than
-delegated, so the DOIs point at the papers the code follows: Dunn's test with
-the standard tie correction, Mardia's multivariate skewness and kurtosis, and
-Box's M.
+Three of the methods cited in the Description are implemented directly rather
+than delegated, so their DOIs point at the papers the code follows: Dunn's test
+with the standard tie correction, Mardia's multivariate skewness and kurtosis,
+and Box's M. Welch's test comes from `stats::oneway.test()`, and the
+Greenhouse-Geisser and Huynh-Feldt corrections from {afex} and {car}.

@@ -104,9 +104,23 @@ test_that("Box's M and the discriminant analysis are computed in the adjusted sp
                score2 = 3 + 0.3 * age + stats::rnorm(n))
   })
   fit <- anova_manova(d, c("score1", "score2"), "g", covariates = "age",
-                      plots = FALSE)
+                      plots = TRUE)
   expect_gt(fit$assumptions$box_m$p_value, 0.05)
-  expect_true(any(grepl("covariates partialled out", fit$notes)))
+  expect_true(any(grepl("covariate effects removed", fit$notes)))
+
+  # The discriminant analysis lives in the same space: within groups, the
+  # plotted scores are linear in the model residuals, with unit pooled
+  # within-group variance, and the structure coefficients are the pooled
+  # within-group correlations of the residuals with the scores.
+  S <- as.matrix(fit$plots$canonical$data[, grep("^Can", names(fit$plots$canonical$data))])
+  W <- apply(S, 2, function(s) s - stats::ave(s, d$g))
+  R <- stats::residuals(stats::lm(cbind(score1, score2) ~ age + g, data = d))
+  expect_equal(unname(colSums(W^2)) / stats::df.residual(fit$model),
+               rep(1, ncol(S)))
+  expect_equal(unname(as.matrix(fit$assumptions$structure_coefficients[, -1L])),
+               unname(stats::cor(R, W)))
+  expect_equal(unname(stats::lm.fit(R, W)$residuals), matrix(0, nrow(d), ncol(S)),
+               tolerance = 1e-8)
 })
 
 test_that("discriminant scores discriminate as well as their eigenvalue claims", {
@@ -226,9 +240,9 @@ test_that("weights are named as a column and stay aligned when rows are dropped"
   # A predictor cannot also be the weights: caught by name, before the frame
   # is prepared and the column is coerced to a factor
   expect_error(anova_glm(fx_oneway(), "value", "group", weights = "group"),
-               "already a grouping variable")
+               "both a grouping variable and the weights")
   expect_error(anova_glm(fx_oneway(), "value", "group", weights = "value"),
-               "already the response")
+               "both the response and the weights")
   d2 <- fx_oneway(); d2$w <- as.character(seq_len(nrow(d2)))
   expect_error(anova_glm(d2, "value", "group", weights = "w"),
                "must be numeric")
@@ -240,15 +254,24 @@ test_that("an ordered grouping factor accepts a reference level", {
   fit <- anova_bin(d, "y", "g", reference = list(g = "b"), plots = FALSE)
   expect_s3_class(fit, "anovakit_fit")
   expect_identical(levels(fit$data_used$g)[1], "b")
+  # An ordered factor has no reference level: it used to be kept ordered with
+  # its levels permuted (b < a < c), so the polynomial "odds ratios" described
+  # a scrambled scale. It is now unordered, and says so.
+  expect_false(is.ordered(fit$data_used$g))
+  p <- tapply(d$y, d$g, mean)
+  o <- as.vector(p / (1 - p)); names(o) <- names(p)
+  expect_equal(fit$effect_sizes$odds_ratio, unname(o[c("a", "c")] / o["b"]))
+  expect_true(any(grepl("ordered factor", fit$notes)))
 })
 
 test_that("the response may not also be a covariate or a group", {
   d <- fx_ancova()
-  expect_error(anova_ancova(d, "dv", "iv", "dv"), "cannot also be a covariate")
+  expect_error(anova_ancova(d, "dv", "iv", "dv"),
+               "given as both the response and a covariate")
   expect_error(anova_manova(d, c("dv", "cov"), "iv", covariates = "cov"),
-               "cannot be both a response and a predictor")
+               "both a response and a covariate")
   expect_error(anova_manova(d, "dv", "iv", covariates = "iv"),
-               "cannot be both a group and a covariate")
+               "both a grouping variable and a covariate")
 })
 
 test_that("the uncentred-covariate note only claims zero is outside when it is", {
@@ -324,8 +347,11 @@ test_that("an ill-determined negative binomial theta is reported as such", {
     anova_count(d, "y", "g", model = "negbin", plots = FALSE))
 
   expect_identical(fit$model_type, "negbin")
-  expect_true(any(grepl("not meaningfully overdispersed|not well determined|did not converge",
-                        fit$notes)))
+  # This fixture hits MASS's iteration limit, so the one message it must get
+  # is the non-convergence note (read from fit$th.warn, not from warning text)
+  expect_false(is.null(fit$model$th.warn))
+  expect_true(any(grepl("did not converge", fit$notes)))
+  expect_false(any(grepl("dispersion parameter theta =", fit$notes)))
   # and the note must not present a runaway theta as a three-decimal estimate
   runaway <- fit$model$theta > 1000 ||
     fit$model$theta / fit$model$SE.theta < 2
@@ -367,21 +393,27 @@ test_that("a character grouping column gets the same reference level everywhere"
   }
   a <- terms_in("C")
   skip_if(is.null(a), "the C collation could not be set")
-  b <- terms_in("en_US.UTF-8")
-  if (!is.null(b)) expect_identical(a, b)
   expect_identical(a[1], "Banana")   # C collation: upper case sorts first
+  # The decisive comparison needs a collation that differs from C's.
+  b <- NULL
+  for (loc in c("en_US.UTF-8", "en_GB.UTF-8", "de_DE.UTF-8", "fr_FR.UTF-8",
+                "en_US.utf8", "English_United States.1252")) {
+    b <- terms_in(loc)
+    if (!is.null(b)) break
+  }
+  skip_if(is.null(b), "no locale with a non-C collation is installed")
+  expect_identical(a, b)
 })
 
 test_that("the mvt adjustment, which is randomised, is not offered", {
   expect_error(anova_glm(fx_oneway(), "value", "group", adjust = "mvt"),
                "must be one of")
-  seed_before <- if (exists(".Random.seed", .GlobalEnv)) {
-    get(".Random.seed", .GlobalEnv)
-  } else NULL
+  # Seed first, so the stream exists and the check always runs, whatever
+  # earlier tests left behind.
+  withr::local_seed(1)
+  seed_before <- get(".Random.seed", .GlobalEnv)
   invisible(anova_glm(fx_oneway(), "value", "group", plots = FALSE))
-  if (!is.null(seed_before)) {
-    expect_identical(get(".Random.seed", .GlobalEnv), seed_before)
-  }
+  expect_identical(get(".Random.seed", .GlobalEnv), seed_before)
 })
 
 test_that("print honours its digits argument regardless of the global option", {
@@ -622,8 +654,8 @@ test_that("third-party warnings and messages reach $notes, not the console", {
   d <- fx_binary()
   d$w <- withr::with_seed(41, stats::runif(nrow(d), 0.5, 2))
   expect_silent(fit <- anova_bin(d, "y", "g", weights = "w", plots = FALSE))
-  expect_true(any(grepl("stats::glm\\(\\) reported", fit$notes)))
-  expect_true(any(grepl("non-integer", fit$notes)))
+  # Asserted by source, not by glm()'s own wording, which is glm()'s to change
+  expect_true(any(grepl("^stats::glm\\(\\) reported: .+", fit$notes)))
 
   # An aliased design makes car::Anova() emit a message()
   ali <- fx_twoway()
@@ -632,29 +664,32 @@ test_that("third-party warnings and messages reach $notes, not the console", {
   expect_false(is.null(a$anova))
 })
 
-test_that("afex's own warnings are captured rather than printed", {
+test_that("repeated subject-by-cell rows are aggregated without printing", {
   skip_if_not_installed("afex")
   d <- fx_repeated()
   d2 <- rbind(d, d[d$id %in% levels(d$id)[1L], ])
 
-  # Without fun_aggregate, afex warns that it is aggregating. The warning must
-  # reach $notes and not the console.
+  # anova_rm() now aggregates repeated rows itself (with fun_aggregate, the
+  # mean by default) before calling afex, so afex has nothing to warn about.
+  # Nothing may reach the console, and $notes must say what was done.
   expect_silent(loud <- anova_rm(d2, "score", subject = "id", within = "time",
                                  between = "arm", plots = FALSE))
-  said <- grep("aov_ez\\(\\) reported", loud$notes, value = TRUE)
-  expect_length(said, 1L)
-  expect_match(said, "aggregating data")
-  expect_false(grepl("\n", said, fixed = TRUE))   # flattened to one line
+  expect_false(any(grepl("aov_ez\\(\\) reported", loud$notes)))
+  agg <- grep("aggregated into one value", loud$notes, value = TRUE)
+  expect_length(agg, 1L)
+  expect_match(agg, "the mean \\(the default")
+  expect_false(grepl("\n", agg, fixed = TRUE))   # one line
 
-  # With fun_aggregate given, afex says nothing, so neither does $notes
   expect_silent(quiet <- anova_rm(d2, "score", subject = "id", within = "time",
                                   between = "arm", plots = FALSE,
                                   fun_aggregate = mean))
   expect_false(any(grepl("aov_ez\\(\\) reported", quiet$notes)))
+  expect_true(any(grepl("aggregated into one value with `mean`", quiet$notes,
+                        fixed = TRUE)))
 
   # The package's own account of the aggregation is there either way
   for (f in list(loud, quiet)) {
-    expect_true(any(grepl("afex aggregated", f$notes)))
+    expect_true(any(grepl("aggregated", f$notes)))
     expect_identical(nrow(f$data_used) + f$n_removed, nrow(d2))
   }
 })
@@ -752,13 +787,19 @@ test_that("no fitting or marginal-means call leaks a condition to the console", 
   })
   expect_silent(af <- anova_ancova(a, "y", "g", "x", plots = FALSE,
                                    posthoc = FALSE))
-  expect_true(any(grepl("perfect fit", af$notes)))
+  # summary.lm()'s warning, relayed by emmeans: asserted by source, not wording
+  expect_true(any(grepl("^emmeans reported: .+", af$notes)))
 })
 
 test_that("the ancova model-choice note is emitted once and is true", {
+  # The covariate varies only in group a, so the slopes of b and c are not
+  # estimable and the slopes test cannot be computed. (A covariate that is a
+  # function of the group, as this fixture used to be, is now refused
+  # outright: see test-fixes-ancova.R.)
   aliased <- withr::with_seed(3, {
     g <- factor(rep(c("a", "b", "c"), each = 20))
-    data.frame(g = g, x = as.numeric(g), y = stats::rnorm(60))
+    x <- ifelse(g == "a", stats::rnorm(60, 5, 1), ifelse(g == "b", 2, 8))
+    data.frame(g = g, x = x, y = stats::rnorm(60))
   })
   ok <- fx_ancova()
   grid <- expand.grid(fi = list(NULL, TRUE, FALSE), cc = c(TRUE, FALSE),
@@ -804,12 +845,17 @@ test_that("McFadden's R squared is finite and correct for non-Gaussian fits", {
   expect_equal(mc, as.numeric(1 - stats::logLik(ref) / stats::logLik(null)))
   expect_true(is.finite(mc))
 
-  # With an offset in the formula and prior weights, the null model must carry
-  # both, or the reference likelihood is not comparable
+  # With prior weights, the null model must carry them too, or the reference
+  # likelihood is not comparable. (anova_glm() has no offset argument, so the
+  # null model never needs one.)
   cd <- fx_counts()
-  cd$expo <- withr::with_seed(5, stats::runif(nrow(cd), 0.5, 2))
-  cf <- anova_count(cd, "count", "g1", offset = "expo", plots = FALSE)
-  expect_true(is.finite(cf$dispersion))
+  cd$w <- withr::with_seed(5, sample(1:3, nrow(cd), replace = TRUE))
+  cf <- anova_glm(cd, "count", "g1", family = "poisson", weights = "w",
+                  plots = FALSE)
+  full <- stats::glm(count ~ g1, family = stats::poisson(), data = cd, weights = w)
+  null_w <- stats::glm(count ~ 1, family = stats::poisson(), data = cd, weights = w)
+  expect_equal(cf$effect_sizes$estimate[cf$effect_sizes$measure == "mcfadden_r2"],
+               as.numeric(1 - stats::logLik(full) / stats::logLik(null_w)))
 
   # A quasi family has no likelihood: NA, not an error
   qf <- anova_glm(fx_counts(), "count", "g1", family = "quasipoisson",
@@ -897,7 +943,7 @@ test_that("aliasing is visible in the result, not only in a suppressed message",
   m$dup <- m$g
   mf <- anova_manova(m, c("score1", "score2"), c("g", "dup"),
                      assumptions = FALSE, plots = FALSE)
-  expect_lte(sum(grepl("could not be estimated", mf$notes)), 1L)
+  expect_identical(sum(grepl("could not be estimated", mf$notes)), 1L)
 })
 
 test_that("the ancova centring note claims an effect only where there is one", {
@@ -965,7 +1011,7 @@ test_that("emtrends does not write to the console either", {
                     score = c(2, 4, 6, 3, 5, 7))
   expect_silent(fit <- anova_ancova(sat, "score", "g", "base",
                                     force_interaction = TRUE, plots = FALSE))
-  expect_true(any(grepl("perfect fit", fit$notes)))
+  expect_true(any(grepl("^emmeans::emtrends\\(\\) reported: .+", fit$notes)))
 })
 
 test_that("a runaway negative binomial theta is reported as non-convergence", {
@@ -977,11 +1023,14 @@ test_that("a runaway negative binomial theta is reported as non-convergence", {
       n, mu = c(a = 5, b = 8)[as.character(g)], size = 0.7))
   })
   real <- MASS::glm.nb
+  # Non-convergence is read from the fit, where glm.nb() records it in
+  # th.warn, exactly as MASS does when the alternation limit is reached
   notes <- testthat::with_mocked_bindings(
     anova_count(d, "y", "g", model = "negbin", plots = FALSE)$notes,
     glm.nb = function(...) {
       m <- real(...)
       warning("alternation limit reached")
+      m$th.warn <- "alternation limit reached"
       m
     },
     .package = "MASS")

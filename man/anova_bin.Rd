@@ -28,15 +28,21 @@ anova_bin(
 \code{data.table} or a tibble.}
 
 \item{response}{Character. Name of the binary response column. May be a
-factor with two observed levels, a logical, or a numeric 0/1 vector.}
+factor with two observed levels, a logical, a numeric 0/1 vector, or a
+character vector with two distinct values (whose levels are sorted in the
+C locale, so the default success level does not depend on the session).}
 
 \item{groups}{Character vector. One or more grouping columns.}
 
-\item{success}{Optional. The response level to model as the "success". By
-default the second level of the factor, which is what \code{glm()} uses.}
+\item{success}{Optional. A single value: the response level to model as the
+"success". By default the second level of the factor, which is what
+\code{glm()} uses. Works for ordered factors too.}
 
 \item{reference}{Optional named list of reference levels for the grouping
-factors, for example \code{list(site = "north")}.}
+factors, one level per factor, for example \code{list(site = "north")}.
+An ordered factor has no reference level (its contrasts are polynomial
+trends), so naming one here makes the function treat that factor as
+unordered, with a note; its levels are never reordered as a scale.}
 
 \item{interaction}{\code{FALSE} (additive, the default), \code{TRUE} (full
 factorial), or a whole number giving the highest interaction order.}
@@ -54,7 +60,10 @@ profile-likelihood intervals, or \code{"wald"}.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
 (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-the \pkg{sandwich} package.}
+the \pkg{sandwich} package. They reach the coefficient table, the
+marginal means and the comparisons; the omnibus table uses them only with
+\code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+deviances. \code{$notes} says which applies.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
 comparisons, passed to \code{\link[emmeans]{contrast}}. Default
@@ -72,20 +81,54 @@ of cells is large; \code{$notes} records that they were skipped. Default
 weights. Given as a column name rather than a vector so that it is
 subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
-dropped for missing values.}
+dropped for missing values. Whole-number weights (some above 1) are read
+as frequency weights, each row standing for that many identical
+observations, and the robust covariance (\code{vcov_type}) is then that
+of the data expanded to one row per observation; other weights are
+treated as sampling weights, with each row as one unit.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
 }
 \value{
-An \code{\link{anovakit_fit}} object with \code{$model_stats}
-  (AIC, BIC, the log-likelihood, McFadden's pseudo R squared, the level
-  treated as a success, and \code{lr_vs_null}, the model-versus-null
-  likelihood ratio test), and \code{$assumptions} holding
-  \code{dispersion} and \code{proportions} (the observed proportion in each
-  cell). \code{$effect_sizes} holds the odds ratios, \code{$emmeans} the
-  estimated marginal probabilities and \code{$posthoc} the pairwise odds
-  ratios.
+An \code{\link{anovakit_fit}} object. Besides the standard
+  components:
+  \describe{
+    \item{\code{$model_stats}}{A list: \code{AIC}, \code{BIC} and
+      \code{logLik}; \code{mcfadden_r2}, McFadden's pseudo R squared,
+      \code{1 - deviance / null deviance}; \code{success_level}, the level
+      modelled as the success; and \code{lr_vs_null}, the model-versus-null
+      likelihood-ratio test (\code{statistic} = null deviance minus
+      deviance, \code{df}, \code{p_value}). All of them use the prior
+      weights. When any weight is not a whole number, \code{AIC},
+      \code{BIC} and \code{logLik} are \code{NA} with a note, because R's
+      binomial log-likelihood rounds the weights; the deviance-based
+      statistics are unaffected. \code{BIC} uses \code{nobs()}, the number
+      of rows with a non-zero weight.}
+    \item{\code{$effect_sizes}}{One row per coefficient of the
+      reference-coded model (see Details): \code{term} (the coefficient),
+      \code{factor} (the grouping variable, or \code{"g1:g2"} for an
+      interaction), \code{comparison} (for example \code{"b vs a"}, a level
+      against the reference level; in a model with interactions a lower-order
+      odds ratio holds at the reference level of the factors it interacts
+      with, \code{"b vs a at site = north"}, and an interaction row such as
+      \code{"(b vs a) x (south vs north)"} is a ratio of odds ratios),
+      \code{odds_ratio}, \code{conf_low}, \code{conf_high},
+      \code{se_log_or}, \code{statistic}, \code{p_value} and
+      \code{ci_method}.}
+    \item{\code{$assumptions}}{\code{dispersion}, which is \code{NA}: the
+      Pearson dispersion of a 0/1 response carries no information about
+      overdispersion, so it is not reported (a note says why); and
+      \code{proportions}, the observed proportion of each response level in
+      each cell, with columns for the cell, the response level, \code{n}
+      (the weighted count), \code{group_total} (the weighted cell total) and
+      \code{proportion}; when \code{weights} is given, \code{rows} and
+      \code{group_rows} give the number of data rows behind them. A column
+      whose name the response already uses gets a suffix, e.g.
+      \code{n.1}.}
+  }
+  \code{$emmeans} holds the estimated marginal probabilities and
+  \code{$posthoc} the pairwise odds ratios.
 }
 \description{
 Fits a logistic regression for a binary response across one or more grouping
@@ -105,10 +148,36 @@ grouping variable this is a decision worth making deliberately.
 tests meaningful. Setting the global contrast option after fitting has no
 effect on an existing model.
 
+\strong{Odds ratios.} Under sum-to-zero or polynomial contrasts an
+exponentiated coefficient is not an odds ratio against anything a reader
+would recognise. \code{$effect_sizes} is therefore computed from a
+reference-coded (treatment-coded) fit of the same model, with every grouping
+factor treated as unordered and \code{reference} honoured, whatever
+\code{type}, the global \code{contrasts} option or the class of the factor.
+\code{$anova} still comes from the Type II or Type III fit, which describes
+the same fitted probabilities.
+
 \strong{Separation.} Complete and quasi-complete separation are detected and
 reported in \code{$notes}. Under separation, Wald odds ratios and their
 intervals are meaningless even though \code{glm()} reports convergence, so
-\code{ci_method = "profile"} is the default.
+\code{ci_method = "profile"} is the default. The profile-likelihood interval
+of an odds ratio that separation drives to infinity (or to zero) is open on
+that side, and is reported with \code{conf_high = Inf} (or
+\code{conf_low = 0}); its finite end is found by profiling the likelihood
+directly, since \code{stats::confint()} cannot step from a diverged estimate,
+and is \code{NA} when the likelihood rules out no value on that side either.
+
+\strong{Sparse data.} When fewer than about 5 events or non-events are
+expected in a cell under the null hypothesis, the likelihood-ratio omnibus
+test is liberal (its false-positive rate can be well above the nominal
+level) and \code{$notes} says so. \code{test_statistic = "Wald"} is not a
+remedy; an exact test, or the score test, holds its level better.
+
+\strong{Weights.} The prior weights enter the fit, the model statistics and
+the observed proportions alike. A row with weight \code{w} counts as
+\code{w} identical observations, so data aggregated to one row per cell and
+outcome, with the count as the weight, give the same results as the
+individual rows (apart from BIC, which R bases on the number of rows).
 }
 \examples{
 set.seed(1)
@@ -122,6 +191,11 @@ fit$effect_sizes
 # Two factors, with their interaction
 d$site <- factor(sample(c("north", "south"), n, replace = TRUE))
 anova_bin(d, "y", c("g", "site"), interaction = TRUE, plots = FALSE)$anova
+
+# Aggregated data: one row per group and outcome, the count as the weight
+agg <- data.frame(g = rep(c("a", "b", "c"), each = 2), y = rep(0:1, 3),
+                  n = c(80, 20, 50, 50, 20, 80))
+anova_bin(agg, "y", "g", weights = "n", plots = FALSE)$model_stats
 
 }
 \seealso{
