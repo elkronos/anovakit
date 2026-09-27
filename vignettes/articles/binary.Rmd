@@ -288,9 +288,9 @@ holm <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
 grep("adjustment", holm$notes, value = TRUE)
 ```
 
-The gender family has a single comparison, whose interval needs no adjustment
-(the first note calls that the `none` adjustment); the department intervals are
-Bonferroni intervals.
+The department intervals are Bonferroni intervals, while the p-values are
+Holm's. The gender family has a single comparison, which needs no adjustment of
+either kind, so there is no note about it.
 
 ## Checking assumptions
 
@@ -389,8 +389,9 @@ out an odds ratio below about `r round(sep_fit$effect_sizes$conf_low[2])`. The
 Wald interval, from 0 to infinity, says nothing at all. This is why
 `ci_method = "profile"` is the default.
 
-The marginal probabilities and pairwise comparisons are Wald-based, and for
-the separated arm they are as uninformative as the Wald odds ratio:
+The separation note also warns that the separated arm's marginal probability
+and the comparisons involving it are affected. They are Wald-based, and as
+uninformative as the Wald odds ratio:
 
 ```{r separation-emm}
 print(sep_fit$emmeans, digits = 3)

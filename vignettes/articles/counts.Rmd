@@ -306,7 +306,7 @@ print(per_1000$posthoc[, c("term", "contrast", "IRR", "conf_low", "conf_high",
 
 ## Checking assumptions
 
-`$assumptions` has three elements:
+`$assumptions` has three elements, each documented in `?anova_count`:
 
 ```{r assumptions}
 fit$assumptions
@@ -321,9 +321,10 @@ fit$assumptions
   says the variance function fits; one well above 1 says it does not, and that
   a model for the source of the extra variation (a missing grouping variable,
   clustering) is needed.
-- `cell_counts` is the number of rows in each cell of the design. Small cells
-  are where the asymptotic tests are least trustworthy, as the note on theta
-  said.
+- `cell_counts` is the number of observations in each cell of the design
+  (with frequency weights it adds the number of table rows; see
+  [below](#frequency-weights)). Small cells are where the asymptotic tests are
+  least trustworthy, as the note on theta said.
 
 The model also assumes independent counts and that the log rate is additive
 in the terms included, which the interaction test checks for the grouping
@@ -353,8 +354,9 @@ zero_fit
 
 Two notes flag the problem. The first counts the groups with fewer than 5
 events in total, whose rates rest on very little information. The third names
-the group with no events, and says what that does to the rate ratios and what
-still works. The results bear it out:
+the group with no events, says that the rate ratios involving it, its marginal
+mean and the comparisons involving it are unreliable, and says what still
+works. The results bear it out:
 
 ```{r zero-es}
 print(zero_fit$effect_sizes, digits = 3)
@@ -398,24 +400,43 @@ plot(fit, "observed")
 ```
 
 The `observed` plot is a box plot of the raw counts in each cell, ordered by
-median and labelled with the cell's number of rows. What to look for: spread
-that grows with the median (expected for counts, and what the negative
+median and labelled with the cell's number of observations. What to look for:
+spread that grows with the median (expected for counts, and what the negative
 binomial's variance function allows for), outlying looms, and whether the
 order of the medians agrees with the marginal means.
 
-For a model with an offset, keep in mind that this plot shows counts, not
-rates. In the insurance data the groups with the most claims are those with the
-most policyholders, which is not the same as those with the highest rate:
+With an offset, raw counts would mostly show where the exposure is, so the
+plot shows observed rates instead: each row's count divided by its exposure,
+here claims per policyholder.
 
 ```{r plot-observed-ins, fig.height = 5}
 plot(ins_fit, "observed")
 ```
 
-The four cells for drivers over 35 have the highest median counts, although
-that age band has the lowest claim rate in `$emmeans`: it simply holds most of
-the policyholders. Plot `Claims / Holders` yourself, or rely on the `emmeans`
-plot, when the rates are the point. Each plot is a ggplot and can be modified
-with `+`; the [plots article](visuals.html) has more.
+The title and the y axis name the rate. The order of the boxes follows the
+rate ratios: the lowest median is for drivers over 35 with the smallest cars
+(`<1l : >35`), the highest for drivers under 25 with the largest
+(`>2l : <25`). What to look for is the same as before, plus one thing: a rate
+computed from a small exposure is noisy. The widest box, `>2l : <25`, comes
+from the four groups of young drivers of large cars, which hold between
+`r min(ins$Holders[ins$Group == ">2l" & ins$Age == "<25"])` and
+`r max(ins$Holders[ins$Group == ">2l" & ins$Age == "<25"])` policyholders each.
+
+The plot should tell the same story as the marginal rates. A quick check is to
+pool the claims and policyholders by age band:
+
+```{r plot-observed-check}
+by_age <- aggregate(cbind(Claims, Holders) ~ Age, data = ins, FUN = sum)
+by_age$rate <- by_age$Claims / by_age$Holders
+by_age
+ins_fit$emmeans[ins_fit$emmeans$term == "Age", c("Age", "estimate")]
+```
+
+The pooled rates fall with age, as the marginal rates do. They are not the same
+numbers: the marginal rates are adjusted for car group and average over the
+four car groups equally, while the pooled rates are weighted by where the
+policyholders are. Each plot is a ggplot and can be modified with `+`; the
+[plots article](visuals.html) has more.
 
 ## Options worth knowing
 
@@ -542,13 +563,28 @@ hc_table <- anova_count(spray_tab, "count", "spray", weights = "Freq",
 all.equal(hc_rows$effect_sizes, hc_table$effect_sizes)
 ```
 
-One part of the result still describes rows rather than observations:
-`$assumptions$cell_counts` counts the rows of `$data_used`, so for the
-frequency table it gives the number of distinct counts per spray rather than
-the 12 observations behind each.
+With frequency weights, `$assumptions$cell_counts` gives both sizes: `n` is
+the number of observations in each cell (the sum of the weights) and `rows` the
+number of rows of the table behind them.
 
 ```{r weights-cells}
 from_table$assumptions$cell_counts
+```
+
+The `observed` plot draws the observations too, expanding the table, so it is
+the same plot the 72 original rows give, with 12 observations per spray:
+
+```{r weights-plot}
+plot(anova_count(spray_tab, "count", "spray", weights = "Freq"), "observed")
+```
+
+A table that stands for more than 200,000 observations is not expanded; the
+plot then shows one point per row, and a note says so:
+
+```{r weights-big}
+big_tab <- transform(spray_tab, Freq = Freq * 5000)
+big_fit <- anova_count(big_tab, "count", "spray", weights = "Freq")
+grep("200,000", big_fit$notes, value = TRUE)
 ```
 
 ### `type`, `adjust`, `conf_level` and `posthoc`
@@ -590,8 +626,9 @@ interaction in the model they are cells; an additive fit (the insurance model,
 for one) adds a note explaining the per-factor layout. Other fits in this
 article showed the notes on an explicit Poisson model with overdispersion, on
 quasi-Poisson F tests, on exposure, on sparse and empty groups, on robust
-standard errors and on frequency weights. The [results article](results.html)
-explains how `$notes` fits with the rest of the object.
+standard errors, and on frequency weights (including a table too large to plot
+one point per observation). The [results article](results.html) explains how
+`$notes` fits with the rest of the object.
 
 ## Reporting the result
 
