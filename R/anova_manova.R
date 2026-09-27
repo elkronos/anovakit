@@ -944,10 +944,14 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     }
     lab_colour <- paste(groups[-1L], collapse = " : ")
   } else {
+    # One factor: a line only when its levels are ordered. Between unordered
+    # categories it would suggest a trend, as in the other functions' plots.
     p <- ggplot2::ggplot(df, ggplot2::aes(x = .data[[xvar]], y = .data[[est]],
-                                          group = 1L)) +
-      ggplot2::geom_line(linewidth = 0.7, colour = "grey40") +
-      ggplot2::geom_point(size = 2.5)
+                                          group = 1L))
+    if (is.ordered(df[[xvar]])) {
+      p <- p + ggplot2::geom_line(linewidth = 0.7, colour = "grey40")
+    }
+    p <- p + ggplot2::geom_point(size = 2.5)
     if (has_ci) {
       p <- p + ggplot2::geom_errorbar(
         ggplot2::aes(ymin = .data[[lo]], ymax = .data[[hi]]), width = 0.15)
