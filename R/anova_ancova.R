@@ -683,7 +683,7 @@ anova_ancova <- function(data, response, groups, covariates,
   big <- !is.na(gap) & gap > threshold
   if (!any(big)) return(character(0))
   sprintf("The covariate means differ between groups (largest difference: %s pooled within-group SDs). With the slopes assumed equal, any real difference in slopes biases the adjusted comparisons by the slope difference times the covariate-mean difference, and the homogeneity-of-slopes test often lacks the power to detect a difference large enough to matter, so the group row and $posthoc can reject far more often than their nominal level. force_interaction = TRUE does not assume equal slopes.",
-          paste(sprintf("%s %.2g", covariates[big], gap[big]), collapse = ", "))
+          paste(sprintf("%s %.2f", covariates[big], gap[big]), collapse = ", "))
 }
 
 #' A note when the covariate mean lies outside a group's observed range

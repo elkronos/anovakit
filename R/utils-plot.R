@@ -249,16 +249,19 @@
 #' @param subtitle optional subtitle, replacing the default one.
 #' @noRd
 .plot_canonical <- function(scores, group, group_name = "Group",
-                            subtitle = NULL) {
+                            context = NULL) {
   df <- as.data.frame(scores)
   df$.group <- droplevels(as.factor(group))
+  # The subtitle describes what is drawn, so it is chosen with the geometry;
+  # `context` (which term the axes describe) is prepended to it.
+  sub <- function(what) paste(c(context, what), collapse = ". ")
   if (ncol(scores) == 1L) {
     return(
       ggplot2::ggplot(df, ggplot2::aes(x = .data[[".group"]], y = .data[["Can1"]],
                                        fill = .data[[".group"]])) +
         ggplot2::geom_boxplot(show.legend = FALSE) +
         ggplot2::labs(title = "Canonical discriminant scores",
-                      subtitle = subtitle %||% "Only one discriminant axis is estimable",
+                      subtitle = sub("Only one discriminant axis is estimable"),
                       x = group_name, y = "Can1") +
         .gg_theme_auto(levels(df$.group))
     )
@@ -270,7 +273,7 @@
     ggplot2::geom_point(alpha = 0.6) +
     ggplot2::geom_point(data = centroids, size = 5, shape = 4, stroke = 1.5) +
     ggplot2::labs(title = "Canonical discriminant analysis",
-                  subtitle = subtitle %||% "Crosses mark group centroids",
+                  subtitle = sub("Crosses mark group centroids"),
                   x = "Can1", y = "Can2", colour = group_name) +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),

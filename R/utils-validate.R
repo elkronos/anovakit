@@ -355,12 +355,22 @@
 }
 
 #' Summarise counts per populated cell
+#'
+#' @param freq name of a frequency-weight column, or \code{NULL}. With one,
+#'   \code{n} counts the observations the rows stand for and \code{rows} the
+#'   rows themselves, as in \code{anova_bin()}'s proportion table.
 #' @noRd
-.cell_counts <- function(data, groups, sep = " : ") {
+.cell_counts <- function(data, groups, sep = " : ", freq = NULL) {
   cell <- .cell_vector(data, groups, sep = sep)
   tab <- table(cell)
-  data.frame(cell = names(tab), n = as.integer(tab),
-             stringsAsFactors = FALSE, row.names = NULL)
+  if (is.null(freq)) {
+    return(data.frame(cell = names(tab), n = as.integer(tab),
+                      stringsAsFactors = FALSE, row.names = NULL))
+  }
+  n <- tapply(data[[freq]], cell, sum)
+  data.frame(cell = names(tab), n = as.numeric(n[names(tab)]),
+             rows = as.integer(tab), stringsAsFactors = FALSE,
+             row.names = NULL)
 }
 
 #' Normalise a family argument the way stats::glm() accepts it
