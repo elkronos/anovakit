@@ -103,6 +103,16 @@ the first pair, the sprays with low counts also have the smallest spread, as
 counts usually do: a hint that a count model suits them better than a
 comparison of means.
 
+When `anova_count()` has an exposure `offset`, counts from units observed for
+different lengths of time are not comparable, so its `observed` plot shows
+rates instead, count divided by exposure. `MASS::Insurance` records claims
+against the number of policy holders:
+
+```{r observed-rates}
+ins <- anova_count(MASS::Insurance, "Claims", "Age", offset = "Holders")
+plot(ins, "observed")$labels[c("title", "y")]
+```
+
 ### Observed proportions: `anova_bin()`
 
 ```{r bin-proportions}
@@ -120,12 +130,15 @@ interaction the model does not include.
 Every model-based function plots its estimated marginal means (`$emmeans`)
 with error bars at `conf_level`; the subtitle says which level. The first
 grouping variable goes on the x axis and any others are mapped to colour, with
-one line per level. As with the group means, the error bars are intervals for
-each mean, not for the differences between them: two bars can overlap while
-`$posthoc` finds a clear difference.
+a line joining the means of each of their levels. With a single (unordered)
+grouping variable there is no line to draw: the groups have no order for it to
+follow, so the means are points with error bars. As with the group means, the
+error bars are intervals for each mean, not for the differences between them:
+two bars can overlap while `$posthoc` finds a clear difference.
 
 `anova_ancova()` plots means adjusted to the covariate mean, which is why the
-title says "covariate-adjusted":
+title says "covariate-adjusted". Its single grouping variable gives points and
+error bars only:
 
 ```{r ancova-emmeans}
 plot(fits$ancova, "emmeans")
@@ -158,7 +171,9 @@ as the concentration rises:
 plot(fits$rm, "emmeans")
 ```
 
-`anova_manova()` plots one panel per response, each with its own y axis:
+`anova_manova()` plots one panel per response, each with its own y axis. As in
+the other functions' plots, the means of a single unordered grouping variable
+are points with error bars, not joined by a line:
 
 ```{r manova-emmeans, fig.height = 5}
 plot(fits$manova, "emmeans")
@@ -540,8 +555,9 @@ for (nm in names(fits$manova$plots)) {
 list.files(dir)
 ```
 
-PDF and SVG keep lines and text sharp at any size, which suits print; PNG at
-300 dpi suits slides and documents.
+PDF keeps lines and text sharp at any size, which suits print (so does SVG,
+for which `ggsave()` needs the svglite package); PNG at 300 dpi suits slides
+and documents.
 
 ### `conf_level` sets every error bar
 

@@ -1,0 +1,81 @@
+# Trims branches that are done with.
+#
+# - When a pull request from this repository is merged, its head branch is
+#   deleted.
+# - Run it by hand (Actions -> cleanup-branches -> Run workflow) to sweep
+#   every branch whose commits are all in main. Leave "dry_run" ticked to see
+#   what would go first.
+#
+# main, master and gh-pages are never touched, and a branch with a commit that
+# main does not contain is never deleted by the sweep, so unmerged work is
+# safe. Squash- or rebase-merged branches are not ancestors of main and are
+# left alone by the sweep; the pull-request job still removes them on merge.
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only list the branches that would be deleted"
+        type: boolean
+        default: true
+
+name: cleanup-branches
+
+permissions:
+  contents: write
+
+jobs:
+  delete-merged-head:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the merged branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          DEFAULT: ${{ github.event.repository.default_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          case "$BRANCH" in
+            main|master|gh-pages|"$DEFAULT") echo "Keeping protected branch $BRANCH"; exit 0 ;;
+          esac
+          if gh api "repos/$REPO/git/ref/heads/$BRANCH" --silent 2>/dev/null; then
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH"
+            echo "Deleted $BRANCH"
+          else
+            echo "$BRANCH is already gone"
+          fi
+
+  sweep-merged:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete branches fully merged into main
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          base=origin/main
+          git rev-parse --verify --quiet "$base" >/dev/null || base=origin/master
+          for ref in $(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin); do
+            case "$ref" in
+              HEAD|main|master|gh-pages) continue ;;
+            esac
+            if git merge-base --is-ancestor "origin/$ref" "$base"; then
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "Would delete $ref (fully merged into ${base#origin/})"
+              else
+                git push origin --delete "$ref"
+                echo "Deleted $ref"
+              fi
+            else
+              echo "Keeping $ref ($(git rev-list --count "$base..origin/$ref") commit(s) not in ${base#origin/})"
+            fi
+          done
