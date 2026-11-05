@@ -39,9 +39,12 @@
 #' small because of the units of the response (or the scale of the weights)
 #' would stop early. Such a fit is repeated with a convergence tolerance
 #' scaled to its deviance, so the results do not depend on the units. A
-#' binomial fit with prior weights starts from the overall proportion rather
-#' than from \code{glm()}'s default, which diverges for a frequency-weighted
-#' 0/1 response under a cloglog link.
+#' binomial fit with prior weights is \code{glm()}'s own fit whenever that
+#' reaches the maximum of the likelihood. When it does not (\code{glm()}'s
+#' default start diverges for a frequency-weighted 0/1 response under a
+#' cloglog link), the model is refitted from the overall proportion, to a
+#' tight convergence tolerance, and \pkg{car}'s refits of reduced models start
+#' there too.
 #'
 #' For binary responses see \code{\link{anova_bin}}, and for counts see
 #' \code{\link{anova_count}}: both add family-specific diagnostics and effect
@@ -299,13 +302,38 @@ anova_glm <- function(data, response, groups,
 
   fam_name <- family$family
   # With prior weights (frequencies of a 0/1 response above all) glm()'s
-  # default start puts every row next to 0 or 1, from where a cloglog fit
-  # diverges; see .null_start_family().
-  fit_family <- if (fam_name %in% c("binomial", "quasibinomial") &&
-                    !is.null(weights)) .null_start_family(family) else family
-  fit_on <- function(dd, control = NULL) .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, dd, fit_family, weights, control = control),
+  # default start puts every row next to 0 or 1, from where a cloglog fit can
+  # diverge, sometimes while reporting convergence; see .null_start_family().
+  # The fit from glm()'s own start is kept whenever it reaches the maximum,
+  # so ordinary fits are exactly glm()'s. Otherwise the model is refitted from
+  # the overall proportion, to a tight tolerance: a fit from that start meets
+  # glm()'s default test an iteration or so earlier than glm() would. The
+  # family and the tolerance are part of the model's call, so car's refits of
+  # reduced models use them too.
+  null_start <- fam_name %in% c("binomial", "quasibinomial") && !is.null(weights)
+  fit_one <- function(dd, fam, control) .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, dd, fam, weights, control = control),
     type = type))
+  fit_family <- family
+  fit_on <- function(dd, control = NULL) {
+    # A later refit with its own tolerance keeps the start already chosen.
+    if (!is.null(control)) return(fit_one(dd, fit_family, control))
+    out <- fit_one(dd, family, NULL)
+    fit_family <<- family
+    if (!null_start) return(out)
+    alt <- fit_one(dd, .null_start_family(family),
+                   stats::glm.control(epsilon = 1e-10, maxit = 100L))
+    if (inherits(alt$value, "error") || !isTRUE(alt$value$converged)) {
+      return(out)
+    }
+    m <- out$value
+    reached <- !inherits(m, "error") && isTRUE(m$converged) &&
+      isTRUE(m$deviance <= alt$value$deviance +
+               1e-6 * (abs(alt$value$deviance) + 0.1))
+    if (reached) return(out)
+    fit_family <<- .null_start_family(family)
+    alt
+  }
   fitted <- fit_on(d)
   # Grouping columns whose names and levels paste to the same coefficient
   # name (a/b1 and ab/1 both give ab1) would make the marginal means and the

@@ -383,3 +383,52 @@ test_that("R3-59: the overdispersion note follows the Pearson test at the 5% lev
                 any(grepl(.fmt_p(pearson_p(under)), fu$notes, fixed = TRUE)))
   expect_false(any(grepl("^Pearson dispersion is", fo$notes)))
 })
+
+test_that("glm-R1: weighted binomial fits are glm()'s own fits; the null start only replaces a fit that misses the maximum", {
+  ucb <- as.data.frame(UCBAdmissions)
+  ucb$adm <- as.integer(ucb$Admit == "Admitted")
+  for (fam in list(stats::binomial(), stats::binomial("probit"),
+                   stats::quasibinomial())) {
+    fa <- anova_glm(ucb, "adm", c("Gender", "Dept"), family = fam,
+                    weights = "Freq", plots = FALSE)
+    ref <- stats::glm(adm ~ Gender + Dept, fam, ucb, weights = Freq)
+    expect_identical(fa$model$iter, ref$iter)
+    expect_equal(unname(stats::coef(fa$model)), unname(stats::coef(ref)),
+                 tolerance = 1e-12)
+    if (fam$family == "binomial") {
+      expect_equal(fa$assumptions$coefficients$se,
+                   unname(sqrt(diag(stats::vcov(ref)))), tolerance = 1e-10)
+      expect_equal(fa$assumptions$coefficients$p_value,
+                   unname(summary(ref)$coefficients[, 4]), tolerance = 1e-10)
+      em <- as.data.frame(suppressMessages(
+        emmeans::emmeans(ref, ~ Gender, type = "response")))
+      mine <- fa$emmeans[fa$emmeans$term == "Gender", ]
+      expect_equal(mine$se, em$SE, tolerance = 1e-10)
+    }
+  }
+  # A proportion response with trial weights
+  es <- esoph
+  es$p <- es$ncases / (es$ncases + es$ncontrols)
+  es$n <- es$ncases + es$ncontrols
+  es$agegp <- factor(es$agegp, ordered = FALSE)
+  es$alcgp <- factor(es$alcgp, ordered = FALSE)
+  fe <- anova_glm(es, "p", c("agegp", "alcgp"), family = "binomial",
+                  weights = "n", plots = FALSE)
+  re <- stats::glm(p ~ agegp + alcgp, binomial, es, weights = n)
+  expect_equal(fe$assumptions$coefficients$se,
+               unname(sqrt(diag(stats::vcov(re)))), tolerance = 1e-10)
+
+  # cloglog: glm()'s own start diverges here; the refit from the overall
+  # proportion is taken to the maximum, not stopped short of it.
+  fc <- anova_glm(ucb, "adm", c("Gender", "Dept"),
+                  family = stats::binomial("cloglog"), weights = "Freq",
+                  plots = FALSE)
+  ex <- ucb[rep(seq_len(nrow(ucb)), ucb$Freq), c("adm", "Gender", "Dept")]
+  rc <- stats::glm(adm ~ Gender + Dept, binomial("cloglog"), ex,
+                   control = stats::glm.control(epsilon = 1e-14, maxit = 100))
+  expect_true(rc$converged)
+  expect_equal(fc$assumptions$coefficients$se,
+               unname(sqrt(diag(stats::vcov(rc)))), tolerance = 1e-7)
+  expect_equal(fc$model$deviance, rc$deviance, tolerance = 1e-10)
+  expect_false(any(grepl("did not converge", fc$notes)))
+})
