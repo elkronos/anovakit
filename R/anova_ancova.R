@@ -225,7 +225,7 @@ anova_ancova <- function(data, response, groups, covariates,
                          posthoc = TRUE,
                          plots = TRUE,
                          verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_ancova")
   type <- match.arg(type)
   .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -238,6 +238,8 @@ anova_ancova <- function(data, response, groups, covariates,
   .check_columns(data, covariates, "Covariate column(s)")
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `a covariate` = covariates))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       Covariate = covariates))
   .check_numeric_col(data, response)
   for (cv in covariates) .check_numeric_col(data, cv, role = "Covariate")
   .check_conf_level(conf_level)

@@ -225,7 +225,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                      plots = TRUE,
                      verbose = FALSE,
                      ...) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_rm")
   correction <- match.arg(correction)
   .check_adjust(adjust, .adjust_choices(), "adjust")
   if (!requireNamespace("afex", quietly = TRUE)) {
@@ -244,6 +244,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   .check_columns(data, subject, "Subject column")
   .check_columns(data, within, "Within-subject factor(s)")
   if (!is.null(between)) .check_columns(data, between, "Between-subject factor(s)")
+  data <- .as_plain_columns(data, list(Response = response))
   .check_conf_level(conf_level)
   .check_flag(factorize, "factorize")
   .check_flag(posthoc, "posthoc")
