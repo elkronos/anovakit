@@ -220,7 +220,7 @@ test_that("a factor response with a binomial family does not crash the plots", {
   expect_false("box" %in% names(fit$plots))
 
   # and a factor response with a Gaussian family is refused with a useful message
-  expect_error(anova_glm(d, "fy", "A"), "must be numeric for a gaussian family")
+  expect_error(anova_glm(d, "fy", "A"), "must be numeric for the gaussian family")
 })
 
 test_that("weights are named as a column and stay aligned when rows are dropped", {
