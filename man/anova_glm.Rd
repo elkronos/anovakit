@@ -232,7 +232,14 @@ of reporting F statistics that are ratios of rounding errors. That
 includes a frequency table with one row per group, which stands for a
 response constant within every group. A response with a large level and
 small but real variation (epoch seconds varying by minutes, say) is not an
-exact fit and gets its F tests.
+exact fit: the Gaussian family resolves it. The Poisson, Gamma and
+negative binomial deviances, however, are computed as differences of
+nearly equal terms, and on such a level rounding can swamp the change in
+deviance a test is built on. A likelihood-ratio or F test that rounding
+could move by more than a fifth of its size is then NA, and one it could
+move by more than 2\% gets a note; \code{$notes} says which, and
+\code{test_statistic = "Wald"}, which does not use the deviance, can still
+test them.
 
 \strong{Convergence.} \code{stats::glm()} judges convergence by a change
 in deviance relative to the deviance plus 0.1, so a fit whose deviance is

@@ -107,9 +107,10 @@ cases. Each is fixed and has a regression test.
   is named. Omnibus headers name their statistic.
 * **ANCOVA.** Marginal means that are not estimable are left out and named,
   not reported as NA rows. The coefficient-count guard counts observed cells
-  only. Levene's test leaves out cells with one or two observations, and
-  cells the model fits exactly (such as a cell with no more observations than
-  coefficients under a slope per group). A covariate with a large offset is handled correctly. The covariate plot draws
+  only. Levene's test leaves out cells of three or fewer observations, cells
+  the model fits exactly (such as a cell with no more observations than
+  coefficients under a slope per group) and cells it leaves with fewer than
+  2.5 residual degrees of freedom; `$notes` names them. A covariate with a large offset is handled correctly. The covariate plot draws
   the fitted model's lines. The docs no longer say randomised groups are
   unaffected by the slopes pretest.
 * **Repeated measures.** Residuals under a large offset, zero error variance
@@ -127,7 +128,9 @@ cases. Each is fixed and has a regression test.
   includes a response that is constant within every group, at 0 or 1. A
   constant count with a varying offset is still analysed, because its rates
   differ. A response with a large level and small but real variation (epoch
-  seconds, pressures in Pa) is analysed, not mistaken for an exact fit. A
+  seconds, pressures in Pa) is analysed, not mistaken for an exact fit; where
+  rounding swamps a Poisson, Gamma or negative binomial deviance test on such
+  a level, the test is NA with a note, and a Wald test is still available. A
   saturated model that estimates its dispersion reports NA tests; a saturated
   Poisson or binomial model still gets its Wald chi-square table.
   `test_statistic = "LR"` on a quasi family gives F, and `$method` says
@@ -139,9 +142,11 @@ cases. Each is fixed and has a regression test.
   * in `anova_bin()` and `anova_count()`, the count dispersion and the
     sparse-data check do not depend on the weights' scale;
   * a note warns that the scale matters. The reported tests and the Pearson
-    dispersion of `anova_glm()` scale with the weights, as in `glm()`, and the
-    overdispersion notes of both `anova_glm()` and `anova_count()` give the
-    inflation of the tests as reported.
+    dispersion of `anova_glm()` scale with the weights, as in `glm()`. For a
+    Poisson or binomial model, the notes of both `anova_glm()` and
+    `anova_count()` give the inflation of the tests as reported. With unequal
+    weights it comes from the sandwich covariance, because it depends on where
+    the heavy rows fall.
 
   A group whose weights are all zero is named and dropped.
 * **Negative binomial.** A fit that collapses to Poisson is reported as such.
