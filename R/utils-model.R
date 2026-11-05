@@ -598,6 +598,89 @@
   d
 }
 
+#' Refit a GLM whose grouping factors produce one coefficient name twice
+#'
+#' Two grouping columns can collide on their own: a factor \code{a} with a
+#' level \code{b1} and a factor \code{ab} with a level \code{1} both give a
+#' coefficient \code{ab1}. The fit is still right, but every result looked up
+#' by coefficient name -- the odds ratios or rate ratios, the marginal means --
+#' then reads the wrong column. Used by \code{\link{anova_bin}} and
+#' \code{\link{anova_count}}: when that happens the grouping factors get
+#' bracketed contrast labels (see \code{.bracket_group_contrasts()}) and the
+#' model is refitted, which changes no estimate.
+#'
+#' @param fitted the result of \code{.collect_conditions()} on the fit.
+#' @param refit_fun function of the data that refits the model the same way,
+#'   returning a \code{.collect_conditions()} result.
+#' @return list with \code{fitted} (the original or the refit), \code{data}
+#'   (with bracketed contrasts when it was refitted), \code{bracketed} and
+#'   \code{note}.
+#' @noRd
+.unclash_group_coefs <- function(fitted, refit_fun, d, groups, type) {
+  out <- list(fitted = fitted, data = d, bracketed = FALSE, note = character(0))
+  if (inherits(fitted$value, "error")) return(out)
+  dup <- .dup_coef_names(fitted$value)
+  if (length(dup) == 0L) return(out)
+  dup_lab <- gsub("`", "", dup, fixed = TRUE)
+  involved <- groups[vapply(groups, function(g) any(startsWith(dup_lab, g)),
+                            logical(1))]
+  d2 <- .bracket_group_contrasts(d, groups, type)
+  refit <- refit_fun(d2)
+  if (inherits(refit$value, "error") ||
+      length(.dup_coef_names(refit$value)) > 0L) {
+    .stopf("Column names collide with the names of the model's coefficients (%s is produced twice), so the effect sizes and marginal means would be computed from the wrong columns. Rename the column(s) involved: %s.",
+           paste(dup_lab, collapse = ", "),
+           paste(sprintf("`%s`", involved), collapse = ", "))
+  }
+  relabelled <- grep("[", names(stats::coef(refit$value)), fixed = TRUE,
+                     value = TRUE)
+  out$note <- sprintf(
+    "The names and levels of grouping columns %s produce the same coefficient name (%s would appear twice), which would make the effect sizes and the marginal means read the wrong model column. The grouping factors' contrast labels were put in brackets in $model and $effect_sizes (%s, ...) to keep the names distinct; no estimate or test is affected.",
+    paste(sprintf("`%s`", involved), collapse = ", "),
+    paste(dup_lab, collapse = ", "),
+    paste(gsub("`", "", utils::head(relabelled, 2L), fixed = TRUE),
+          collapse = ", "))
+  out$fitted <- refit
+  out$data <- d2
+  out$bracketed <- TRUE
+  out
+}
+
+#' A note when weights that are not frequencies do not average 1
+#'
+#' glm() prior weights that are not whole numbers are not frequencies, but
+#' the likelihood still multiplies by them, so every model-based test and
+#' interval scales with their arbitrary scale: weights normalised to sum to 1
+#' make any data look like a handful of observations. Only the robust
+#' covariance treats each row as one unit. Used by \code{\link{anova_bin}}
+#' and \code{\link{anova_count}}.
+#' @noRd
+.weight_scale_note <- function(d, weights, tol = 0.1) {
+  if (is.null(weights)) return(character(0))
+  w <- as.numeric(d[[weights]])
+  if (all(abs(w - round(w)) < sqrt(.Machine$double.eps))) return(character(0))
+  m <- mean(w)
+  if (!is.finite(m) || m <= 0 || abs(log(m)) <= log(1 + tol)) {
+    return(character(0))
+  }
+  sprintf(
+    "The weights in `%s` are not all whole numbers, so they are not read as frequencies, and they average %s rather than 1. The fit, the tests and the intervals use them as given, as glm() uses prior weights, so their scale matters: multiplying every weight by a constant multiplies each likelihood-ratio and Wald statistic by about that constant. For sampling weights, rescale them to average 1, or use a design-based method such as survey::svyglm().",
+    weights, format(signif(m, 3)))
+}
+
+#' The note for effect sizes whose treatment-coded labels were bracketed
+#'
+#' A main fit under sum-to-zero contrasts can have distinct coefficient names
+#' while the treatment coding of \code{$effect_sizes} does not; only the
+#' latter is then relabelled.
+#' @noRd
+.bracketed_terms_note <- function(terms) {
+  sprintf(
+    "The names and levels of the grouping columns paste to the same coefficient name under treatment coding, so the contrast labels in $effect_sizes were put in brackets (%s, ...) to keep the names distinct; no estimate is affected.",
+    paste(gsub("`", "", utils::head(grep("[", terms, fixed = TRUE, value = TRUE), 2L),
+               fixed = TRUE), collapse = ", "))
+}
+
 #' Put an analysis-of-deviance table on the observations behind frequency weights
 #'
 #' car::Anova() refits reduced models, whose residual degrees of freedom glm()
