@@ -229,19 +229,78 @@
 }
 
 #' Scatterplot of response against covariate, by group
+#'
+#' @param lines optional data frame of fitted lines, with the covariate, cell
+#'   and response columns plus \code{.lwr} and \code{.upr} (the band, \code{NA}
+#'   where there is none), as built by \code{.covariate_lines()}. When given,
+#'   these are drawn and \code{subtitle} describes them. Without it each
+#'   group gets its own least-squares line, with a band only where the line
+#'   has residual degrees of freedom (three or more observations): a line
+#'   through two points has none, and \code{geom_smooth()} would warn.
+#' @param subtitle the subtitle to use with \code{lines}.
+#' @param own_lines with \code{lines}, also draw each group's own
+#'   least-squares line, dashed (for an additive model, whose fitted lines are
+#'   parallel by construction).
 #' @noRd
 .plot_covariate <- function(data, response, covariate, cell, conf_level = 0.95,
-                            xlab = covariate) {
+                            xlab = covariate, lines = NULL, subtitle = NULL,
+                            own_lines = FALSE) {
   data <- data[, unique(c(response, covariate, cell)), drop = FALSE]
-  ggplot2::ggplot(data, ggplot2::aes(x = .data[[covariate]],
-                                     y = .data[[response]],
-                                     colour = .data[[cell]])) +
-    ggplot2::geom_point(alpha = 0.7) +
-    ggplot2::geom_smooth(method = "lm", formula = y ~ x, se = TRUE,
-                         level = conf_level) +
+  p <- ggplot2::ggplot(data, ggplot2::aes(x = .data[[covariate]],
+                                          y = .data[[response]],
+                                          colour = .data[[cell]])) +
+    ggplot2::geom_point(alpha = 0.7)
+  if (!is.null(lines)) {
+    band <- lines[is.finite(lines$.lwr) & is.finite(lines$.upr), , drop = FALSE]
+    if (nrow(band) > 0L) {
+      p <- p + ggplot2::geom_ribbon(
+        data = band,
+        ggplot2::aes(ymin = .data[[".lwr"]], ymax = .data[[".upr"]],
+                     fill = .data[[cell]], group = .data[[cell]]),
+        alpha = 0.2, colour = NA, show.legend = FALSE)
+    }
+    p <- p + ggplot2::geom_line(data = lines,
+                                ggplot2::aes(group = .data[[cell]]))
+    if (own_lines) {
+      # Each group's own least-squares line, dashed and without a band, so a
+      # departure from the fitted parallel lines stays visible. A group whose
+      # covariate takes one value has no line.
+      distinct <- tapply(data[[covariate]], data[[cell]],
+                         function(v) length(unique(v)))
+      ok <- names(distinct)[!is.na(distinct) & distinct >= 2L]
+      if (length(ok) > 0L) {
+        p <- p + ggplot2::geom_smooth(
+          data = data[as.character(data[[cell]]) %in% ok, , drop = FALSE],
+          method = "lm", formula = y ~ x, se = FALSE, linetype = "dashed",
+          linewidth = 0.5)
+      }
+    }
+  } else {
+    n <- table(data[[cell]])
+    distinct <- tapply(data[[covariate]], data[[cell]],
+                       function(v) length(unique(v)))
+    with_band <- names(n)[n >= 3L & distinct[names(n)] >= 2L]
+    no_band <- names(n)[n < 3L & distinct[names(n)] >= 2L]
+    in_cells <- function(cells) data[as.character(data[[cell]]) %in% cells, ,
+                                     drop = FALSE]
+    if (length(with_band) > 0L) {
+      p <- p + ggplot2::geom_smooth(data = in_cells(with_band), method = "lm",
+                                    formula = y ~ x, se = TRUE,
+                                    level = conf_level)
+    }
+    if (length(no_band) > 0L) {
+      p <- p + ggplot2::geom_smooth(data = in_cells(no_band), method = "lm",
+                                    formula = y ~ x, se = FALSE)
+    }
+    subtitle <- paste0(
+      sprintf("Bands are %s%% confidence intervals for each group's line",
+              .pct(conf_level)),
+      if (length(no_band) > 0L)
+        "; groups with two observations have a line but no band" else "")
+  }
+  p +
     ggplot2::labs(title = sprintf("%s against %s by group", response, covariate),
-                  subtitle = sprintf("Bands are %s%% confidence intervals for each group's line",
-                                     .pct(conf_level)),
+                  subtitle = subtitle,
                   x = xlab, y = response, colour = "Group") +
     ggplot2::theme_minimal() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
