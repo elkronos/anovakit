@@ -784,8 +784,11 @@
 #' about 1e-11 there, a residual deviance of about 1e-11 of the null deviance
 #' (the deviance of such a cell is linear, not quadratic, in its fitted
 #' value), and F statistics of 1e12 to 1e17. The fit is therefore also exact
-#' when every fitted value equals the response to within 1e-6 of the
-#' response's range, which for a Gaussian fit is about the deviance rule.
+#' when every fitted value equals the response to within 1e-6 of its own
+#' size, or, where the response is 0, to within 1e-6 of the response's range.
+#' Measuring each residual against its own row keeps a constant group of
+#' large values (1e7, say) from hiding real variation in a group of small
+#' ones.
 #' @return \code{NULL} when the fit leaves residual variation; otherwise the
 #'   error message.
 #' @noRd
@@ -815,12 +818,19 @@
     what <- sprintf("its residual deviance is %s of the null deviance, which is rounding error",
                     format(signif(dev / dev0, 3)))
   } else if (length(mu) == length(y) && all(is.finite(mu))) {
+    # Each residual is measured against its own row's size, so that a
+    # constant group of large values cannot hide real variation in a group of
+    # small ones. Only a response of exactly 0, which glm() fits by about
+    # 1e-11 in the limit, is measured against the response's range instead.
     spread <- diff(range(y))
     if (spread == 0) spread <- max(abs(y))
-    gap <- max(abs(y - mu))
-    if (spread > 0 && gap <= 1e-6 * spread) {
-      what <- sprintf("every fitted value equals the response to within %s of its range, which is rounding error",
-                      format(signif(gap / spread, 3)))
+    scale <- ifelse(y == 0, spread, pmax(abs(y), abs(mu)))
+    if (spread > 0 && all(scale > 0)) {
+      rel <- max(abs(y - mu) / scale)
+      if (rel <= 1e-6) {
+        what <- sprintf("every fitted value equals the response to within %s of its own size (of the response's range where the response is 0), which is rounding error",
+                        format(signif(rel, 3)))
+      }
     }
   }
   if (is.null(what)) return(NULL)
