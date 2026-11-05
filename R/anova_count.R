@@ -377,6 +377,13 @@ anova_count <- function(data, response, groups,
     test_statistic <- "F"
     notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
   }
+  # An estimated dispersion of an exact fit is rounding error, and so is
+  # every F statistic divided by it (a constant count gives F = 1e12).
+  if ((model_type == "quasipoisson" || test_statistic == "F") &&
+      isTRUE(stats::df.residual(row_fit) >= 1)) {
+    exact <- .glm_exact_fit_message(row_fit, response)
+    if (!is.null(exact)) .stopf("%s", exact)
+  }
   notes <- c(notes, .check_model_size(fit))
   tt <- .type_for_model(fit, type)
   type <- tt$type
@@ -477,8 +484,10 @@ anova_count <- function(data, response, groups,
   model_dispersion <- .count_dispersion(fit, n_obs, w_mean)
   .new_fit(
     method       = sprintf(
-      "Analysis of deviance for a count response (%s regression, Type %s)",
-      model_type, type),
+      "Analysis of deviance for a count response (%s regression, Type %s%s)",
+      model_type, type,
+      if (test_statistic == "F" && model_type != "quasipoisson")
+        ", quasi-likelihood F test" else ""),
     call         = cl,
     model        = fit,
     anova        = av$table,
