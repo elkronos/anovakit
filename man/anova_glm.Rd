@@ -228,7 +228,11 @@ where coefficients, Wald tests and comparisons are not identified;
 family with \code{test_statistic = "F"}) divides every test statistic by
 the residual variation. When the response is constant, or constant within
 every group, there is none, and the function stops with an error instead
-of reporting F statistics that are ratios of rounding errors.
+of reporting F statistics that are ratios of rounding errors. That
+includes a frequency table with one row per group, which stands for a
+response constant within every group. A response with a large level and
+small but real variation (epoch seconds varying by minutes, say) is not an
+exact fit and gets its F tests.
 
 \strong{Convergence.} \code{stats::glm()} judges convergence by a change
 in deviance relative to the deviance plus 0.1, so a fit whose deviance is

@@ -80,7 +80,9 @@ An \code{\link{anovakit_fit}} object.
     \item \code{$assumptions}: a per-group Shapiro-Wilk table in
       \code{normality}, with a \code{note} column giving the reason for any
       group that was not tested, and the ratio of the largest to the
-      smallest group variance in \code{variance_ratio}.
+      smallest group variance in \code{variance_ratio} (\code{Inf} when
+      that ratio is larger than the largest double, about 1.8e308; the
+      note then gives it as a power of ten).
     \item \code{$model}: the \code{htest} returned by
       \code{\link[stats]{oneway.test}}; there is no fitted model object and
       \code{$emmeans_object} is \code{NULL}.
@@ -176,17 +178,25 @@ two groups that is whenever the single pair is at that resolution. Below
 5\% the test is reported and the note gives the share. Subtracting a
 constant close to the values from the response avoids both.
 
-The omnibus test is run by \code{stats::oneway.test()} on the response as
-supplied. Welch's F does not depend on the response's units, so when that
-gives a non-finite F (a response around 1e-150, whose variances are too
-small for their weights, group size over variance, to be represented), the
-test is rerun on the response multiplied by a power of two chosen so the
-group variances are centred on 1 on a log scale, and then on the response
-brought near 1; the first finite result is reported. Multiplying by a power
-of two is exact unless it pushes a value out of the range of normal
-doubles, and such a scale is not used. If no scale gives a finite F,
-\code{$anova} reports the statistic, denominator degrees of freedom and
-p-value as \code{NA}, with a note.
+Welch's F, the pairwise t tests and the resolution check above do not
+depend on the response's units, but at a response far from 1 in magnitude
+their intermediate quantities do not fit in double precision: around
+1e-155 the weights (group size over variance) are each finite but their
+sum overflows, which makes \code{stats::oneway.test()} return a finite but
+wrong F, and around 1e-162 the group variances are subnormal and the
+variances of the means underflow. So all three are computed on the response
+multiplied by a power of two chosen so the group variances are centred on 1
+on a log scale, as are the group summaries in \code{$emmeans}, and the
+means, standard deviations, differences and intervals are scaled back to
+the response's units. Multiplying by a
+power of two is exact unless it pushes a value out of the range of normal
+doubles, and such a scale is not used. The power is chosen from the data
+and is often not \eqn{2^0}{2^0} even for an ordinary response, but
+because the scaling is exact the results there are unchanged. The omnibus test is accepted at the
+first of that scale, the response as supplied and the response brought
+near 1 at which its F and the sum of its weights are finite. If none
+qualifies, \code{$anova} reports the statistic, denominator degrees of
+freedom and p-value as \code{NA}, with a note.
 
 The standardiser is recorded in the \code{standardiser} column of
 \code{$effect_sizes}. The magnitude labels use Cohen's conventional

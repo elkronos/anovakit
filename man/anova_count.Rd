@@ -212,7 +212,9 @@ statistic by about 10), and \code{$notes} says so when they do not average
 with a design-based method such as \code{survey::svyglm()}. The Pearson
 dispersion the model choice is made on is computed with such weights
 rescaled to average 1, so the choice between Poisson and negative binomial
-does not depend on their arbitrary scale.
+does not depend on their arbitrary scale; the note on what overdispersion
+does to a kept Poisson model's tests gives the factor they are inflated by
+with the weights as given, that dispersion times the mean weight.
 
 \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 treatment-coded parameterisation of the fitted model, whatever \code{type}

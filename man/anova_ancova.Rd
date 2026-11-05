@@ -98,10 +98,18 @@ An \code{\link{anovakit_fit}} object, with five extra components:
   \code{levene} (Levene's test on the residuals across the cells; cells
   with one or two observations, whose absolute deviations from their median
   cannot vary, are left out of it, as are cells the model fits exactly by
-  construction or leaves only one residual degree of freedom (as under the
-  covariate-by-group interaction when a cell has no more than one
-  observation beyond the coefficients of its own; judged from the design,
-  not from the size of the residuals), and \code{$notes} names them).
+  construction or leaves with fewer than 2.5 residual degrees of freedom
+  (the cell's observations minus the sum of their leverages, judged from
+  the design, not from the size of the residuals): so, when every cell has
+  a mean of its own (as with the default \code{interaction = TRUE}), every
+  cell of three observations, and under the covariate-by-group interaction
+  every cell with no more than two observations beyond the coefficients of
+  its own; cells of exactly three observations are left out in any case,
+  since the test can hardly reject on them.
+  Left in, such cells make the test reject homoscedastic data about twice
+  as often as its nominal level (two residual degrees of freedom and a
+  slope of their own) or almost never (three observations). \code{$notes}
+  names them, with their residual degrees of freedom).
   \code{$data_used} holds the analysed columns and the cell factor, with the
   covariates centred when \code{center_covariates = TRUE}. The covariate
   plot shows each covariate on its original scale, with the lines of the
