@@ -16,8 +16,8 @@
 #' \code{covariates}; Type III fits under sum-to-zero contrasts and tests each
 #' term adjusted for all others. (\code{summary(stats::manova())} would give
 #' sequential, order-dependent tests instead.) When the model has aliased
-#' coefficients -- an empty cell of a crossed design, or collinear covariates
-#' -- \code{car::Manova()} refuses the model, so the Type II tests are
+#' coefficients -- an empty cell of a crossed design -- \code{car::Manova()}
+#' refuses the model, so the Type II tests are
 #' computed by the equivalent model comparisons, and a note says so. Type III
 #' tests are not defined when coefficients are aliased; Type II tests are then
 #' reported throughout, with a note.
@@ -36,7 +36,13 @@
 #' with every grouping term, using the chosen multivariate statistic; the
 #' result is in \code{$slopes_test}, and a note says when it is rejected at
 #' the 0.05 level, since the common-slope adjusted means and comparisons are
-#' then not interpretable as constant group differences.
+#' then not interpretable as constant group differences. A covariate that is
+#' constant, that is determined by the grouping variables (constant within
+#' every group, such as a group-level attribute), or that is an exact linear
+#' combination of the grouping variables and the other covariates is refused
+#' with an error naming it: its effect cannot be separated from the group
+#' effect, and fitting it anyway would silently take degrees of freedom from a
+#' group test.
 #'
 #' \strong{Assumption checks.} Mardia's tests of multivariate skewness and
 #' kurtosis (on the residuals of the multivariate model) and Box's M test of
@@ -50,7 +56,13 @@
 #' rejects too often when the sample is small relative to the square of the
 #' number of responses. Box's M is notoriously sensitive to non-normality:
 #' treat a small p-value as a prompt to look at the group covariances rather
-#' than as a verdict.
+#' than as a verdict. It is not computed, with a note, when a cell has no more
+#' observations than there are responses (the note names the smallest cell),
+#' or when a cell's covariance matrix is singular -- a response constant in a
+#' cell, or an exact linear combination of the others there -- judged on the
+#' correlation scale with a relative eigenvalue tolerance of 1e-12, since
+#' rounding makes the determinant of an exactly singular matrix tiny rather
+#' than zero and Box's M computed from it is an arbitrary, huge number.
 #'
 #' \strong{Univariate follow-ups.} One Type II or III ANOVA is fitted per
 #' response and kept under \code{$univariate}. Their p-values are \emph{not}
@@ -247,6 +259,12 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     notes <- c(notes, "Only one response was supplied, so this is a univariate analysis; there is no multivariate test and no canonical discriminant analysis.")
   }
 
+  ## Covariates ----------------------------------------------------------------
+  # A constant covariate, or one determined by the grouping variables, is
+  # aliased: lm() drops whichever column comes last -- possibly a group
+  # contrast -- and the group test silently loses degrees of freedom.
+  .check_covariates_vary(d, covariates)
+
   ## Centre the covariates ----------------------------------------------------
   # Centring leaves every test and every adjusted mean unchanged (no covariate
   # enters an interaction), but lm()'s pivoting QR declares a covariate whose
@@ -259,6 +277,9 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     notes <- c(notes, sprintf(
       "Covariate(s) mean-centred before fitting (%s), so $emmeans are adjusted means at the covariate mean(s). Centring changes no test.",
       paste(sprintf("%s: %.6g", covariates, covariate_means), collapse = "; ")))
+    # After centring: on the raw scale a covariate with a tiny coefficient of
+    # variation would look collinear with the grouping indicators.
+    .check_covariates_identified(d, covariates, groups, interaction)
   }
 
   cellv <- .cell_vector(d, groups)
@@ -303,7 +324,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   type_used <- type
   if (aliased && identical(type, "III")) {
     type_used <- "II"
-    notes <- c(notes, "The model has aliased coefficients (an empty cell of the design, or collinear covariates), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead, for the multivariate table and the univariate follow-ups alike.")
+    notes <- c(notes, "The model has aliased coefficients (an empty cell of the design), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead, for the multivariate table and the univariate follow-ups alike.")
   }
 
   ## Multivariate tests ---------------------------------------------------------
@@ -451,7 +472,22 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
           "Pillai's trace is the most robust of the four multivariate statistics to this; consider test = \"Pillai\"."
         }))
     }
-    bm <- .box_m(Ycov, cellv)
+    bm <- if (length(groups) == 1L) .box_m(Ycov, cellv) else {
+      # Names and levels in backticks, so that a comma inside either cannot be
+      # mistaken for the separator between the variables of a cell.
+      first <- match(levels(cellv), cellv)
+      cell_lab <- stats::setNames(sprintf("(%s)", do.call(paste, c(
+        lapply(groups, function(g)
+          sprintf("`%s` = `%s`", g, as.character(d[[g]][first]))),
+        list(sep = ", ")))), levels(cellv))
+      q <- sprintf("`%s`", groups)
+      .box_m(Ycov, cellv,
+             unit = sprintf("cell (combination of %s)",
+                            paste(c(utils::head(q, -2L),
+                                    paste(utils::tail(q, 2L), collapse = " and ")),
+                                  collapse = ", ")),
+             noun = "cell", level_labels = cell_lab)
+    }
     if (is.null(bm)) {
       notes <- c(notes, "Box's M could not be computed: fewer than two cells have complete data.")
     } else {

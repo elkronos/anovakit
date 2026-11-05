@@ -121,23 +121,21 @@ test_that("R2-MANOVA-05: with one response the slopes note reports an exact F an
   expect_false(any(c("mardia", "box_m") %in% names(f$assumptions)))
 })
 
-test_that("R2-MANOVA-06: a constant covariate gives a not-computable slopes test, not a statistic of 0", {
+test_that("R2-MANOVA-06: a constant covariate is refused (superseded by R3-48), not tested for slopes", {
   d <- withr::with_seed(4, {
     d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 15)), x = 1)
     d$y1 <- stats::rnorm(45) + (d$g == "b")
     d$y2 <- stats::rnorm(45)
     d
   })
-  # anova.mlm compares two models of equal rank: 0 degrees of freedom.
+  # Reference: lm() cannot estimate the covariate next to the intercept, and
+  # anova.mlm compares two models of equal rank (0 degrees of freedom).
+  expect_true(is.na(stats::coef(stats::lm(y1 ~ g + x, d))[["x"]]))
   ref <- stats::anova(stats::lm(cbind(y1, y2) ~ g + x, d),
                       stats::lm(cbind(y1, y2) ~ g * x, d))
   expect_equal(ref$Df[2], 0)
-  f <- anova_manova(d, c("y1", "y2"), "g", covariates = "x", plots = FALSE)
-  st <- f$slopes_test
-  expect_true(all(is.na(st[, c("df", "statistic", "approx_f", "num_df",
-                               "den_df", "p_value", "homogeneous")])))
-  expect_true(any(grepl("homogeneity-of-slopes test could not be computed",
-                        f$notes, fixed = TRUE)))
+  expect_error(anova_manova(d, c("y1", "y2"), "g", covariates = "x", plots = FALSE),
+               "Covariate `x` has the same value \\(1\\) in every analysed row, so there is nothing to adjust for")
 })
 
 test_that("R2-MANOVA-07: Type III tests on responses in small units need no fallback and match car", {
