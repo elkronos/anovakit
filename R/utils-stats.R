@@ -432,10 +432,17 @@
 #' moderate standard error and is not flagged, and neither is a rare but
 #' well-determined event rate in a large sample.
 #'
+#' The note describes the omnibus test the caller reports. A Wald omnibus test
+#' is built from the same diverged coefficients and their standard errors, so
+#' it collapses in the same way (its p-value near 1); a likelihood-ratio or F
+#' test compares deviances and does not.
+#'
 #' @param fit a fitted binomial, Poisson or negative binomial GLM.
+#' @param test_statistic the omnibus test in \code{$anova}: \code{"LR"},
+#'   \code{"Wald"} or \code{"F"}.
 #' @return a character note, or \code{character(0)}.
 #' @noRd
-.check_separation <- function(fit) {
+.check_separation <- function(fit, test_statistic = "LR") {
   fam <- tryCatch(stats::family(fit)$family, error = function(e) "")
   is_count <- inherits(fit, "negbin") ||
     fam %in% c("poisson", "quasipoisson") || grepl("^Negative Binomial", fam)
@@ -483,6 +490,22 @@
             paste(gsub("`", "", runaway, fixed = TRUE), collapse = ", "))
   } else ""
 
+  omnibus <- if (identical(test_statistic, "Wald")) {
+    paste0("The Wald omnibus test in $anova is built from the same coefficients ",
+           "and is affected in the same way: its p-value can be near 1 however ",
+           "large the effect, so it should not be used; ",
+           # a quasi family has no likelihood, and its deviance test is an F test
+           if (grepl("^quasi", fam)) "test_statistic = \"F\" gives an F test" else
+             "test_statistic = \"LR\" gives a likelihood-ratio test",
+           ", which compares deviances",
+           if (is_count) "." else ", although with events this sparse it is liberal.")
+  } else if (identical(test_statistic, "F")) {
+    if (is_count) "The F omnibus test, which compares deviances, remains usable." else
+      "With events this sparse the F omnibus test, which compares deviances, is liberal."
+  } else {
+    if (is_count) "The likelihood-ratio omnibus test remains usable." else
+      "With events this sparse the likelihood-ratio omnibus test is also liberal."
+  }
   if (is_count) {
     return(paste0(
       "No events were observed in ", where, ", so the fitted rate there is ",
@@ -490,7 +513,7 @@
       "identified: it will be near zero or enormous, its interval unbounded on one ",
       "side, and its Wald p-value near 1 no matter how large the difference is; ",
       "the same goes for that cell's marginal mean and the comparisons involving it. ",
-      "The likelihood-ratio omnibus test remains usable. Consider collapsing the ",
+      omnibus, " Consider collapsing the ",
       "level, or an exact or penalised method for the affected comparisons."))
   }
   paste0(
@@ -499,7 +522,7 @@
     " An affected odds ratio is not identified: it will be enormous, its ",
     "interval will be unbounded on one side, and its Wald p-value will be near 1 ",
     "no matter how strong the association is; the same goes for that cell's ",
-    "marginal probability and the comparisons involving it. With events this sparse the ",
-    "likelihood-ratio omnibus test is also liberal. Consider a penalised fit such ",
+    "marginal probability and the comparisons involving it. ", omnibus,
+    " Consider a penalised fit such ",
     "as logistf::logistf(), or collapsing the offending level.")
 }

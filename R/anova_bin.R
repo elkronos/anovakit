@@ -43,9 +43,15 @@
 #' \strong{Interval cost.} A profile-likelihood interval refits the model
 #' several times for each coefficient, so its cost grows with the number of
 #' coefficients times the cost of a fit: a factor with 60 levels and 5,000
-#' rows takes tens of seconds where Wald intervals take about one.
-#' \code{$notes} says so when there are many coefficients; set
-#' \code{ci_method = "wald"} for speed when there is no separation.
+#' rows takes tens of seconds where Wald intervals take about one, and so does
+#' a model with a few coefficients and a million rows. Left at its default,
+#' \code{ci_method} therefore gives Wald intervals, with a note, when the
+#' model has more than 50 coefficients or the number of coefficients times
+#' the number of rows exceeds 200,000, as \code{\link{anova_glm}} does for
+#' many coefficients; with large groups the two kinds of interval agree
+#' closely. Under separation profile intervals are kept, since Wald ones are
+#' meaningless there, and \code{$notes} says when there are many of them.
+#' Give \code{ci_method = "profile"} explicitly to profile in every case.
 #'
 #' \strong{Sparse data.} When fewer than about 5 events or non-events are
 #' expected in a cell under the null hypothesis, the likelihood-ratio omnibus
@@ -57,7 +63,8 @@
 #' the observed proportions alike. A row with weight \code{w} counts as
 #' \code{w} identical observations, so data aggregated to one row per cell and
 #' outcome, with the count as the weight, give the same results as the
-#' individual rows (apart from BIC, which R bases on the number of rows).
+#' individual rows, BIC included: with frequency weights its penalty uses the
+#' number of observations they represent, not the number of rows.
 #'
 #' @param data A data frame, or anything inheriting from one, such as a
 #'   \code{data.table} or a tibble.
@@ -87,7 +94,9 @@
 #'   Default \code{0.95}.
 #' @param ci_method Character. \code{"profile"} (default) for
 #'   profile-likelihood intervals, or \code{"wald"}. Profile intervals are
-#'   slow with many coefficients (see Details); \code{"wald"} is much faster.
+#'   slow with many coefficients or many rows; left at the default, a large
+#'   model without separation gets Wald intervals instead, with a note (see
+#'   Details).
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
 #'   the \pkg{sandwich} package. They reach the coefficient table, the
@@ -114,11 +123,12 @@
 #'   observations, and the robust covariance (\code{vcov_type}) is then that
 #'   of the data expanded to one row per observation. Other weights are used
 #'   as given, as \code{glm()} uses prior weights: the fit, the tests, the
-#'   intervals, the marginal means and the sparse-data check treat them as
-#'   multipliers of each row, like frequencies, so their scale matters
-#'   (weights averaging 0.01 make 300 rows count as 3 observations), and
-#'   \code{$notes} says so when they do not average 1. Only the robust
-#'   covariance treats each row as one unit. Sampling weights should therefore
+#'   intervals and the marginal means treat them as multipliers of each row,
+#'   like frequencies, so their scale matters (weights averaging 0.01 make
+#'   300 rows count as 3 observations), and \code{$notes} says so when they
+#'   do not average 1. Only the robust covariance, and the sparse-data check
+#'   (which rescales them to average 1), treat each row as one unit. Sampling
+#'   weights should therefore
 #'   be rescaled to average 1, or analysed with a design-based method such as
 #'   \code{survey::svyglm()}.
 #'
@@ -134,8 +144,10 @@
 #'       weights. When any weight is not a whole number, \code{AIC},
 #'       \code{BIC} and \code{logLik} are \code{NA} with a note, because R's
 #'       binomial log-likelihood rounds the weights; the deviance-based
-#'       statistics are unaffected. \code{BIC} uses \code{nobs()}, the number
-#'       of rows with a non-zero weight.}
+#'       statistics are unaffected. \code{BIC} uses \code{log(nobs())}, the
+#'       number of rows with a non-zero weight, or, with frequency weights,
+#'       the number of observations they represent (their sum), so that it
+#'       equals the BIC of the expanded data.}
 #'     \item{\code{$effect_sizes}}{One row per coefficient of the
 #'       reference-coded model (see Details): \code{term} (the coefficient),
 #'       \code{factor} (the grouping variable, or \code{"g1:g2"} for an
@@ -200,6 +212,7 @@ anova_bin <- function(data, response, groups,
   cl <- match.call()
   type <- match.arg(type)
   test_statistic <- match.arg(test_statistic)
+  ci_default <- missing(ci_method)
   ci_method <- match.arg(ci_method)
   .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -283,7 +296,7 @@ anova_bin <- function(data, response, groups,
   if (isTRUE(tf$bracketed) && !uc$bracketed) {
     notes <- c(notes, .bracketed_terms_note(names(stats::coef(trt))))
   }
-  sep_note <- .check_separation(trt)
+  sep_note <- .check_separation(trt, test_statistic)
   notes <- c(notes, sep_note)
 
   ## Analysis of deviance ----------------------------------------------------
@@ -301,13 +314,28 @@ anova_bin <- function(data, response, groups,
   }
 
   ## Model versus null, from the model's own (weighted) deviances -------------
-  ms <- .bin_model_stats(model, success)
+  ms <- .bin_model_stats(model, success,
+                         freq_n = if (freq_rows) sum(d[[weights]]) else NULL)
   notes <- c(notes, ms$note)
 
   ## Odds ratios -------------------------------------------------------------
   if (!is.null(rv$matrix) && ci_method == "profile") {
     ci_method <- "wald"
     notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
+  }
+  # Profiling refits the model several times per coefficient, so its cost
+  # grows with the number of coefficients and with the number of rows each
+  # refit runs over. Left at the default, a large problem gets Wald intervals
+  # instead, as in anova_glm(), unless separation makes Wald intervals
+  # meaningless; asked for by name, profiling is honoured.
+  n_or <- sum(!is.na(stats::coef(trt)))
+  if (ci_default && ci_method == "profile" && length(sep_note) == 0L &&
+      (n_or > .max_profiled_coefficients ||
+         n_or * nrow(d) > .max_profiled_work)) {
+    ci_method <- "wald"
+    notes <- c(notes, sprintf(
+      "The model has %d coefficients and %s rows, and profiling the likelihood of each coefficient refits the model many times, so the odds-ratio intervals are Wald intervals; give ci_method = \"profile\" explicitly to profile them.",
+      n_or, format(nrow(d), big.mark = ",")))
   }
   rv_trt <- if (is.null(rv$matrix) || !tf$refit) rv$matrix else
     .robust_vcov(trt, vcov_type, freq_weights = freq_rows)$matrix
@@ -324,12 +352,19 @@ anova_bin <- function(data, response, groups,
   if (!posthoc) {
     notes <- c(notes, "$effect_sizes still reports the odds ratios from the model.")
   }
+  if (posthoc && NROW(emm$table) == 2L && !isTRUE(emm$per_factor) &&
+      !is.null(emm$posthoc)) {
+    notes <- c(notes, .two_cell_note(model, av$table, test_statistic,
+                                     robust = !is.null(rv$matrix),
+                                     vcov_type = vcov_type))
+  }
 
   ## Proportions, sparse cells and plot ---------------------------------------
   added <- .add_cell(d, groups)
   prop <- .proportion_table(added$data, response, added$cell, weights)
   notes <- c(notes, .sparse_bin_note(d, response, groups, weights,
-                                     additive = .is_additive(interaction)))
+                                     additive = .is_additive(interaction),
+                                     frequencies = freq_rows))
   # The Pearson X^2 / df of ungrouped 0/1 data is not a diagnostic: in a model
   # saturated in the cells it equals N / (N - k) whatever the data, and it
   # changes when the same trials are aggregated into weighted rows.
@@ -523,8 +558,15 @@ anova_bin <- function(data, response, groups,
 #' deviances keeps the prior weights -- aggregated counts, sampling weights --
 #' exactly as the fit used them. R's binomial log-likelihood, and hence AIC and
 #' BIC, rounds non-integer weights, so those are NA then.
+#'
+#' \code{stats::BIC()} takes \code{log(nobs())}, and \code{nobs()} of a
+#' weighted glm counts rows. With frequency weights the penalty is that of the
+#' observations they represent (\code{freq_n}), as on the expanded data and as
+#' in \code{anova_glm()}; the log-likelihood, and so AIC, already is.
+#' @param freq_n the number of observations frequency weights represent, or
+#'   \code{NULL} when the weights are not frequencies.
 #' @noRd
-.bin_model_stats <- function(model, success) {
+.bin_model_stats <- function(model, success, freq_n = NULL) {
   w <- model$prior.weights
   whole <- is.null(w) || all(abs(w - round(w)) < 1e-8)
   dev <- model$deviance
@@ -533,7 +575,10 @@ anova_bin <- function(data, response, groups,
   lr_df <- as.integer(model$df.null - model$df.residual)
   out <- list(
     AIC = if (whole) stats::AIC(model) else NA_real_,
-    BIC = if (whole) stats::BIC(model) else NA_real_,
+    BIC = if (!whole) NA_real_ else if (is.null(freq_n)) stats::BIC(model) else {
+      ll <- stats::logLik(model)
+      -2 * as.numeric(ll) + log(freq_n) * attr(ll, "df")
+    },
     logLik = if (whole) as.numeric(stats::logLik(model)) else NA_real_,
     mcfadden_r2 = if (is.finite(dev0) && dev0 > 0) 1 - dev / dev0 else NA_real_,
     success_level = success,
@@ -607,6 +652,16 @@ anova_bin <- function(data, response, groups,
   }
   out
 }
+
+#' Above this many coefficients times rows, anova_bin()'s default profile
+#' intervals give way to Wald
+#'
+#' Each profile refits the model over every row, so with few coefficients the
+#' cost grows with the number of rows: 4 coefficients and 100,000 rows take
+#' about 7 seconds where Wald intervals take under one, and 1,000,000 rows
+#' about 45 seconds, for intervals that agree with Wald ones to 7 digits.
+#' @noRd
+.max_profiled_work <- 2e5
 
 #' Odds ratios with profile-likelihood or Wald intervals
 #'
@@ -952,10 +1007,17 @@ anova_bin <- function(data, response, groups,
 #' are taken under the null hypothesis (the pooled proportion), as in Cochran's
 #' rule, over the cells of the model: each factor's levels for an additive
 #' model, the combined cells otherwise.
+#'
+#' Frequency weights count observations and are used as they are. Other
+#' weights have an arbitrary scale -- weights averaging 0.01 would make 100
+#' rows look like one expected event -- so they are rescaled to average 1,
+#' which keeps each row one unit, as the dispersion of anova_count() does.
+#' @param frequencies are the weights frequencies (see .frequency_weights())?
 #' @noRd
 .sparse_bin_note <- function(d, response, groups, weights, additive,
-                             threshold = 5) {
+                             threshold = 5, frequencies = FALSE) {
   w <- if (is.null(weights)) rep(1, nrow(d)) else as.numeric(d[[weights]])
+  if (!frequencies) w <- w / mean(w)
   y <- as.integer(d[[response]]) == 2L
   pbar <- sum(w * y) / sum(w)
   sets <- if (additive && length(groups) > 1L) as.list(groups) else list(groups)

@@ -304,12 +304,6 @@ anova_glm <- function(data, response, groups,
   tt <- .type_for_model(model, type)
   type <- tt$type
   notes <- c(notes, tt$note)
-  sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
-                  grepl("^Negative Binomial", fam_name)) {
-    .check_separation(model)
-  } else character(0)
-  notes <- c(notes, sep_note)
-
   # The default follows what the fitted model does with its dispersion, which
   # is also what decides t or z in the coefficient table: a family string
   # cannot tell glm(family = MASS::negative.binomial(theta)), whose dispersion
@@ -317,6 +311,11 @@ anova_glm <- function(data, response, groups,
   if (is.null(test_statistic)) {
     test_statistic <- if (.estimates_dispersion(model)) "F" else "LR"
   }
+  sep_note <- if (fam_name %in% c("binomial", "quasibinomial", "poisson", "quasipoisson") ||
+                  grepl("^Negative Binomial", fam_name)) {
+    .check_separation(model, test_statistic)
+  } else character(0)
+  notes <- c(notes, sep_note)
 
   ## Robust covariance --------------------------------------------------------
   # Frequency weights (see freq_n above) count identical observations; the
@@ -376,7 +375,17 @@ anova_glm <- function(data, response, groups,
     # it happened.
     size <- stats::pchisq(stats::qchisq(0.95, 1) / dispersion, 1,
                           lower.tail = FALSE)
-    notes <- c(notes, sprintf(
+    # With a robust covariance the coefficient table, the marginal means and
+    # the comparisons do not rest on the model variance; only an omnibus test
+    # that compares deviances with the dispersion fixed at 1 still does.
+    notes <- c(notes, if (!is.null(rv$matrix)) sprintf(
+      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1. %s",
+      dispersion, .fmt_p(p_over), fam_name,
+      .robust_overdispersion_text(
+        test_statistic, vcov_type,
+        sprintf("a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses",
+                100 * size),
+        sprintf("family = \"quasi%s\"", fam_name))) else sprintf(
       "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. %s",
       dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), 100 * size,
       if (identical(test_statistic, "F")) {
