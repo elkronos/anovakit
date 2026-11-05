@@ -53,13 +53,29 @@
 #' familiar \eqn{n_1 + n_2 - 2}{n1 + n2 - 2}; when the variances differ it
 #' removes the bias that the pooled-variance correction leaves. The correction is a property of the point estimate, so
 #' the interval, which is for \eqn{\delta^*}{delta*} itself, is the same with or
-#' without it. With two or three observations per group and a low
-#' \code{conf_level}, the corrected estimate can fall outside that interval;
-#' \code{$notes} says so when it does.
+#' without it. The corrected estimate can fall outside that interval at any
+#' \code{conf_level} when \eqn{\nu}{nu} is near 1, which happens when a group
+#' of two or three holds most of the variance: \eqn{J(\nu)}{J(nu)} then
+#' approaches 0 and pulls the estimate towards zero. With few observations and
+#' a low \code{conf_level} the estimate, corrected or not, can also fall
+#' outside, because the interval inverts a skewed distribution. \code{$notes}
+#' says so when either happens.
+#'
+#' The interval is found with an exact noncentral t distribution function:
+#' beyond a noncentrality of 30 it is computed by numerical integration,
+#' because \code{stats::pt()} switches to a normal approximation for a large
+#' noncentrality that is badly wrong at small degrees of freedom.
+#'
+#' A pair whose standard error is below the floating-point resolution of its
+#' means, which \code{stats::t.test()} refuses as "essentially constant", is
+#' reported as \code{NA} with a note.
 #'
 #' The standardiser is recorded in the \code{standardiser} column of
 #' \code{$effect_sizes}. The magnitude labels use Cohen's conventional
-#' thresholds of 0.2, 0.5 and 0.8 on the absolute value.
+#' thresholds of 0.2, 0.5 and 0.8 on the absolute value of the estimate; when
+#' the estimate lies outside its own interval the label is taken from the
+#' nearer interval bound instead, so that it does not describe a value the
+#' interval rules out.
 #'
 #' \strong{Several grouping variables.} They are combined into a single cell
 #' factor and unused level combinations are dropped, so the number of groups
@@ -203,11 +219,23 @@ anova_welch <- function(data, response, groups,
   }
 
   group_var <- tapply(d[[response]], d[[cell]], stats::var)
-  degenerate <- levels(d[[cell]])[!is.finite(group_var) | group_var == 0]
+  # A zero or non-finite variance means constant data only when the values
+  # really are all equal; distinct values far from 1 in magnitude (around
+  # 1e-200 or 1e200) can also give one, because squaring them under- or
+  # overflows. That needs a rescale, not dropping the group.
+  n_distinct <- tapply(d[[response]], d[[cell]], function(v) length(unique(v)))
+  bad_var <- !is.finite(group_var) | group_var == 0
+  degenerate <- levels(d[[cell]])[bad_var & n_distinct == 1L]
   if (length(degenerate) > 0L) {
     .stopf("Welch's test needs a positive variance in every group, and %s none: %s. Every observation there takes the same value, so consider dropping the group or using anova_kw().",
            if (length(degenerate) == 1L) "this group has" else "these groups have",
            paste(sprintf("\"%s\"", degenerate), collapse = ", "))
+  }
+  unrepresentable <- levels(d[[cell]])[bad_var & n_distinct > 1L]
+  if (length(unrepresentable) > 0L) {
+    .stopf("The variance of %s %s cannot be represented in double precision: the values differ, but at their scale the variance underflows to zero or overflows to infinity. Rescale the response (multiply or divide it by a power of ten) and rerun.",
+           if (length(unrepresentable) == 1L) "group" else "groups",
+           paste(sprintf("\"%s\"", unrepresentable), collapse = ", "))
   }
 
   term_label <- .cells_label(groups)
@@ -349,6 +377,18 @@ anova_welch <- function(data, response, groups,
 }
 
 #' Pairwise Welch t-tests with intervals and standardised differences
+#'
+#' Welch's t, degrees of freedom, p-value and interval are computed for every
+#' pair at once, in the closed form \code{stats::t.test()} uses, from each
+#' group's mean, variance and size; calling \code{t.test()} and building a
+#' data frame pair by pair made many groups very slow. Only the effect-size
+#' interval, which inverts a noncentral t, is found pair by pair.
+#'
+#' \code{t.test()} refuses a pair whose standard error is below
+#' \code{10 * .Machine$double.eps} times the larger absolute mean ("data are
+#' essentially constant"): the spread is then at the floating-point
+#' resolution of the means and any t computed from it is rounding noise. Such
+#' a pair is left as \code{NA} with a note rather than given that noise.
 #' @noRd
 .welch_pairwise <- function(values, cell, conf_level = 0.95, adjust = "holm",
                             hedges_correction = TRUE) {
@@ -357,52 +397,85 @@ anova_welch <- function(data, response, groups,
   # Split by position, not by name: a level can be the empty string, which
   # cannot be used to index a named list.
   by_group <- lapply(split(values, cell), function(v) v[!is.na(v)])
+  n <- vapply(by_group, length, numeric(1), USE.NAMES = FALSE)
+  m <- vapply(by_group, mean, numeric(1), USE.NAMES = FALSE)
+  v <- vapply(by_group, function(x) if (length(x) < 2L) NA_real_ else stats::var(x),
+              numeric(1), USE.NAMES = FALSE)
   idx <- utils::combn(length(lv), 2L)
-  rows <- lapply(seq_len(ncol(idx)), function(k) {
-    x <- by_group[[idx[1L, k]]]
-    y <- by_group[[idx[2L, k]]]
-    n1 <- length(x); n2 <- length(y)
-    if (n1 < 2L || n2 < 2L) {
-      return(data.frame(difference = mean(x) - mean(y),
-                        conf_low = NA_real_, conf_high = NA_real_,
-                        statistic = NA_real_, df = NA_real_,
-                        p_value = NA_real_,
-                        effect = NA_real_, effect_low = NA_real_,
-                        effect_high = NA_real_))
-    }
-    tt <- stats::t.test(x, y, var.equal = FALSE, conf.level = conf_level)
-    es <- .std_mean_diff(x, y, conf_level = conf_level,
+  i <- idx[1L, ]; j <- idx[2L, ]
+
+  vi <- v[i] / n[i]; vj <- v[j] / n[j]
+  se <- sqrt(vi + vj)
+  difference <- m[i] - m[j]
+  statistic <- difference / se
+  df <- se^4 / (vi^2 / (n[i] - 1) + vj^2 / (n[j] - 1))
+  p_value <- 2 * stats::pt(-abs(statistic), df)
+  q <- stats::qt(1 - (1 - conf_level) / 2, df)
+  conf_low <- (statistic - q) * se
+  conf_high <- (statistic + q) * se
+
+  sized <- n[i] >= 2L & n[j] >= 2L
+  unresolved <- sized & se < 10 * .Machine$double.eps * pmax(abs(m[i]), abs(m[j]))
+  ok <- sized & !unresolved
+  conf_low[!ok] <- NA_real_; conf_high[!ok] <- NA_real_
+  statistic[!ok] <- NA_real_; df[!ok] <- NA_real_; p_value[!ok] <- NA_real_
+
+  effect <- effect_low <- effect_high <- rep(NA_real_, length(i))
+  for (k in which(ok)) {
+    es <- .std_mean_diff(by_group[[i[k]]], by_group[[j[k]]],
+                         conf_level = conf_level,
                          hedges_correction = hedges_correction)
-    data.frame(
-      difference = unname(tt$estimate[1L] - tt$estimate[2L]),
-      conf_low = tt$conf.int[1L], conf_high = tt$conf.int[2L],
-      statistic = unname(tt$statistic), df = unname(tt$parameter),
-      p_value = unname(tt$p.value),
-      effect = es$estimate, effect_low = es$conf_low,
-      effect_high = es$conf_high)
-  })
-  tab <- data.frame(group1 = lv[idx[1L, ]], group2 = lv[idx[2L, ]],
-                    do.call(rbind, rows), stringsAsFactors = FALSE)
+    effect[k] <- es$estimate
+    effect_low[k] <- es$conf_low
+    effect_high[k] <- es$conf_high
+  }
+
+  tab <- data.frame(group1 = lv[i], group2 = lv[j],
+                    difference = difference,
+                    conf_low = conf_low, conf_high = conf_high,
+                    statistic = statistic, df = df, p_value = p_value,
+                    stringsAsFactors = FALSE)
   tab$p_adjusted <- stats::p.adjust(tab$p_value, method = adjust)
   tab$adjustment <- adjust
+
+  # An estimate outside its own interval would get a magnitude label that the
+  # interval rules out ("negligible" beside an interval excluding everything
+  # smaller than 1.8 in absolute value), so such a label is taken from the
+  # interval bound nearest the estimate.
+  outside <- which(effect < effect_low | effect > effect_high)
+  labelled <- effect
+  labelled[outside] <- pmin(pmax(effect[outside], effect_low[outside]),
+                            effect_high[outside])
 
   es_name <- if (hedges_correction) "hedges_g" else "cohens_d"
   effect_sizes <- data.frame(
     group1 = tab$group1, group2 = tab$group2,
-    estimate = tab$effect, conf_low = tab$effect_low,
-    conf_high = tab$effect_high,
-    magnitude = .effect_magnitude(tab$effect),
+    estimate = effect, conf_low = effect_low,
+    conf_high = effect_high,
+    magnitude = .effect_magnitude(labelled),
     standardiser = "sqrt((s1^2 + s2^2) / 2)",
     stringsAsFactors = FALSE)
   names(effect_sizes)[names(effect_sizes) == "estimate"] <- es_name
 
   notes <- character(0)
-  outside <- which(tab$effect < tab$effect_low | tab$effect > tab$effect_high)
+  if (any(unresolved)) {
+    notes <- c(notes, sprintf(
+      "For %s, the spread within the groups is at the floating-point resolution of their means, so a t statistic computed from it would be rounding noise; that comparison and its effect size are left as NA. Subtracting a constant close to the values from the response before the analysis avoids this.",
+      .abbrev(sprintf("%s vs %s", tab$group1[unresolved],
+                      tab$group2[unresolved]), 5L)))
+  }
   if (length(outside) > 0L) {
-    notes <- sprintf(
-      "For %s, the bias-corrected %s lies outside its %s%% interval. The correction shrinks the estimate, while the interval is for the population value and is not shrunk; this happens only with very small groups and a low conf_level.",
-      .abbrev(sprintf("%s vs %s", tab$group1[outside], tab$group2[outside]), 5L),
-      "Hedges' g", .pct(conf_level))
+    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside],
+                             tab$group2[outside]), 5L)
+    notes <- c(notes, if (hedges_correction) {
+      sprintf(
+        "For %s, Hedges' g lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The bias correction shrinks the estimate towards zero, and shrinks it strongly when the standardiser's degrees of freedom are near 1 (a group of two or three holding most of the variance), while the interval is for the population value and is not shrunk; with few observations and a low conf_level the interval, which inverts a skewed noncentral t distribution, can also miss the estimate. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
+        pairs, .pct(conf_level))
+    } else {
+      sprintf(
+        "For %s, Cohen's d lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The interval inverts the skewed noncentral t distribution of Welch's statistic, so with few degrees of freedom and a low conf_level it need not contain the point estimate.",
+        pairs, .pct(conf_level))
+    })
   }
 
   posthoc <- tab[, c("group1", "group2", "difference", "conf_low", "conf_high",
@@ -452,19 +525,68 @@ anova_welch <- function(data, response, groups,
 #' Confidence interval for the noncentrality of a t statistic
 #'
 #' The bounds are the noncentrality parameters at which the observed t is the
-#' upper and the lower (1 - level) / 2 quantile. \code{pt()} warns about
-#' precision far in the tails; the roots are unaffected, so its warnings are
-#' not passed on.
+#' upper and the lower (1 - level) / 2 quantile. The distribution function is
+#' \code{.pnt()}, not \code{stats::pt()}, whose noncentral algorithm is not
+#' accurate for a large noncentrality. \code{pt()} also warns that full
+#' precision may not have been achieved when the search strays far into a
+#' tail, where the probability is far from the target and the shortfall does
+#' not move the root, so those warnings are not passed on. They are muffled
+#' once per root rather than per evaluation, which is much cheaper.
 #' @noRd
 .ncp_t_interval <- function(t, df, conf_level) {
   a <- (1 - conf_level) / 2
-  f <- function(ncp, p) suppressWarnings(stats::pt(t, df, ncp)) - p
-  w <- 10 + abs(t)
-  root <- function(p) tryCatch(
-    stats::uniroot(f, c(t - w, t + w), p = p, extendInt = "yes",
-                   tol = 1e-10)$root,
-    error = function(e) NA_real_)
+  f <- function(ncp, p) .pnt(t, df, ncp) - p
+  # Start from the normal approximation to each root, t - z_p * s; uniroot()
+  # widens the bracket when that misses, as it does at small df. Starting close
+  # saves evaluations, which matters with many pairs.
+  s <- sqrt(1 + t^2 / (2 * df))
+  root <- function(p) suppressWarnings(tryCatch(
+    stats::uniroot(f, t - stats::qnorm(p) * s + c(-1, 1) * s, p = p,
+                   extendInt = "yes", tol = 1e-10)$root,
+    error = function(e) NA_real_))
   c(root(1 - a), root(a))
+}
+
+#' Distribution function of the noncentral t, accurate for any noncentrality
+#'
+#' For |ncp| > 37.62 \code{stats::pt()} switches to a normal approximation
+#' that is badly wrong at small df (and discontinuous there), and with tens of
+#' thousands of df it is already wrong a little below that. Up to |ncp| = 30
+#' it agrees with the integral below to about 1e-11 at every df, and it is
+#' much faster, so it is used there.
+#'
+#' Beyond that, P(T <= t) for T = (Z + ncp) / sqrt(V / df) is integrated over
+#' the standard normal Z, conditioning on which leaves a chi-square
+#' probability for V: for t < 0 the event needs Z + ncp < 0 and
+#' V <= df ((Z + ncp) / t)^2; for t > 0 it holds whenever Z + ncp <= 0, and
+#' otherwise needs V >= df ((Z + ncp) / t)^2. The integral is split where the
+#' integrand changes fastest, so \code{integrate()} sees every feature.
+#' @noRd
+.pnt <- function(t, df, ncp) {
+  if (abs(ncp) <= 30) return(stats::pt(t, df, ncp))
+  if (t == 0) return(stats::pnorm(-ncp))
+  # dnorm() is zero to double precision beyond +-38.5.
+  if (t < 0) {
+    lo <- -38.5; hi <- -ncp; base <- 0; lower <- TRUE
+  } else {
+    lo <- -ncp; hi <- 38.5; base <- stats::pnorm(-ncp); lower <- FALSE
+  }
+  if (lo >= hi) return(base)
+  g <- function(z) {
+    stats::pchisq(df * ((z + ncp) / t)^2, df, lower.tail = lower) *
+      stats::dnorm(z)
+  }
+  # The chi-square probability changes fastest around z = t - ncp, over a
+  # width of about |t| sqrt(2 / df); the normal density over a width of 1.
+  h <- abs(t) * sqrt(2 / df)
+  br <- sort(unique(c(lo, hi, (t - ncp) + c(-6, -2, 0, 2, 6) * h,
+                      -8, -4, -2, 0, 2, 4, 8)))
+  br <- br[br >= lo & br <= hi]
+  pieces <- vapply(seq_len(length(br) - 1L), function(k) {
+    stats::integrate(g, br[k], br[k + 1L], rel.tol = 1e-10, abs.tol = 1e-15,
+                     subdivisions = 1000L)$value
+  }, numeric(1))
+  min(1, base + sum(pieces))
 }
 
 #' Hedges' small-sample bias correction for a standardiser on \code{df}
