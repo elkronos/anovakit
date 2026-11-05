@@ -231,8 +231,9 @@
 #' Scatterplot of response against covariate, by group
 #'
 #' @param lines optional data frame of fitted lines, with the covariate, cell
-#'   and response columns plus \code{.lwr} and \code{.upr} (the band, \code{NA}
-#'   where there is none), as built by \code{.covariate_lines()}. When given,
+#'   and response columns plus the band's limits (\code{NA} where there is
+#'   none), named in \code{attr(lines, "band")} (\code{.lwr} and \code{.upr}
+#'   when it is absent), as built by \code{.covariate_lines()}. When given,
 #'   these are drawn and \code{subtitle} describes them. Without it each
 #'   group gets its own least-squares line, with a band only where the line
 #'   has residual degrees of freedom (three or more observations): a line
@@ -251,11 +252,14 @@
                                           colour = .data[[cell]])) +
     ggplot2::geom_point(alpha = 0.7)
   if (!is.null(lines)) {
-    band <- lines[is.finite(lines$.lwr) & is.finite(lines$.upr), , drop = FALSE]
+    bn <- attr(lines, "band")
+    if (is.null(bn)) bn <- c(".lwr", ".upr")
+    band <- lines[is.finite(lines[[bn[1L]]]) & is.finite(lines[[bn[2L]]]), ,
+                  drop = FALSE]
     if (nrow(band) > 0L) {
       p <- p + ggplot2::geom_ribbon(
         data = band,
-        ggplot2::aes(ymin = .data[[".lwr"]], ymax = .data[[".upr"]],
+        ggplot2::aes(ymin = .data[[bn[1L]]], ymax = .data[[bn[2L]]],
                      fill = .data[[cell]], group = .data[[cell]]),
         alpha = 0.2, colour = NA, show.legend = FALSE)
     }

@@ -165,7 +165,10 @@
 #'   also holds \code{normality} (Shapiro-Wilk on the residuals) and
 #'   \code{levene} (Levene's test on the residuals across the cells; cells
 #'   with one or two observations, whose absolute deviations from their median
-#'   cannot vary, are left out of it, and \code{$notes} names them).
+#'   cannot vary, are left out of it, as are cells the model fits exactly
+#'   (all residuals zero, as under the covariate-by-group interaction when a
+#'   cell has no more observations than coefficients of its own), and
+#'   \code{$notes} names them).
 #'   \code{$data_used} holds the analysed columns and the cell factor, with the
 #'   covariates centred when \code{center_covariates = TRUE}. The covariate
 #'   plot shows each covariate on its original scale, with the lines of the
@@ -562,7 +565,7 @@ anova_ancova <- function(data, response, groups, covariates,
                       else "additive model, with one common slope",
                       if (length(covariates) > 1L)
                         ", other covariates held at their mean" else "")
-      sub <- paste0(what, if (!is.null(lines) && !any(is.finite(lines$.lwr)))
+      sub <- paste0(what, if (!is.null(lines) && !any(is.finite(lines[[attr(lines, "band")[1L]]])))
         "; the model has no residual degrees of freedom, so there are no bands"
         else sprintf("; bands are %s%% confidence intervals for them%s",
                      .pct(conf_level), if (robust) " (model-based)" else ""),
@@ -964,7 +967,13 @@ anova_ancova <- function(data, response, groups, covariates,
 .nonest_cells <- function(model, groups) {
   e <- .emmeans_grid(model, groups, type = "link")
   if (is.null(e$grid)) return(character(0))
-  s <- as.data.frame(summary(e$grid))
+  # Only the estimates are read, so no intervals or tests are asked for: with
+  # no residual degrees of freedom their critical value is qt(, df = 0),
+  # whose "NaNs produced" warning would otherwise reach the console.
+  old <- .emm_options_guard()
+  on.exit(options(emmeans = old), add = TRUE)
+  s <- as.data.frame(suppressWarnings(suppressMessages(
+    summary(e$grid, infer = c(FALSE, FALSE)))))
   # The estimate is the first column after the grid factors, whatever a
   # grouping column happens to be called.
   est <- s[[length(groups) + 1L]]
@@ -984,7 +993,9 @@ anova_ancova <- function(data, response, groups, covariates,
 #' @param shift what was subtracted from the covariate, added back so the
 #'   lines are on the covariate's original scale.
 #' @return a data frame with the covariate, cell and response columns and
-#'   \code{.lwr}, \code{.upr}; \code{NULL} when nothing can be drawn.
+#'   the band's lower and upper limits, named \code{.lwr} and \code{.upr}
+#'   unless another column already is, and given in \code{attr(, "band")};
+#'   \code{NULL} when nothing can be drawn.
 #' @noRd
 .covariate_lines <- function(model, d, response, covariate, covariates, cell,
                              shift = 0, conf_level = 0.95, n_points = 40L) {
@@ -1010,7 +1021,14 @@ anova_ancova <- function(data, response, groups, covariates,
   out <- data.frame(nd[[covariate]] + shift, nd[[cell]], pr[, 1L],
                     if (band) pr[, "lwr"] else NA_real_,
                     if (band) pr[, "upr"] else NA_real_)
-  names(out) <- c(covariate, cell, response, ".lwr", ".upr")
+  # The band columns take names no user column has, so a response or
+  # covariate called .lwr or .upr keeps the frame uniquely named; their names
+  # are in attr(, "band").
+  taken <- stats::setNames(nm = c(covariate, cell, response))
+  lwr <- .safe_name(taken, ".lwr")
+  upr <- .safe_name(c(taken, stats::setNames(nm = lwr)), ".upr")
+  names(out) <- c(covariate, cell, response, lwr, upr)
+  attr(out, "band") <- c(lwr, upr)
   row.names(out) <- NULL
   out
 }
@@ -1026,9 +1044,11 @@ anova_ancova <- function(data, response, groups, covariates,
 #' a cell with two has two equal deviations: such cells add between-cell
 #' variation to that ANOVA and no within-cell variation, so with some of them
 #' in the test it rejects homoscedastic data far too often, and with only
-#' them its F is a ratio of rounding errors. The test is therefore run on the
-#' cells with at least three observations, and skipped when fewer than two
-#' such cells remain.
+#' them its F is a ratio of rounding errors. A cell the model fits exactly,
+#' whose residuals are all zero (with a slope for each cell, one with no more
+#' observations than coefficients of its own), is the same. The test is
+#' therefore run on the cells with at least three observations that the model
+#' does not fit exactly, and skipped when fewer than two such cells remain.
 #' @param vcov_type the covariance the caller requested.
 #' @param robust whether that covariance was actually used for the other
 #'   results; together with \code{vcov_type} it decides what a rejection note
@@ -1058,16 +1078,35 @@ anova_ancova <- function(data, response, groups, covariates,
   r <- as.numeric(res)
   n_g <- table(g)
   small <- names(n_g)[n_g < 3L]
-  keep <- !(as.character(g) %in% small)
-  if (length(n_g) - length(small) < 2L) {
-    return(list(table = NULL, note = sprintf(
-      "Levene's test was skipped: it needs at least two groups with three or more observations, and %s. A group with one or two observations has absolute deviations from its median that cannot vary, so it carries no information about the spread for this test.",
-      if (length(n_g) - length(small) == 1L) "only one group has that many" else
-        "no group has that many")))
+  # A larger cell the model fits exactly (every residual zero up to rounding,
+  # as with group-specific slopes when a cell has no more observations than
+  # coefficients of its own) is no more informative than a small one.
+  y_dev <- stats::fitted(model) + r
+  scale <- max(abs(y_dev - mean(y_dev)))
+  cell_max <- tapply(abs(r), g, max)
+  exact <- if (is.finite(scale) && scale > 0)
+    setdiff(names(cell_max)[!is.na(cell_max) & cell_max <= 1e-7 * scale],
+            small) else character(0)
+  n_left <- length(n_g) - length(small) - length(exact)
+  keep <- !(as.character(g) %in% c(small, exact))
+  if (n_left < 2L) {
+    return(list(table = NULL, note = paste0(sprintf(
+      "Levene's test was skipped: it needs at least two groups with three or more observations%s, and %s. A group with one or two observations has absolute deviations from its median that cannot vary, so it carries no information about the spread for this test.",
+      if (length(exact) > 0L) " that the model does not fit exactly" else "",
+      if (n_left == 1L) "only one group has that many" else
+        "no group has that many"),
+      if (length(exact) > 0L) sprintf(
+        " Nor does a group the model fits exactly (%s), whose residuals are all zero.",
+        .abbrev(exact)) else "")))
   }
-  excluded <- if (length(small) > 0L) sprintf(
-    "Levene's test uses only the %d groups with at least three observations; %d group(s) with one or two (%s) were left out, since their absolute deviations from their median cannot vary and would make the test reject far too often.",
-    length(n_g) - length(small), length(small), .abbrev(small)) else character(0)
+  excluded <- c(
+    if (length(small) > 0L) sprintf(
+      "Levene's test uses only the %d groups with at least three observations%s; %d group(s) with one or two (%s) were left out, since their absolute deviations from their median cannot vary and would make the test reject far too often.",
+      n_left, if (length(exact) > 0L) " that the model does not fit exactly" else "",
+      length(small), .abbrev(small)),
+    if (length(exact) > 0L) sprintf(
+      "Levene's test leaves out %d group(s) that the fitted model fits exactly (%s): their residuals are all zero, as happens with a slope for each group when a group has no more observations than the model has coefficients for it, so like a group of one or two they carry no information about the spread and would make the test reject far too often.",
+      length(exact), .abbrev(exact)))
   r <- r[keep]
   g <- droplevels(g[keep])
   z <- abs(r - stats::ave(r, g, FUN = stats::median))
