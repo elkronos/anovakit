@@ -470,11 +470,14 @@ test_that("F015/F050: the covariate plot is on the original scale with bands at 
   pts <- ggplot2::layer_data(f$plots$covariate, 1)
   expect_equal(range(pts$x), range(d$cov))
 
+  # The band is the fitted model's (R3-50): here the additive model, so the
+  # reference is its prediction for group A, not a separate per-group line.
+  expect_null(f$simple_slopes)
   s <- ggplot2::layer_data(f$plots$covariate, 2)
   sA <- s[s$group == 1, ]
-  mA <- stats::lm(dv ~ cov, data = d[d$iv == "A", ])
-  band <- stats::predict(mA, data.frame(cov = sA$x), interval = "confidence",
-                         level = 0.5)
+  mA <- stats::lm(dv ~ cov + iv, data = d)
+  band <- stats::predict(mA, data.frame(cov = sA$x, iv = "A"),
+                         interval = "confidence", level = 0.5)
   expect_equal(sA$ymin, unname(band[, "lwr"]))
   expect_equal(sA$ymax, unname(band[, "upr"]))
   expect_match(f$plots$covariate$labels$subtitle, "50%", fixed = TRUE)

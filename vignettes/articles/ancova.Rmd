@@ -126,8 +126,10 @@ p-values that follow do not allow for that choice and can be too small. When
 the slopes really differ but the test misses it, the additive model's adjusted
 comparisons are biased by the slope difference times the difference in
 covariate means -- which averages out when groups are randomised, but not
-otherwise. The help page (`?anova_ancova`) reports simulations of how often
-that second case rejects a true null hypothesis.
+otherwise. Even with randomised groups the selection step leaves the group row
+somewhat above its nominal level (about 6--7% at the 5% level in the
+simulations), and with unbalanced covariates far above it. The help page
+(`?anova_ancova`) reports those simulations.
 
 `force_interaction` removes the selection step. Decide in advance:
 
@@ -351,10 +353,12 @@ plot(fit, "covariate")
 ```
 
 This is the plot to look at first in any ANCOVA. It shows the response against
-the covariate *on its original scale*, with a separate least-squares line and
-confidence band for each group (the bands use `conf_level`). The lines are each
-group's own fit, drawn whichever model was chosen, so they show you directly
-whether parallel lines are a fair description. Here they are not: the control
+the covariate *on its original scale*, with the lines of the model that was
+fitted and their confidence bands (the bands use `conf_level`). With the
+interaction, as here, each group has its own slope; when the additive model is
+used, the solid lines are parallel and each group's own least-squares line is
+added dashed, so the plot still shows directly whether parallel lines are a
+fair description. Here they are not: the control
 group's line is almost flat while the two treatment lines rise. Look too at
 whether the groups cover the same range of the covariate -- adjusted means for
 a group observed only at one end are extrapolations, and `$notes` names such a
