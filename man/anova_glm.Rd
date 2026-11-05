@@ -69,7 +69,15 @@ family that estimates its dispersion the same profile is cut at
 t test beside it; for the Gaussian identity model it equals
 \code{confint(lm())}. If profiling fails, Wald intervals are used, with a
 note. A bound the profile cannot reach (as under separation) is
-\code{NA}, also with a note.}
+\code{NA}, also with a note. Profiling refits the model many times for
+every coefficient, so when \code{ci_method} is left at its default and the
+model has more than 50 coefficients, Wald intervals are used instead,
+with a note; give \code{ci_method = "profile"} explicitly to profile
+them anyway. Under separation the interval of a diverged coefficient is
+found by profiling the likelihood directly when \code{ci_method =
+"profile"}, and its \code{ci_method} column then says \code{"profile"};
+\code{ci_method = "wald"} keeps the Wald interval, as
+\code{\link{anova_bin}} does.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
 (\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
@@ -99,12 +107,23 @@ subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Rows with weight zero contribute nothing to
 the fit; they are dropped before fitting and counted in
-\code{$n_removed}. Whole-number weights (some above 1) on a count or 0/1
-response are read as frequency weights, each row standing for that many
-identical observations: the robust covariance (\code{vcov_type}) and, for
-the Poisson families, the residual degrees of freedom are then those of
-the data expanded to one row per observation. Other weights (precision
-weights, or the trials behind a proportion) keep each row as one unit.}
+\code{$n_removed}. Whole-number weights (some above 1) are read as
+frequency weights, each row standing for that many identical
+observations, in the families where that reading is unambiguous: the
+Poisson and quasi-Poisson families and
+\code{MASS::negative.binomial(theta)} on counts, and the binomial and
+quasi-binomial families on a 0/1 response. The robust covariance
+(\code{vcov_type}), the residual degrees of freedom, and so the
+dispersion, F tests, t intervals, marginal means and BIC, are then those
+of the data expanded to one row per observation. \code{$model} is still
+the \code{glm} as \code{stats::glm()} fitted it to the rows, so that
+\code{anova()}, \code{update()} and other refits of it stay consistent;
+its own residual degrees of freedom count rows, and \code{$notes} says
+when that changes what \code{summary(fit$model)} would show. In any other
+family (Gaussian, a linear probability model on a 0/1 response included,
+Gamma, inverse Gaussian, \code{quasi()}) and for other weights
+(precision weights, or the trials behind a proportion) each row is one
+unit.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}

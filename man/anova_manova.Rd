@@ -61,7 +61,9 @@ Default \code{"tukey"}.}
 covariates.}
 
 \item{posthoc}{Logical. Compute pairwise comparisons within each response.
-Default \code{TRUE}.}
+Default \code{TRUE}. They are skipped, with a note, when there would be
+more than 5,000 in total across the responses; a subset can then be
+compared on \code{$univariate[[r]]$emmeans_object}.}
 
 \item{plots}{Logical. Build \pkg{ggplot2} objects. They are returned in
 \code{$plots}, never drawn. Default \code{TRUE}.}
