@@ -273,6 +273,9 @@ print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
              multivariate = "Multivariate tests", canonical = "Canonical axes")
   for (nm in names(extra)) {
     el <- object[[nm]]
+    # anova_rm() keeps its sphericity table in $assumptions as well, where it
+    # has already been printed.
+    if (!is.null(el) && identical(el, object$assumptions[[nm]])) next
     if (is.data.frame(el) && NROW(el) > 0L) {
       cat("\n", extra[[nm]], "\n", sep = "")
       .print_df(el, digits, row.names = FALSE)
