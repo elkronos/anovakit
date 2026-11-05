@@ -122,16 +122,20 @@ cases. Each is fixed and has a regression test.
   paste to the same coefficient (`a`/`b1` and `ab`/`1`) no longer corrupt the
   results. Frequency-weighted binomial fits start from the overall proportion,
   so a cloglog link no longer diverges. A constant or exactly fitted response
-  with an estimated dispersion is an error instead of an absurd F.
+  with an estimated dispersion is an error instead of an absurd F. This
+  includes a response that is constant within every group, at 0 or 1. A
+  constant count with a varying offset is still analysed, because its rates
+  differ. A saturated model that estimates its dispersion reports NA tests.
   `test_statistic = "LR"` on a quasi family gives F, and `$method` says
   "quasi-likelihood F test" when F is asked of a Poisson, binomial or negative
   binomial model.
 * **Weights.** Frequency weights apply only to the binomial, Poisson and
   negative binomial families. With non-integer weights:
-  * AIC and BIC are NA;
-  * the count dispersion and the sparse-data check do not depend on the weights'
-    scale;
-  * a note warns that the scale matters.
+  * binomial AIC and BIC are NA;
+  * in `anova_bin()` and `anova_count()`, the count dispersion and the
+    sparse-data check do not depend on the weights' scale;
+  * a note warns that the scale matters. In `anova_glm()` the tests and the
+    Pearson dispersion scale with the weights, as in `glm()`.
 
   A group whose weights are all zero is named and dropped.
 * **Negative binomial.** A fit that collapses to Poisson is reported as such.
@@ -151,7 +155,8 @@ cases. Each is fixed and has a regression test.
   only the columns that held missing or infinite values. A non-ASCII
   character response no longer fails in binomial fits. `$call` stays compact
   under `do.call()`.
-* **Printing.** Tables no longer pad values with false trailing zeros.
+* **Printing.** Tables no longer pad values, p-values included, with false
+  trailing zeros.
   `summary()` shows `$model_stats`.
 
 ## The functions were renamed and now share one convention
