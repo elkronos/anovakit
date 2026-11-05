@@ -289,7 +289,7 @@ test_that("welchkw-C3: a pair whose correction factor is below 0.8 is named, wit
     nu <- (var(x) + var(z))^2 / (var(x)^2 / 1 + var(z)^2 / 29)
     dd <- (mean(x) - mean(z)) / sqrt((var(x) + var(z)) / 2)
     J <- exp(lgamma(nu / 2) - log(sqrt(nu / 2)) - lgamma((nu - 1) / 2))
-    note <- grep("fewer than 4 degrees of freedom", f$notes, value = TRUE)
+    note <- grep("about 4 degrees of freedom or fewer", f$notes, value = TRUE)
     if (nu < 2) {
       expect_equal(f$effect_sizes$hedges_g, dd, tolerance = 1e-10)
       expect_length(note, 0L)
@@ -298,12 +298,12 @@ test_that("welchkw-C3: a pair whose correction factor is below 0.8 is named, wit
       expect_lt(J, 0.8)
       expect_length(note, 1L)
       expect_match(note, sprintf("(%s df, factor %s)",
-                                 format(signif(nu, 3)), format(signif(J, 2))),
+                                 format(signif(nu, 3)), sprintf("%.3g", J)),
                    fixed = TRUE)
       expect_match(note, "not continuous", fixed = TRUE)
     }
   }
   # Well above 4 df (PlantGrowth, 18 df) there is no such note.
   f <- anova_welch(PlantGrowth, "weight", "group", plots = FALSE)
-  expect_false(any(grepl("fewer than 4 degrees", f$notes, fixed = TRUE)))
+  expect_false(any(grepl("about 4 degrees of freedom", f$notes, fixed = TRUE)))
 })

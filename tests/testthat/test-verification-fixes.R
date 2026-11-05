@@ -256,7 +256,7 @@ test_that("Tukey p-values below ptukey's precision print as a bound", {
                    p_adjusted = c(3.963e-14, 2e-11, 0.05),
                    adjustment = "tukey")
   out <- .round_df(df, 4)
-  expect_identical(out$p_adjusted[1:2], c("<1e-10", "<1e-10"))
+  expect_identical(out$p_adjusted[1:2], c("< 1e-10", "< 1e-10"))
   expect_match(out$p_value[1], "^<")
   expect_identical(out$p_value[2], "1e-15")
   df$adjustment <- "bonferroni"

@@ -59,7 +59,13 @@
 #' estimate would collapse towards zero whatever the data say. Below
 #' \eqn{\nu = 2}{nu = 2}, where \eqn{J(\nu)}{J(nu)} is less than 0.57, the
 #' correction is therefore not applied: that pair's \code{hedges_g} is the
-#' uncorrected estimate, and \code{$notes} names the pair. With few
+#' uncorrected estimate, and \code{$notes} names the pair. A pair whose
+#' factor is below 0.8, which is at about 4 degrees of freedom or fewer
+#' (two groups of three with equal variances give exactly 4, where
+#' \eqn{J = 0.798}{J = 0.798}), is also named in \code{$notes}, with its degrees
+#' of freedom and factor: there the correction pulls the estimate well
+#' towards zero, and the estimate is not continuous at 2 degrees of freedom.
+#' With few
 #' observations and a low \code{conf_level} the estimate, corrected or not,
 #' can fall outside its interval, because the interval inverts a skewed
 #' distribution and the correction shrinks only the estimate; \code{$notes}
@@ -80,6 +86,16 @@
 #' two groups that is whenever the single pair is at that resolution. Below
 #' 5\% the test is reported and the note gives the share. Subtracting a
 #' constant close to the values from the response avoids both.
+#'
+#' The omnibus test is run on the response divided by a power of two near its
+#' largest absolute value. That is exact (for values within about 300 orders
+#' of magnitude of the largest), and Welch's F does not depend on the
+#' response's units, so a response around 1e-150, whose variances are too
+#' small for \code{stats::oneway.test()} to weight by, gives the same test as
+#' at an ordinary scale. If the group variances span too wide a range for
+#' their weights to be represented together even then, \code{$anova} reports
+#' the statistic, denominator degrees of freedom and p-value as \code{NA},
+#' with a note.
 #'
 #' The standardiser is recorded in the \code{standardiser} column of
 #' \code{$effect_sizes}. The magnitude labels use Cohen's conventional
@@ -206,7 +222,8 @@ anova_welch <- function(data, response, groups,
   .check_names(groups, "groups")
   .check_columns(data, response, "Response column")
   .check_columns(data, groups, "Grouping column(s)")
-  data <- .as_plain_columns(data, list(Response = response))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups))
   .check_numeric_col(data, response)
   .check_roles(list(`the response` = response, `a grouping variable` = groups))
   .check_conf_level(conf_level)
@@ -260,7 +277,17 @@ anova_welch <- function(data, response, groups,
   ## Omnibus test ------------------------------------------------------------
   .say(verbose, "Running Welch's ANOVA on %d groups.", n_groups)
   fml <- .formula(response, cell)
-  welch <- stats::oneway.test(fml, data = d, var.equal = FALSE)
+  # Welch's F does not depend on the response's units, but oneway.test()
+  # forms the weights n / s^2, which overflow when a variance is subnormal
+  # (a response around 1e-150) and return NaN. Scaling by a power of two is
+  # exact, so the test is run on the response brought near 1 and gives the
+  # same F, df and p-value it would at that scale.
+  scaled <- d
+  y_max <- max(abs(d[[response]]))
+  if (y_max > 0) {
+    scaled[[response]] <- d[[response]] / 2^floor(log2(y_max))
+  }
+  welch <- stats::oneway.test(fml, data = scaled, var.equal = FALSE)
   # oneway.test names the internal cell column; name what the user supplied.
   welch$data.name <- sprintf("%s and %s", response, term_label)
   noise <- .welch_noise_share(d[[response]], d[[cell]])
@@ -272,6 +299,11 @@ anova_welch <- function(data, response, groups,
       "The omnibus test is left as NA: for %s, the spread within the groups is at the floating-point resolution of their means, and %s make%s up %s of Welch's F, which would therefore be rounding noise. Subtracting a constant close to the values from the response before the analysis avoids this.",
       noise$pairs, if (noise$n == 1L) "that pair" else "those pairs",
       if (noise$n == 1L) "s" else "", .share_pct(noise$share)))
+  } else if (!is.finite(welch$statistic)) {
+    notes <- c(notes, "The omnibus Welch F could not be computed in double precision, so $anova reports it as NA: the group variances span too wide a range for their weights (group size over variance) to be represented together.")
+    welch$statistic[] <- NA_real_
+    welch$parameter[2L] <- NA_real_
+    welch$p.value <- NA_real_
   } else if (noise$share > 0) {
     notes <- c(notes, sprintf(
       "For %s, the spread within the groups is at the floating-point resolution of their means; %s only %s of Welch's F, so the omnibus test is reported.",
@@ -296,13 +328,17 @@ anova_welch <- function(data, response, groups,
                                    unit = "observation")
   notes <- c(notes, .normality_skip_notes(normality))
   group_var <- as.numeric(group_var)
+  # A subnormal variance has lost precision; the rescaled response's does not.
+  if (any(group_var < .Machine$double.xmin)) {
+    group_var <- as.numeric(tapply(scaled[[response]], scaled[[cell]], stats::var))
+  }
   variance_ratio <- if (length(group_var) >= 2L && all(is.finite(group_var))) {
     if (min(group_var) > 0) max(group_var) / min(group_var) else Inf
   } else NA_real_
   if (is.finite(variance_ratio) && variance_ratio > 4) {
     notes <- c(notes, sprintf(
-      "Largest group variance is %.1f times the smallest. Welch's test handles this; the classical F test would not.",
-      variance_ratio))
+      "Largest group variance is %s times the smallest. Welch's test handles this; the classical F test would not.",
+      format(signif(variance_ratio, 3))))
   }
 
   ## Pairwise comparisons ----------------------------------------------------
@@ -554,16 +590,17 @@ anova_welch <- function(data, response, groups,
       .abbrev(sprintf("%s vs %s", tab$group1[uncorrected],
                       tab$group2[uncorrected]), 5L)))
   }
-  # Just above 2 df J is still far below 1 (0.56 at 2, 0.80 at 4), and the
+  # Just above 2 df J is still far below 1 (0.56 at 2, 0.798 at 4), and the
   # switch to the uncorrected estimate below 2 df makes the estimate jump
-  # between nearly identical data sets, so such pairs are named.
+  # between nearly identical data sets, so such pairs are named. J(4) is just
+  # below 0.8, so two equal-variance groups of three are included.
   strong <- which(!is.na(J) & J < 0.8)
   if (length(strong) > 0L) {
     notes <- c(notes, sprintf(
-      "For %s, the standardiser has fewer than 4 degrees of freedom, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
+      "For %s, the standardiser has about 4 degrees of freedom or fewer, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
       .abbrev(sprintf("%s vs %s (%s df, factor %s)", tab$group1[strong],
                       tab$group2[strong], format(signif(nu[strong], 3)),
-                      format(signif(J[strong], 2))), 5L)))
+                      format(pmin(signif(J[strong], 3), 0.799))), 5L)))
   }
   # A pair left uncorrected holds Cohen's d, so its note is the one for d.
   outside_d <- outside[!hedges_correction | uncorrected[outside]]
