@@ -112,7 +112,7 @@ test_that("ancova-manova-merge-F1: Levene's test leaves out exact-fit cells", {
   expect_equal(f$assumptions$levene$df1, 1)
   expect_true(any(grepl("leaves out 2 group(s) that the fitted model fits exactly by construction (4 : 0, 6 : 1)",
                         f$notes, fixed = TRUE)))
-  expect_true(any(grepl("leaves out 1 group(s) that the fitted model leaves with about one residual degree of freedom (6 : 0)",
+  expect_true(any(grepl("leaves out 1 group(s) that the fitted model leaves with fewer than 2.5 residual degrees of freedom (6 : 0 with 1;",
                         f$notes, fixed = TRUE)))
   expect_false(any(grepl("Levene's test rejects", f$notes, fixed = TRUE)))
 
@@ -206,7 +206,7 @@ test_that("ancova-C1: Levene's test keeps its level when small cells have one re
       k <- d$g %in% c("c", "d")
       ref <- car::leveneTest(r[k] ~ droplevels(d$g[k]))
       expect_equal(f$assumptions$levene$p_value, ref[["Pr(>F)"]][1])
-      expect_true(any(grepl("about one residual degree of freedom (a, b)",
+      expect_true(any(grepl("fewer than 2.5 residual degrees of freedom (a with 1, b with 1;",
                             f$notes, fixed = TRUE)))
     }
     f$assumptions$levene$p_value
