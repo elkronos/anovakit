@@ -400,7 +400,7 @@
     } else if (is.null(table)) {
       notes <- c(notes, .no_emm_posthoc_note())
     } else if (n_comp * n_each > max_comparisons) {
-      notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
+      notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons, n_each))
     } else {
       phs <- list()
       for (g in groups) {
@@ -469,7 +469,7 @@
   } else if (is.null(table)) {
     notes <- c(notes, .no_emm_posthoc_note())
   } else if (n_cells >= 2L && n_comp * n_each > max_comparisons) {
-    notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
+    notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons, n_each))
   } else if (n_cells >= 2L) {
     pr <- .emmeans_pairs(e$grid, adjust = adjust, conf_level = conf_level,
                          ratios = ratios, regrid = regrid)
@@ -501,11 +501,20 @@
 }
 
 #' The note for comparisons skipped because there would be too many
+#'
+#' @param each how many times the set of comparisons would be made (one per
+#'   response in \code{\link{anova_manova}}). The limit counts them all, so the
+#'   note says so; and there the top-level \code{$emmeans_object} is
+#'   \code{NULL}, the grids being under \code{$univariate[[response]]}.
 #' @noRd
-.too_many_note <- function(n, limit) {
-  sprintf("Pairwise comparisons were skipped: there would be %s, more than the %s this function computes by default (the time and memory emmeans needs grow with the fourth power of the number of cells). Compare a subset with emmeans::contrast() on $emmeans_object, or set posthoc = FALSE.",
-          format(n, scientific = FALSE, big.mark = ","),
-          format(limit, big.mark = ","))
+.too_many_note <- function(n, limit, each = 1L) {
+  fmt <- function(x) format(x, scientific = FALSE, big.mark = ",")
+  sprintf("Pairwise comparisons were skipped: there would be %s%s, more than the %s this function computes by default (the time and memory emmeans needs grow with the fourth power of the number of cells). Compare a subset with emmeans::contrast() on %s, or set posthoc = FALSE.",
+          fmt(n),
+          if (each > 1) sprintf(" (%s for each of the %d responses)",
+                                fmt(n / each), as.integer(each)) else "",
+          format(limit, big.mark = ","),
+          if (each > 1) "$univariate[[response]]$emmeans_object" else "$emmeans_object")
 }
 
 #' Multiplicity adjustment methods accepted by emmeans
