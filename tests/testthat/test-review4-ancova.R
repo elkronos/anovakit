@@ -65,8 +65,8 @@ test_that("ancova-R3: non-estimable group means are left out of $emmeans, as the
     x <- ifelse(g == "a", stats::rnorm(60, 5, 1), ifelse(g == "b", 2, 8))
     data.frame(g = g, x = x, y = stats::rnorm(60))
   })
-  ref <- as.data.frame(summary(emmeans::emmeans(
-    stats::lm(y ~ g * I(x - mean(x)), data = d), ~g)))
+  ref <- as.data.frame(summary(suppressMessages(emmeans::emmeans(
+    stats::lm(y ~ g * I(x - mean(x)), data = d), ~g))))
   est_ref <- ref[!is.na(ref$emmean), ]
   expect_identical(as.character(est_ref$g), "a")
   for (args in list(list(plots = FALSE), list(plots = TRUE),
@@ -95,20 +95,24 @@ test_that("ancova-manova-merge-F1: Levene's test leaves out exact-fit cells", {
   f <- anova_ancova(m, "mpg", c("cyl", "am"), c("wt", "hp"),
                     force_interaction = TRUE, plots = FALSE)
   # Reference: car on the interaction model's residuals, without the cells of
-  # one or two observations and without those it fits exactly
+  # one or two observations, those it fits exactly (residuals zero) and the
+  # one (6 : 0, four observations, three coefficients) it leaves with a single
+  # residual degree of freedom
   ref_m <- stats::lm(mpg ~ cyl * am * (wt + hp), data = m)
   r <- stats::residuals(ref_m)
   cell <- interaction(m$cyl, m$am, sep = " : ", drop = TRUE)
   n <- table(cell)
   zero <- tapply(abs(r), cell, max) < 1e-8
   expect_identical(sort(names(which(zero & n >= 3))), c("4 : 0", "6 : 1"))
-  drop <- names(n)[n < 3 | zero]
+  drop <- c(names(n)[n < 3 | zero], "6 : 0")
   keep <- !(as.character(cell) %in% drop)
   ref <- car::leveneTest(r[keep] ~ droplevels(cell[keep]))
   expect_equal(f$assumptions$levene$statistic, ref[["F value"]][1])
   expect_equal(f$assumptions$levene$p_value, ref[["Pr(>F)"]][1])
-  expect_equal(f$assumptions$levene$df1, 2)
-  expect_true(any(grepl("leaves out 2 group(s) that the fitted model fits exactly (4 : 0, 6 : 1)",
+  expect_equal(f$assumptions$levene$df1, 1)
+  expect_true(any(grepl("leaves out 2 group(s) that the fitted model fits exactly by construction (4 : 0, 6 : 1)",
+                        f$notes, fixed = TRUE)))
+  expect_true(any(grepl("leaves out 1 group(s) that the fitted model leaves with about one residual degree of freedom (6 : 0)",
                         f$notes, fixed = TRUE)))
   expect_false(any(grepl("Levene's test rejects", f$notes, fixed = TRUE)))
 
@@ -160,4 +164,54 @@ test_that("ancova-manova-merge-F2: the covariate plot builds with columns named 
       expect_equal(s$ymax, unname(p[, "upr"]))
     }
   }
+})
+
+# ancova-R1: a cell with a constant response stays in Levene's test ----------
+
+test_that("ancova-R1: a large cell whose residuals are zero because its response is constant stays in Levene's test", {
+  d <- withr::with_seed(7, {
+    g <- factor(rep(c("ctrl", "low", "high"), each = 12))
+    x <- stats::rnorm(36, 10, 2)
+    y <- ifelse(g == "high", 0, 5 + 0.5 * x + stats::rnorm(36, 0, 2))
+    data.frame(g, x, y)
+  })
+  f <- anova_ancova(d, "y", "g", "x", force_interaction = TRUE, plots = FALSE)
+  r <- stats::residuals(stats::lm(y ~ g * x, data = d))
+  expect_true(all(abs(r[d$g == "high"]) < 1e-8))
+  ref <- car::leveneTest(r ~ d$g)
+  expect_equal(f$assumptions$levene$df1, 2)
+  expect_equal(f$assumptions$levene$statistic, ref[["F value"]][1])
+  expect_equal(f$assumptions$levene$p_value, ref[["Pr(>F)"]][1])
+  expect_lt(f$assumptions$levene$p_value, 0.05)
+  expect_true(any(grepl("Levene's test rejects", f$notes, fixed = TRUE)))
+  expect_false(any(grepl("leaves out", f$notes, fixed = TRUE)))
+})
+
+# ancova-C1: cells with one residual degree of freedom are left out ----------
+
+test_that("ancova-C1: Levene's test keeps its level when small cells have one residual df", {
+  # Cells of four observations under y ~ g * (x1 + x2) have three coefficients
+  # of their own, so one residual degree of freedom; left in, they make the
+  # test reject null data about 20% of the time. A simulation under
+  # homoscedastic data is the reference: the rejection rate must be near 5%.
+  pv <- withr::with_seed(7, vapply(seq_len(120), function(i) {
+    g <- factor(rep(c("a", "b", "c", "d"), c(4, 4, 15, 15)))
+    d <- data.frame(g = g, x1 = stats::rnorm(38), x2 = stats::rnorm(38))
+    d$y <- stats::rnorm(38)
+    f <- anova_ancova(d, "y", "g", c("x1", "x2"), force_interaction = TRUE,
+                      plots = FALSE, posthoc = FALSE)
+    if (i == 1L) {
+      # The statistic is car's on the two cells that are kept
+      r <- stats::residuals(stats::lm(y ~ g * (x1 + x2), data = d))
+      k <- d$g %in% c("c", "d")
+      ref <- car::leveneTest(r[k] ~ droplevels(d$g[k]))
+      expect_equal(f$assumptions$levene$p_value, ref[["Pr(>F)"]][1])
+      expect_true(any(grepl("about one residual degree of freedom (a, b)",
+                            f$notes, fixed = TRUE)))
+    }
+    f$assumptions$levene$p_value
+  }, numeric(1)))
+  # Binomial(120, 0.05) has over 99.9% of its mass below 15 rejections; before
+  # the fix about 24 were expected
+  expect_lt(sum(pv < 0.05), 15)
 })
