@@ -272,11 +272,15 @@ print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
   extra <- c(sphericity = "Sphericity", slopes_test = "Homogeneity of slopes",
              simple_slopes = "Covariate slopes by group",
              multivariate = "Multivariate tests", canonical = "Canonical axes")
+  # The name each of these goes by in $assumptions, where it may already have
+  # been printed.
+  in_assumptions <- c(sphericity = "sphericity", slopes_test = "slopes")
   for (nm in names(extra)) {
     el <- object[[nm]]
-    # anova_rm() keeps its sphericity table in $assumptions as well, where it
-    # has already been printed.
-    if (!is.null(el) && identical(el, object$assumptions[[nm]])) next
+    # anova_rm() keeps its sphericity table in $assumptions as well, and
+    # anova_ancova() its homogeneity-of-slopes test (as $assumptions$slopes).
+    if (!is.null(el) && nm %in% names(in_assumptions) &&
+        identical(el, object$assumptions[[in_assumptions[[nm]]]])) next
     if (is.data.frame(el) && NROW(el) > 0L) {
       cat("\n", extra[[nm]], "\n", sep = "")
       .print_df(el, digits, row.names = FALSE)
