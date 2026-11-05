@@ -394,8 +394,17 @@ anova_welch <- function(data, response, groups,
   se <- sqrt(v[i] / n[i] + v[j] / n[j])
   noise <- se < 10 * .Machine$double.eps * pmax(abs(m[i]), abs(m[j]))
   if (!any(noise)) return(list(share = 0, n = 0L, pairs = character(0)))
-  w <- n / v
-  term <- w[i] * w[j] * (m[i] - m[j])^2
+  # Welch's F does not depend on the response's units, so neither may the
+  # share: the weights n / v are taken relative to the largest (on the log
+  # scale, as n / v itself can overflow) and the mean differences relative to
+  # the largest, or the products overflow or underflow for a response around
+  # 1e-100 or 1e100.
+  lw <- log(n) - log(v)
+  w <- exp(lw - max(lw))
+  dm <- m[i] - m[j]
+  dmax <- max(abs(dm))
+  if (dmax > 0) dm <- dm / dmax
+  term <- w[i] * w[j] * dm^2
   total <- sum(term)
   list(share = if (total > 0) sum(term[noise]) / total else 1,
        n = sum(noise),
@@ -473,7 +482,11 @@ anova_welch <- function(data, response, groups,
   se <- sqrt(vi + vj)
   difference <- m[i] - m[j]
   statistic <- difference / se
-  df <- se^4 / (vi^2 / (n[i] - 1) + vj^2 / (n[j] - 1))
+  # Welch-Satterthwaite df from each group's share of the variance, which,
+  # unlike se^4 / (...), neither overflows nor underflows on a response far
+  # from 1 in magnitude.
+  ai <- vi / (vi + vj); aj <- vj / (vi + vj)
+  df <- 1 / (ai^2 / (n[i] - 1) + aj^2 / (n[j] - 1))
   p_value <- 2 * stats::pt(-abs(statistic), df)
   q <- stats::qt(1 - (1 - conf_level) / 2, df)
   conf_low <- (statistic - q) * se
@@ -487,6 +500,7 @@ anova_welch <- function(data, response, groups,
 
   effect <- effect_low <- effect_high <- rep(NA_real_, length(i))
   uncorrected <- rep(FALSE, length(i))
+  J <- nu <- rep(NA_real_, length(i))
   for (k in which(ok)) {
     es <- .std_mean_diff(by_group[[i[k]]], by_group[[j[k]]],
                          conf_level = conf_level,
@@ -495,6 +509,7 @@ anova_welch <- function(data, response, groups,
     effect_low[k] <- es$conf_low
     effect_high[k] <- es$conf_high
     uncorrected[k] <- hedges_correction && !es$corrected
+    if (es$corrected) { J[k] <- es$J; nu[k] <- es$df }
   }
 
   tab <- data.frame(group1 = lv[i], group2 = lv[j],
@@ -537,18 +552,37 @@ anova_welch <- function(data, response, groups,
       .abbrev(sprintf("%s vs %s", tab$group1[uncorrected],
                       tab$group2[uncorrected]), 5L)))
   }
-  if (length(outside) > 0L) {
-    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside],
-                             tab$group2[outside]), 5L)
-    notes <- c(notes, if (hedges_correction) {
+  # Just above 2 df J is still far below 1 (0.56 at 2, 0.80 at 4), and the
+  # switch to the uncorrected estimate below 2 df makes the estimate jump
+  # between nearly identical data sets, so such pairs are named.
+  strong <- which(!is.na(J) & J < 0.8)
+  if (length(strong) > 0L) {
+    notes <- c(notes, sprintf(
+      "For %s, the standardiser has fewer than 4 degrees of freedom, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
+      .abbrev(sprintf("%s vs %s (%s df, factor %s)", tab$group1[strong],
+                      tab$group2[strong], format(signif(nu[strong], 3)),
+                      format(signif(J[strong], 2))), 5L)))
+  }
+  # A pair left uncorrected holds Cohen's d, so its note is the one for d.
+  outside_d <- outside[!hedges_correction | uncorrected[outside]]
+  outside_g <- setdiff(outside, outside_d)
+  if (length(outside_g) > 0L) {
+    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside_g],
+                             tab$group2[outside_g]), 5L)
+    notes <- c(notes, {
       sprintf(
         "For %s, Hedges' g lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The bias correction shrinks the estimate towards zero, most strongly when the standardiser has few degrees of freedom (a group of two or three holding most of the variance), while the interval is for the population value and is not shrunk; with few observations and a low conf_level the interval, which inverts a skewed noncentral t distribution, can also miss the estimate. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
         pairs, .pct(conf_level))
-    } else {
-      sprintf(
-        "For %s, Cohen's d lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The interval inverts the skewed noncentral t distribution of Welch's statistic, so with few degrees of freedom and a low conf_level it need not contain the point estimate.",
-        pairs, .pct(conf_level))
     })
+  }
+  if (length(outside_d) > 0L) {
+    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside_d],
+                             tab$group2[outside_d]), 5L)
+    notes <- c(notes, sprintf(
+      "For %s, %s lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The interval inverts the skewed noncentral t distribution of Welch's statistic, so with few degrees of freedom and a low conf_level it need not contain the point estimate.",
+      pairs,
+      if (hedges_correction) "the uncorrected estimate (Cohen's d) in the hedges_g column" else "Cohen's d",
+      .pct(conf_level)))
   }
 
   posthoc <- tab[, c("group1", "group2", "difference", "conf_low", "conf_high",
@@ -577,7 +611,7 @@ anova_welch <- function(data, response, groups,
   n1 <- length(x); n2 <- length(y)
   na <- list(estimate = NA_real_, conf_low = NA_real_, conf_high = NA_real_,
              se = NA_real_, standardiser = NA_real_, df = NA_real_,
-             corrected = FALSE)
+             corrected = FALSE, J = NA_real_)
   if (n1 < 2L || n2 < 2L) return(na)
   v1 <- stats::var(x); v2 <- stats::var(y)
   df1 <- n1 - 1; df2 <- n2 - 1
@@ -589,16 +623,23 @@ anova_welch <- function(data, response, groups,
   # to the average-variance standardiser: d* = t * se_w / s*.
   se_w <- sqrt(v1 / n1 + v2 / n2)
   t_w <- (mean(x) - mean(y)) / se_w
-  df_w <- se_w^4 / ((v1 / n1)^2 / df1 + (v2 / n2)^2 / df2)
+  # Both Satterthwaite df are computed from the groups' shares of the
+  # variance, so that they do not depend on the response's units: written as
+  # (v1 + v2)^2 / (v1^2 / df1 + v2^2 / df2) the squares overflow or underflow
+  # on a response around 1e100 or 1e-100 and give NaN.
+  a1 <- (v1 / n1) / (v1 / n1 + v2 / n2); a2 <- 1 - a1
+  df_w <- 1 / (a1^2 / df1 + a2^2 / df2)
   ci <- .ncp_t_interval(t_w, df_w, conf_level) * se_w / s
-  nu <- (v1 + v2)^2 / (v1^2 / df1 + v2^2 / df2)
+  b1 <- v1 / (v1 + v2); b2 <- 1 - b1
+  nu <- 1 / (b1^2 / df1 + b2^2 / df2)
   # J(nu) falls to 0 as nu falls to 1, where the mean of d stops existing:
   # below nu = 2 it is less than 0.57 and would pull the estimate towards a
   # value its own interval can exclude, so it is not applied there.
-  corrected <- hedges_correction && nu >= 2
+  corrected <- hedges_correction && isTRUE(nu >= 2)
   J <- if (corrected) .hedges_j(nu) else 1
   list(estimate = J * d, conf_low = ci[1L], conf_high = ci[2L],
-       se = se_w / s, standardiser = s, df = nu, corrected = corrected)
+       se = se_w / s, standardiser = s, df = nu, corrected = corrected,
+       J = J)
 }
 
 #' Confidence interval for the noncentrality of a t statistic

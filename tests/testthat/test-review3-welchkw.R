@@ -195,3 +195,115 @@ test_that("R3-46: below 2 standardiser df the bias correction is not applied, wi
                tolerance = 1e-10)
   expect_false(any(grepl("fewer than 2 degrees of freedom", f2$notes)))
 })
+
+## Repairs to the fixes above (checker findings welchkw-R1, R2, C2, C3) -----
+
+# Welch's F and its pieces by hand from the published formula, on a response
+# shifted and scaled to O(1) first, so no product over- or underflows.
+r3wk_welch_terms <- function(y, g) {
+  y <- (y - mean(y)) / sd(y)
+  n <- tapply(y, g, length); m <- tapply(y, g, mean); v <- tapply(y, g, var)
+  w <- n / v
+  ij <- utils::combn(length(n), 2L)
+  w[ij[1, ]] * w[ij[2, ]] * (m[ij[1, ]] - m[ij[2, ]])^2
+}
+
+test_that("welchkw-R1: the noise share and the NA decision do not depend on the response's units", {
+  d4 <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                   y = c(1e9 + c(0, 1, 2, 3) * 1e-6, 1e9 + c(1, 2, 3, 4) * 1e-6,
+                         1e9 + c(5, 6, 7, 8)))
+  # Reference share at scale 1: the a-vs-b term over the sum, from the
+  # standardised data (the share is invariant to an affine change).
+  tm <- r3wk_welch_terms(d4$y, d4$g)
+  ref_share <- unname(tm[1] / sum(tm))
+  share1 <- anovakit:::.welch_noise_share(d4$y, d4$g)$share
+  expect_equal(share1, ref_share, tolerance = 0.05)
+  for (sc in c(1e-100, 1e100, 1e140)) {
+    e <- d4; e$y <- d4$y * sc
+    sh <- anovakit:::.welch_noise_share(e$y, e$g)$share
+    expect_true(is.finite(sh))
+    # Rescaling 1e9 + 1e-6 by sc rounds the data slightly differently, so
+    # equality is to the data's own resolution, not exact.
+    expect_equal(sh, share1, tolerance = 0.15)
+    a <- anova_welch(e, "y", "g", plots = FALSE, posthoc = FALSE)
+    ow <- oneway.test(y ~ g, data = e, var.equal = FALSE)
+    expect_equal(a$anova$statistic, unname(ow$statistic), tolerance = 1e-10)
+    expect_equal(a$anova$den_df, unname(ow$parameter[2]), tolerance = 1e-10)
+    expect_false(any(grepl("left as NA", a$notes, fixed = TRUE)))
+  }
+  # A tiny scale must not crash; at 1e-150 the variances are subnormal and
+  # oneway.test() itself gives NaN, which is passed through.
+  e <- d4; e$y <- d4$y * 1e-150
+  expect_no_error(anova_welch(e, "y", "g", plots = FALSE, posthoc = FALSE))
+})
+
+test_that("welchkw-R2: pairwise df, Hedges' g and its interval do not depend on the response's units", {
+  ref <- anova_welch(PlantGrowth, "weight", "group", plots = FALSE)
+  # Reference df: t.test() on the unscaled data.
+  pg <- split(PlantGrowth$weight, PlantGrowth$group)
+  tt <- t.test(pg$ctrl, pg$trt1)
+  expect_equal(ref$posthoc$df[1], unname(tt$parameter), tolerance = 1e-10)
+  # Reference nu for the standardiser, hand computed at scale 1.
+  v1 <- var(pg$ctrl); v2 <- var(pg$trt1)
+  nu <- (v1 + v2)^2 / (v1^2 / 9 + v2^2 / 9)
+  d <- (mean(pg$ctrl) - mean(pg$trt1)) / sqrt((v1 + v2) / 2)
+  J <- exp(lgamma(nu / 2) - log(sqrt(nu / 2)) - lgamma((nu - 1) / 2))
+  expect_equal(ref$effect_sizes$hedges_g[1], J * d, tolerance = 1e-10)
+  for (sc in c(1e-100, 1e-85, 1e80, 1e100, 1e140)) {
+    e <- PlantGrowth; e$weight <- e$weight * sc
+    f <- expect_no_error(anova_welch(e, "weight", "group", plots = FALSE))
+    expect_equal(f$posthoc$df, ref$posthoc$df, tolerance = 1e-10)
+    expect_equal(f$effect_sizes$hedges_g, ref$effect_sizes$hedges_g,
+                 tolerance = 1e-10)
+    expect_equal(f$effect_sizes$conf_low, ref$effect_sizes$conf_low,
+                 tolerance = 1e-8)
+    expect_equal(f$effect_sizes$conf_high, ref$effect_sizes$conf_high,
+                 tolerance = 1e-8)
+  }
+})
+
+test_that("welchkw-C2: an uncorrected pair outside its interval gets the note for Cohen's d", {
+  d <- data.frame(g = rep(c("a", "b"), c(2, 4)),
+                  y = c(0, 1, 3 + c(-0.1, 0, 0.05, 0.1)))
+  f <- anova_welch(d, "y", "g", plots = FALSE, conf_level = 0.2)
+  x <- c(0, 1); z <- 3 + c(-0.1, 0, 0.05, 0.1)
+  # Hand computed: nu < 2, so the column is Cohen's d itself ...
+  nu <- (var(x) + var(z))^2 / (var(x)^2 / 1 + var(z)^2 / 3)
+  expect_lt(nu, 2)
+  dd <- (mean(x) - mean(z)) / sqrt((var(x) + var(z)) / 2)
+  expect_equal(f$effect_sizes$hedges_g, dd, tolerance = 1e-12)
+  # ... and lies outside its interval, which the note explains without
+  # blaming a correction that was not applied.
+  expect_true(dd < f$effect_sizes$conf_low || dd > f$effect_sizes$conf_high)
+  out <- grep("lies outside", f$notes, value = TRUE)
+  expect_length(out, 1L)
+  expect_match(out, "uncorrected estimate (Cohen's d)", fixed = TRUE)
+  expect_false(grepl("shrinks", out, fixed = TRUE))
+  expect_false(grepl("Hedges' g lies", out, fixed = TRUE))
+})
+
+test_that("welchkw-C3: a pair whose correction factor is below 0.8 is named, with its df and factor", {
+  for (s in c(3.7596, 3.7747)) {
+    x <- c(0, 5); z <- 30 + seq(-s, s, length.out = 30)
+    f <- anova_welch(r3wk_two(x, z), "y", "g", plots = FALSE)
+    nu <- (var(x) + var(z))^2 / (var(x)^2 / 1 + var(z)^2 / 29)
+    dd <- (mean(x) - mean(z)) / sqrt((var(x) + var(z)) / 2)
+    J <- exp(lgamma(nu / 2) - log(sqrt(nu / 2)) - lgamma((nu - 1) / 2))
+    note <- grep("fewer than 4 degrees of freedom", f$notes, value = TRUE)
+    if (nu < 2) {
+      expect_equal(f$effect_sizes$hedges_g, dd, tolerance = 1e-10)
+      expect_length(note, 0L)
+    } else {
+      expect_equal(f$effect_sizes$hedges_g, J * dd, tolerance = 1e-10)
+      expect_lt(J, 0.8)
+      expect_length(note, 1L)
+      expect_match(note, sprintf("(%s df, factor %s)",
+                                 format(signif(nu, 3)), format(signif(J, 2))),
+                   fixed = TRUE)
+      expect_match(note, "not continuous", fixed = TRUE)
+    }
+  }
+  # Well above 4 df (PlantGrowth, 18 df) there is no such note.
+  f <- anova_welch(PlantGrowth, "weight", "group", plots = FALSE)
+  expect_false(any(grepl("fewer than 4 degrees", f$notes, fixed = TRUE)))
+})
