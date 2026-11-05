@@ -70,7 +70,15 @@
 #'   t test beside it; for the Gaussian identity model it equals
 #'   \code{confint(lm())}. If profiling fails, Wald intervals are used, with a
 #'   note. A bound the profile cannot reach (as under separation) is
-#'   \code{NA}, also with a note.
+#'   \code{NA}, also with a note. Profiling refits the model many times for
+#'   every coefficient, so when \code{ci_method} is left at its default and the
+#'   model has more than 50 coefficients, Wald intervals are used instead,
+#'   with a note; give \code{ci_method = "profile"} explicitly to profile
+#'   them anyway. Under separation the interval of a diverged coefficient is
+#'   found by profiling the likelihood directly when \code{ci_method =
+#'   "profile"}, and its \code{ci_method} column then says \code{"profile"};
+#'   \code{ci_method = "wald"} keeps the Wald interval, as
+#'   \code{\link{anova_bin}} does.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}), which requires the \pkg{sandwich} package.
 #'   The robust covariance is used by the coefficient table (with Wald
@@ -97,12 +105,23 @@
 #'   against the original frame and silently misaligns as soon as one row is
 #'   dropped for missing values. Rows with weight zero contribute nothing to
 #'   the fit; they are dropped before fitting and counted in
-#'   \code{$n_removed}. Whole-number weights (some above 1) on a count or 0/1
-#'   response are read as frequency weights, each row standing for that many
-#'   identical observations: the robust covariance (\code{vcov_type}) and, for
-#'   the Poisson families, the residual degrees of freedom are then those of
-#'   the data expanded to one row per observation. Other weights (precision
-#'   weights, or the trials behind a proportion) keep each row as one unit.
+#'   \code{$n_removed}. Whole-number weights (some above 1) are read as
+#'   frequency weights, each row standing for that many identical
+#'   observations, in the families where that reading is unambiguous: the
+#'   Poisson and quasi-Poisson families and
+#'   \code{MASS::negative.binomial(theta)} on counts, and the binomial and
+#'   quasi-binomial families on a 0/1 response. The robust covariance
+#'   (\code{vcov_type}), the residual degrees of freedom, and so the
+#'   dispersion, F tests, t intervals, marginal means and BIC, are then those
+#'   of the data expanded to one row per observation. \code{$model} is still
+#'   the \code{glm} as \code{stats::glm()} fitted it to the rows, so that
+#'   \code{anova()}, \code{update()} and other refits of it stay consistent;
+#'   its own residual degrees of freedom count rows, and \code{$notes} says
+#'   when that changes what \code{summary(fit$model)} would show. In any other
+#'   family (Gaussian, a linear probability model on a 0/1 response included,
+#'   Gamma, inverse Gaussian, \code{quasi()}) and for other weights
+#'   (precision weights, or the trials behind a proportion) each row is one
+#'   unit.
 #'
 #' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
@@ -182,8 +201,9 @@ anova_glm <- function(data, response, groups,
                       plots = TRUE,
                       weights = NULL,
                       verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_glm")
   type <- match.arg(type)
+  ci_default <- missing(ci_method)
   ci_method <- match.arg(ci_method)
   # Validated here rather than left to car::Anova(), whose error would be
   # caught and turned into a note on a fit with no omnibus table.
@@ -253,13 +273,29 @@ anova_glm <- function(data, response, groups,
     notes <- c(notes, "The model did not converge; every result below is unreliable.")
   }
   fam_name <- family$family
-  # A Poisson frequency table (whole-number weights, some above 1) holds one
-  # row per distinct count. glm() counts residual degrees of freedom in rows;
-  # the data the table stands for have them in observations. Corrected on the
-  # fit, so the dispersion, F tests, t intervals and marginal means all equal
-  # those of the expanded data, as in anova_count().
-  freq_n <- if (fam_name %in% c("poisson", "quasipoisson") &&
-                .frequency_weights(d, weights)) sum(d[[weights]]) else NULL
+  # A frequency table (whole-number weights, some above 1) of counts or of a
+  # 0/1 response holds one row per distinct outcome. glm() counts residual
+  # degrees of freedom in rows; the data the table stands for have them in
+  # observations. The Pearson statistic and the deviance are already those of
+  # the expanded data, so with the residual degrees of freedom corrected the
+  # dispersion, F tests, t intervals and marginal means all equal the expanded
+  # data's, as in anova_count(). That holds for every family whose likelihood
+  # treats a weight as a count of identical observations -- the quasi-binomial
+  # and Negative Binomial(theta) fits estimate their dispersion just as
+  # quasi-Poisson does. A Gaussian or quasi() fit reads weights as precision
+  # weights, and keeps the row as the unit.
+  binary_y <- fam_name %in% c("binomial", "quasibinomial") &&
+    all(model$y %in% c(0, 1))
+  freq_n <- if (.frequency_weights(d, weights) &&
+                (fam_name %in% c("poisson", "quasipoisson") || binary_y ||
+                   grepl("^Negative Binomial", fam_name))) {
+    sum(d[[weights]])
+  } else NULL
+  # Returned as $model: anova(), update() and drop1() refit it, and every
+  # refit counts its residual degrees of freedom in rows again, so a stored
+  # glm with the observation count would be compared with refits on another
+  # count (a negative term Df in anova(fit$model)). The corrected copy is used
+  # for everything computed here.
   row_model <- model
   if (!is.null(freq_n) && freq_n - model$rank >= 1) {
     model$df.residual <- freq_n - model$rank
@@ -283,14 +319,10 @@ anova_glm <- function(data, response, groups,
   }
 
   ## Robust covariance --------------------------------------------------------
-  # Whole-number weights on a count or 0/1 response count identical
-  # observations; the robust covariance is then that of the expanded data.
-  # Other weights (precision weights, trials behind a proportion) keep the
-  # row as the unit.
-  freq_rows <- .frequency_weights(d, weights) && (
-    !is.null(freq_n) || grepl("^Negative Binomial", fam_name) ||
-      (fam_name %in% c("binomial", "quasibinomial") && all(model$y %in% c(0, 1))))
-  rv <- .robust_vcov(model, vcov_type, freq_weights = freq_rows)
+  # Frequency weights (see freq_n above) count identical observations; the
+  # robust covariance is then that of the expanded data. Other weights
+  # (precision weights, trials behind a proportion) keep the row as the unit.
+  rv <- .robust_vcov(model, vcov_type, freq_weights = !is.null(freq_n))
   notes <- c(notes, rv$note)
 
   ## Analysis of deviance -----------------------------------------------------
@@ -318,11 +350,16 @@ anova_glm <- function(data, response, groups,
     notes <- c(notes, sprintf(
       "The weights in `%s` are whole numbers, so they are treated as frequency weights: the residual degrees of freedom are counted in the %s observations they represent, not the %d rows, so the dispersion, F tests and intervals equal those of the data expanded to one row per observation.",
       weights, format(freq_n), nrow(d)))
+    if (.estimates_dispersion(model) || identical(test_statistic, "F")) {
+      notes <- c(notes, sprintf(
+        "$model is the glm as stats::glm() fitted it, whose residual degrees of freedom count the %d rows, so that anova(), update() and drop1() on it stay consistent with their refits; summary(), anova() and emmeans() on $model therefore scale by the dispersion of the rows, not the %s observations used here.",
+        nrow(d), format(freq_n)))
+    }
   }
   # A binary response cannot be overdispersed, and with frequency weights its
   # Pearson statistic grows with the weights: the check only means something
   # for counts and for proportions out of several trials.
-  binary <- fam_name %in% c("binomial", "quasibinomial") && all(model$y %in% c(0, 1))
+  binary <- binary_y
   if (binary) {
     # For 0/1 data the Pearson statistic says nothing about overdispersion (in a
     # one-way model it is N / (N - k) whatever the data), and with frequency
@@ -362,6 +399,19 @@ anova_glm <- function(data, response, groups,
     notes <- c(notes, sprintf(
       "Robust standard errors (%s) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.",
       vcov_type))
+  }
+  # Profiling refits the model several times per coefficient, so its cost
+  # grows with the square of their number (and with n): a 60-level factor
+  # takes as long as stats::confint() itself, half a minute and more. Left at
+  # the default, a large model gets Wald intervals instead, as posthoc skips
+  # an unmanageable number of comparisons; asked for by name, it is honoured.
+  n_coef <- sum(!is.na(stats::coef(model)))
+  if (ci_default && ci_method == "profile" && is.null(rv$matrix) &&
+      n_coef > .max_profiled_coefficients) {
+    ci_method <- "wald"
+    notes <- c(notes, sprintf(
+      "The model has %d coefficients, and profiling the likelihood of each refits the model many times, so the coefficient intervals are Wald intervals; give ci_method = \"profile\" explicitly to profile them.",
+      n_coef))
   }
   ci <- .coef_intervals(model, conf_level = conf_level,
                         ci_method = if (is.null(rv$matrix)) ci_method else "wald",
@@ -420,7 +470,7 @@ anova_glm <- function(data, response, groups,
     method       = sprintf("Analysis of deviance (%s family, %s link, Type %s)",
                            family$family, family$link, type),
     call         = cl,
-    model        = model,
+    model        = row_model,
     anova        = av$table,
     effect_sizes = eff$table,
     emmeans      = emm$table,
@@ -435,8 +485,15 @@ anova_glm <- function(data, response, groups,
     notes        = notes,
     extra        = list(
       family = family,
+      # stats::BIC() takes log(nobs()), and nobs() of a weighted glm counts
+      # rows; with frequency weights the penalty is that of the observations,
+      # as on the expanded data (the log-likelihood, and so AIC, already is).
       model_stats = list(AIC = .quiet_number(stats::AIC(model)),
-                         BIC = .quiet_number(stats::BIC(model)),
+                         BIC = if (is.null(freq_n)) .quiet_number(stats::BIC(model)) else
+                           .quiet_number({
+                             ll <- stats::logLik(model)
+                             -2 * as.numeric(ll) + log(freq_n) * attr(ll, "df")
+                           }),
                          null_deviance = model$null.deviance,
                          residual_deviance = model$deviance,
                          df_residual = model$df.residual))
@@ -469,20 +526,30 @@ anova_glm <- function(data, response, groups,
 
 #' The note for a design with exactly two cells
 #'
-#' The single comparison is the omnibus test only for a Gaussian identity
-#' model with model-based standard errors and an F test on one term with one
-#' degree of freedom, where t squared equals F. Anything else -- a likelihood
-#' ratio omnibus test against a Wald comparison, or a robust covariance on one
-#' side only -- can disagree, sometimes badly (under separation, say).
+#' The single comparison is the omnibus test when both are the same test of
+#' one term with one degree of freedom: a Gaussian identity model with
+#' model-based standard errors and an F test, where t squared equals F; and a
+#' Wald omnibus test in a family with a fixed dispersion, whose comparison is
+#' the z test of the same coefficient with the same covariance (a robust one
+#' is used on both sides), so that z squared equals the Wald chi-square. The
+#' comparison is on the link scale only with an identity, log or logit link;
+#' with any other link it is a difference of means on the response scale.
+#' Anything else -- a likelihood ratio omnibus test against a Wald
+#' comparison, a robust covariance on one side only, or a t comparison
+#' against a chi-square omnibus test when the dispersion is estimated -- can
+#' disagree, sometimes badly (under separation, say).
 #' @noRd
 .two_cell_note <- function(model, anova_table, test_statistic, robust = FALSE,
                            vcov_type = "model") {
   fam <- stats::family(model)
   terms <- if (is.null(anova_table)) NULL else
     anova_table[anova_table$term != "Residuals", , drop = FALSE]
-  same <- identical(fam$family, "gaussian") && identical(fam$link, "identity") &&
-    !robust && identical(test_statistic, "F") && NROW(terms) == 1L &&
-    isTRUE(all.equal(as.numeric(terms$df), 1))
+  one_df <- NROW(terms) == 1L && isTRUE(all.equal(as.numeric(terms$df), 1))
+  same <- one_df && (
+    (identical(fam$family, "gaussian") && identical(fam$link, "identity") &&
+       !robust && identical(test_statistic, "F")) ||
+      (identical(test_statistic, "Wald") && !.estimates_dispersion(model) &&
+         fam$link %in% c("identity", "log", "logit")))
   if (same) {
     return("With two cells the single pairwise comparison is the omnibus test; no multiplicity adjustment was applied.")
   }
@@ -602,6 +669,10 @@ anova_glm <- function(data, response, groups,
   list(value = v, note = note)
 }
 
+#' Above this many coefficients, default profile intervals give way to Wald
+#' @noRd
+.max_profiled_coefficients <- 50L
+
 #' Coefficient estimates with intervals
 #'
 #' Profile intervals cut the signed-root deviance profile of each coefficient
@@ -653,23 +724,44 @@ anova_glm <- function(data, response, groups,
   # Under separation (or a zero-count cell) a coefficient has run off towards
   # infinity, and confint()'s spline extrapolates the profile into junk on
   # both sides. The side it diverged in is open; the other end is found by
-  # profiling the likelihood directly.
-  if (separated) {
+  # profiling the likelihood directly. That is a profile interval, so it is
+  # computed (and labelled "profile") only when profile intervals were asked
+  # for: ci_method = "wald" keeps the Wald interval, as anova_bin() does.
+  row_method <- stats::setNames(rep(method_used, nrow(ci)), rownames(ci))
+  if (separated && ci_method == "profile") {
     diverged <- intersect(diverged, rownames(ci))
+    both_open <- character(0)
     for (tm in diverged) {
       # A Wald end is as meaningless as the Wald standard error behind it, and
       # confint()'s spline through a diverged profile is junk: both ends come
       # from profiling the likelihood directly, with the cutoff and dispersion
       # the other coefficients' profile intervals use.
       disp <- if (.estimates_dispersion(model)) summary(model)$dispersion else 1
-      ci[tm, ] <- .separated_profile(model, tm, conf_level, cutoff = crit^2,
-                                     dispersion = disp)
+      b <- .separated_profile(model, tm, conf_level, cutoff = crit^2,
+                              dispersion = disp)
+      # A profile that stays below the cutoff all the way out on the far side
+      # as well rules out no value there either: an intercept that is the mean
+      # of one cell's logit at -Inf and another's at +Inf (sum-to-zero coding)
+      # is not identified at all. That end is open too, not a failed search.
+      flat <- attr(b, "flat")
+      if (!is.null(flat)) {
+        b[is.na(b) & flat] <- c(-Inf, Inf)[is.na(b) & flat]
+      }
+      if (all(is.infinite(b))) both_open <- c(both_open, tm)
+      ci[tm, ] <- as.numeric(b)
+      row_method[tm] <- "profile"
     }
-    if (length(diverged) > 0L) {
+    one_side <- setdiff(diverged, both_open)
+    if (length(one_side) > 0L) {
       notes <- c(notes, sprintf(
         "The estimate of %s has diverged (separation or a zero-count cell), so its interval is open on that side (Inf or -Inf). The finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate%s.",
-        paste(gsub("`", "", diverged, fixed = TRUE), collapse = ", "),
-        if (anyNA(ci[diverged, ])) "; it is NA where that search failed" else ""))
+        paste(gsub("`", "", one_side, fixed = TRUE), collapse = ", "),
+        if (anyNA(ci[one_side, ])) "; it is NA where that search failed" else ""))
+    }
+    if (length(both_open) > 0L) {
+      notes <- c(notes, sprintf(
+        "The estimate of %s has diverged (separation or a zero-count cell), and its likelihood profile never reaches the cutoff on either side (it stays flat as far as it was searched): the data rule out no value of it, so its interval is (-Inf, Inf).",
+        paste(gsub("`", "", both_open, fixed = TRUE), collapse = ", ")))
     }
     open <- setdiff(open, diverged)
   }
@@ -680,8 +772,8 @@ anova_glm <- function(data, response, groups,
   }
   idx <- match(ct$term, rownames(ci))
   out <- data.frame(ct, conf_low = ci[idx, 1L], conf_high = ci[idx, 2L],
-                    ci_method = method_used, stringsAsFactors = FALSE,
-                    row.names = NULL)
+                    ci_method = unname(row_method[idx]),
+                    stringsAsFactors = FALSE, row.names = NULL)
   list(table = out, note = notes)
 }
 
