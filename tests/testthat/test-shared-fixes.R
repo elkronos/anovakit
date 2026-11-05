@@ -475,7 +475,11 @@ test_that("chance-level dispersion above 1 does not produce an overdispersion no
   p <- stats::pchisq(phi * 87, 87, lower.tail = FALSE)
   expect_gt(phi, 1)
   expect_gt(p, 0.05)
-  expect_false(any(grepl("inflated", fit$notes)))
+  # No claim that the statistics ARE inflated; the hedged caveat about the
+  # dispersion the data cannot rule out (its upper confidence bound) is allowed.
+  expect_false(any(grepl("statistics are inflated", fit$notes, fixed = TRUE)))
+  hedge <- grep("cannot tell the dispersion from 1", fit$notes, value = TRUE)
+  if (length(hedge)) expect_match(hedge, "would be inflated", fixed = TRUE)
   gl <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
   expect_false(any(grepl("^Pearson dispersion is", gl$notes)))
 })
