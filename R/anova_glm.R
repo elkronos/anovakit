@@ -222,11 +222,15 @@ anova_glm <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the weights` = weights))
-  # The column's type is checked on the input; the levels and values only on
-  # the rows that are analysed, after missing values and zero weights are gone.
-  .check_response_for_family(data, response, family, values = FALSE)
+  # One-column matrices and data frames, and integer64 columns, become plain
+  # vectors first, as in every other function, so the type check sees what is
+  # analysed. The column's type is checked on the input; the levels and values
+  # only on the rows that are analysed, after missing values and zero weights
+  # are gone.
+  .check_no_matrix_response(data, response)
   data <- .as_plain_columns(data, list(Response = response,
                                        `Weights column` = weights))
+  .check_response_for_family(data, response, family, values = FALSE)
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")

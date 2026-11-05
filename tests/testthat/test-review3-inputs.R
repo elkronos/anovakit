@@ -133,6 +133,11 @@ test_that("R3-31: a group whose weights are all zero is named and dropped from $
   fb <- anova_bin(db, "y", "g", weights = "w", plots = FALSE)
   expect_true(lost %in% fb$notes)
   expect_identical(levels(fb$data_used$g), c("ctrl", "low"))
+  bref <- stats::anova(stats::glm(y ~ g, stats::binomial(),
+                                  droplevels(db[db$w > 0, ])), test = "Chisq")
+  expect_equal(fb$anova$statistic[1], bref$Deviance[2], tolerance = 1e-6)
+  expect_equal(fb$anova$df[1], bref$Df[2])
+  expect_equal(fb$anova$p_value[1], bref[["Pr(>Chi)"]][2], tolerance = 1e-6)
 
   dc <- d
   dc$y <- withr::with_seed(3, stats::rpois(30, 3))
@@ -242,4 +247,54 @@ test_that("R3-56: a non-ASCII character binomial response with an unknown encodi
       }
     }
   }
+})
+
+test_that("R3-30: integer64 columns in anova_rm and anova_manova match the double run and base R", {
+  d <- withr::with_seed(1, data.frame(id = factor(rep(1:10, 3)),
+                                      t = factor(rep(c("t1", "t2", "t3"), each = 10)),
+                                      g = rep(c("a", "b"), 15),
+                                      y = round(stats::rnorm(30) * 100),
+                                      x = round(stats::rnorm(30) * 100)))
+  D <- transform(d, y = bit64::as.integer64(y), x = bit64::as.integer64(x))
+
+  r64 <- anova_rm(D, "y", "id", "t", plots = FALSE)
+  expect_equal(r64$anova, anova_rm(d, "y", "id", "t", plots = FALSE)$anova)
+  # The F statistic (unchanged by a sphericity correction) against aov().
+  aref <- summary(stats::aov(y ~ t + Error(id / t), d))[["Error: id:t"]][[1]]
+  expect_equal(r64$anova$statistic[1], aref[["F value"]][1], tolerance = 1e-8)
+
+  m64 <- anova_manova(D, c("y", "x"), "g", plots = FALSE)
+  expect_equal(m64$anova, anova_manova(d, c("y", "x"), "g", plots = FALSE)$anova)
+  mref <- summary(stats::manova(cbind(y, x) ~ g, d), test = "Pillai")$stats
+  expect_equal(m64$anova$statistic[1], mref["g", "Pillai"], tolerance = 1e-8)
+  expect_equal(m64$anova$p_value[1], mref["g", "Pr(>F)"], tolerance = 1e-8)
+})
+
+test_that("anova_glm unwraps a one-column data-frame response like the other functions", {
+  ins <- datasets::InsectSprays
+  ins$count <- data.frame(z = ins$count)
+  f <- anova_glm(ins, "count", "spray", family = stats::poisson(), plots = FALSE)
+  ref <- stats::anova(stats::glm(count ~ spray, stats::poisson(),
+                                 datasets::InsectSprays), test = "Chisq")
+  expect_equal(f$anova$statistic[1], ref$Deviance[2], tolerance = 1e-6)
+  expect_null(dim(f$data_used$count))
+
+  mt <- datasets::mtcars
+  mt$am <- data.frame(a = mt$am)
+  fb <- anova_glm(mt, "am", "cyl", family = stats::binomial(), plots = FALSE)
+  bref <- stats::anova(stats::glm(am ~ factor(cyl), stats::binomial(),
+                                  datasets::mtcars), test = "Chisq")
+  expect_equal(fb$anova$statistic[1], bref$Deviance[2], tolerance = 1e-6)
+  fbin <- anova_bin(mt, "am", "cyl", plots = FALSE)
+  expect_equal(fbin$anova$statistic[1], bref$Deviance[2], tolerance = 1e-6)
+
+  ins$count2 <- data.frame(a = 1:72, b = 1:72)
+  expect_error(anova_glm(ins, "count2", "spray", plots = FALSE),
+               "Response `count2` is a 2-column data frame; supply a single column.",
+               fixed = TRUE)
+  # A successes/failures matrix keeps its specific message.
+  m <- datasets::mtcars
+  m$am <- cbind(m$am, 1 - m$am)
+  expect_error(anova_glm(m, "am", "cyl", family = stats::binomial(), plots = FALSE),
+               "successes/failures matrix response is not supported", fixed = TRUE)
 })
