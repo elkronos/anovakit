@@ -144,9 +144,9 @@
 #'   Default \code{0.95}.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 #'   marginal means and the comparisons; the omnibus table uses them only with
-#'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+#'   \code{test_statistic = "Wald"}, since likelihood-ratio and F tests compare
 #'   deviances. \code{$notes} says which applies.
 #' @param adjust Character. Multiplicity adjustment for the pairwise
 #'   comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
@@ -453,10 +453,14 @@ anova_count <- function(data, response, groups,
                              model_type == "quasipoisson" || test_statistic == "F")
   }
   notes <- c(notes, av$note)
-  if (!is.null(rv$matrix) && !is.null(av$table)) {
-    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+  # An F test on a Poisson or negative binomial fit gets its own note below,
+  # which also says which covariance it uses.
+  f_note <- test_statistic == "F" && model_type != "quasipoisson"
+  if (!is.null(rv$matrix) && !is.null(av$table) && !f_note) {
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald,
+                                         table = "$effect_sizes"))
   }
-  if (test_statistic == "F" && model_type != "quasipoisson") {
+  if (f_note) {
     notes <- c(notes, .f_test_note(model_type, .dispersion(fit),
                                    robust = if (!is.null(rv$matrix)) vcov_type))
   }
@@ -539,6 +543,19 @@ anova_count <- function(data, response, groups,
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
+  # A saturated fit that estimates a dispersion has none to estimate: its
+  # tests are NA, not car's 0 or NaN (see .saturated_na()).
+  if ((model_type == "quasipoisson" || test_statistic == "F") &&
+      isTRUE(stats::df.residual(fit) < 1)) {
+    sat <- .saturated_na(list(anova = av$table, effect_sizes = irr$table,
+                              emmeans = emm$table, posthoc = emm$posthoc,
+                              notes = notes))
+    av$table <- sat$anova
+    irr$table <- sat$effect_sizes
+    emm$table <- sat$emmeans
+    emm$posthoc <- sat$posthoc
+    notes <- sat$notes
+  }
   model_dispersion <- .count_dispersion(fit, n_obs, w_mean)
   .new_fit(
     method       = sprintf(
@@ -689,13 +706,7 @@ anova_count <- function(data, response, groups,
 .inflation_note <- function(phi, p_over = NA_real_, term_df = 1L, robust = NULL,
                             test_statistic = "LR", hedged = FALSE,
                             df = NA_real_) {
-  size <- function(k) stats::pchisq(stats::qchisq(0.95, k) / phi, k,
-                                    lower.tail = FALSE)
-  size_text <- sprintf(
-    "a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses%s",
-    100 * size(1),
-    if (isTRUE(term_df > 1)) sprintf(", and one on %d (the largest term here) roughly %.0f%%",
-                                     as.integer(term_df), 100 * size(term_df)) else "")
+  size_text <- .inflated_size_text(phi, term_df)
   ptxt <- if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else ""
   if (hedged) {
     # With a robust covariance in every test there is nothing to caveat.
@@ -716,10 +727,29 @@ anova_count <- function(data, response, groups,
     return(sprintf("A Poisson model assumes a dispersion of 1, and this one is %.2f%s. %s",
                    phi, ptxt,
                    .robust_overdispersion_text(test_statistic, robust, size_text,
-                                               "model = \"quasipoisson\"")))
+                                               "model = \"quasipoisson\"",
+                                               table = "$effect_sizes")))
   }
   sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about %.2f times too small, so its intervals are too narrow and %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
           phi, ptxt, sqrt(phi), size_text)
+}
+
+#' The size of nominal 5\% tests at dispersion phi, as a clause
+#'
+#' Under a true dispersion phi a statistic of a fixed-dispersion family is
+#' about phi times its nominal chi-square, so a nominal 5\% test on k degrees
+#' of freedom rejects P(chisq_k > qchisq(0.95, k) / phi) of true nulls. Given
+#' for 1 degree of freedom and, when larger, for the largest term's. Shared by
+#' \code{anova_count()} and \code{anova_glm()}, so they describe one fit alike.
+#' @noRd
+.inflated_size_text <- function(phi, term_df = 1L) {
+  size <- function(k) stats::pchisq(stats::qchisq(0.95, k) / phi, k,
+                                    lower.tail = FALSE)
+  sprintf(
+    "a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses%s",
+    100 * size(1),
+    if (isTRUE(term_df > 1)) sprintf(", and one on %d (the largest term here) roughly %.0f%%",
+                                     as.integer(term_df), 100 * size(term_df)) else "")
 }
 
 #' The largest number of degrees of freedom of any term of a fitted model
@@ -830,7 +860,9 @@ anova_count <- function(data, response, groups,
 #' estimated from the residuals, which turns a Poisson or negative binomial
 #' analysis of deviance into a quasi-likelihood test, while the coefficient
 #' table and the emmeans comparisons keep the dispersion at 1 -- unless they
-#' use a robust covariance, which assumes no dispersion at all.
+#' use a robust covariance, which assumes no dispersion at all. The F test
+#' itself never uses the robust covariance; with one in use this note says so
+#' in place of \code{.omnibus_vcov_note()}.
 #' @param robust the HC type of the robust covariance in use, or \code{NULL}.
 #' @noRd
 .f_test_note <- function(model_type, dispersion, robust = NULL) {
@@ -842,7 +874,7 @@ anova_count <- function(data, response, groups,
           if (is.null(robust)) {
             "$effect_sizes and $posthoc still assume a dispersion of 1, so they can disagree with it. Use model = \"quasipoisson\" for quasi-likelihood inference throughout."
           } else {
-            sprintf("$effect_sizes, $emmeans and $posthoc use the robust (%s) covariance, which does not assume a dispersion of 1 either.", robust)
+            sprintf("It uses the model's variance function scaled by that dispersion, not the robust (%s) covariance, which $effect_sizes, $emmeans and $posthoc use and which does not assume a dispersion of 1 either. For an omnibus test that uses the robust covariance, set test_statistic = \"Wald\".", robust)
           })
 }
 
