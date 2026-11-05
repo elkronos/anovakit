@@ -336,11 +336,16 @@
 #' the fit. They are counted in \code{$n_removed}, like any other row that is
 #' not in \code{$data_used}.
 #'
+#' A group whose rows all have weight zero is lost with them; like a group
+#' lost to missing values in \code{.prepare_frame()}, it is named in a note
+#' and its level is dropped, so \code{$data_used} matches the fit.
+#'
 #' @param data the prepared (complete-case) frame.
 #' @param weights a single column name, or \code{NULL}.
+#' @param groups the grouping columns (factors) of \code{data}.
 #' @return list with \code{data}, \code{n_removed} and \code{notes}.
 #' @noRd
-.drop_zero_weights <- function(data, weights) {
+.drop_zero_weights <- function(data, weights, groups = character(0)) {
   if (is.null(weights)) return(list(data = data, n_removed = 0L, notes = character(0)))
   .check_weights_column(data, weights)
   w <- data[[weights]]
@@ -362,9 +367,12 @@
   if (!any(zero)) return(list(data = data, n_removed = 0L, notes = character(0)))
   out <- data[!zero, , drop = FALSE]
   row.names(out) <- NULL
-  list(data = out, n_removed = sum(zero), notes = sprintf(
+  for (g in groups) out[[g]] <- droplevels(out[[g]])
+  list(data = out, n_removed = sum(zero), notes = c(sprintf(
     "Dropped %d row(s) whose weight in `%s` is zero: they contribute nothing to the fit, and keeping them would make row counts, robust standard errors and information criteria disagree with it.",
-    sum(zero), weights))
+    sum(zero), weights),
+    .lost_level_notes(data, !zero, groups,
+                      what = sprintf("rows with a non-zero weight in `%s`", weights))))
 }
 
 #' Validate a weights column on the data as supplied

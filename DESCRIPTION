@@ -33,6 +33,7 @@ Imports:
     utils
 Suggests:
     afex,
+    bit64,
     data.table,
     effectsize,
     knitr,

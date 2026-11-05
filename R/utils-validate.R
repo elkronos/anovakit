@@ -146,6 +146,60 @@
   invisible(TRUE)
 }
 
+#' Make the analysed numeric columns plain vectors
+#'
+#' Two kinds of column pass \code{is.numeric()} but are not what base R's
+#' modelling code reads them as. A \code{bit64::integer64} column (what
+#' \code{data.table::fread()} and database drivers return for large integers)
+#' stores each value as the bit pattern of a 64-bit integer in a double, so
+#' \code{complete.cases()}, \code{model.frame()} and \code{var()} read 1000 as
+#' about 5e-321 and a negative value as NaN. It is converted with its own
+#' \code{as.double()} method, which is exact below 2^53; a larger value could
+#' be silently rounded, so it is refused. A matrix column (from
+#' \code{I(cbind(...))}, \code{aggregate()} or \code{scale()}) has one value
+#' per row only when it has one column: that one is dropped to a vector, and
+#' a wider one is refused, since the analysis would otherwise index its
+#' 2n values as if they were n rows.
+#' @param data a plain data.frame.
+#' @param roles named list; each element is the column name(s) playing one
+#'   role, and its name (\code{"Response"}, \code{"Covariate"}, ...) is how the
+#'   column is described in an error. \code{NULL} elements and names that are
+#'   not columns are skipped (they are reported elsewhere).
+#' @return \code{data}, with those columns replaced.
+#' @noRd
+.as_plain_columns <- function(data, roles) {
+  for (r in names(roles)) {
+    for (col in roles[[r]]) {
+      x <- data[[col]]
+      if (is.null(x)) next
+      if (is.data.frame(x) || length(dim(x)) == 2L) {
+        if (NCOL(x) != 1L) {
+          .stopf("%s `%s` is a %d-column %s; supply a single column.",
+                 r, col, NCOL(x),
+                 if (is.data.frame(x)) "data frame" else "matrix")
+        }
+        x <- if (is.data.frame(x)) x[[1L]] else
+          if (is.object(x)) x[, 1L] else as.vector(x)
+      }
+      if (inherits(x, "integer64")) {
+        if (!isNamespaceLoaded("bit64")) {
+          .stopf("%s `%s` is of class integer64, but the bit64 package is not loaded, so its values cannot be read. Load bit64, or convert the column with as.numeric().",
+                 r, col)
+        }
+        # bit64 warns when a value is rounded; that case is an error below.
+        v <- suppressWarnings(as.double(x))
+        if (any(abs(v) >= 2^53, na.rm = TRUE)) {
+          .stopf("%s `%s` is of class integer64 and holds values of 2^53 or more, which cannot all be represented exactly as double-precision numbers. Rescale the column, or convert it yourself if the rounding is acceptable.",
+                 r, col)
+        }
+        x <- v
+      }
+      data[[col]] <- x
+    }
+  }
+  data
+}
+
 #' Generate a column name that does not collide with existing ones
 #'
 #' @param data data.frame whose names must be avoided.
@@ -177,6 +231,11 @@
   cols <- unique(cols)
   sub <- data[, cols, drop = FALSE]
   keep <- stats::complete.cases(sub)
+  # Which columns held a value that removed its row, and of which kind, so the
+  # note names only those columns and only the kinds that occurred.
+  bad_cols <- cols[vapply(sub, anyNA, logical(1))]
+  any_missing <- !all(keep)
+  any_infinite <- FALSE
 
   # A factor can carry NA as an explicit level (factor(x, exclude = NULL), or
   # addNA()). complete.cases() sees a valid code and keeps the row, but every
@@ -188,6 +247,10 @@
     if (is.factor(v) && anyNA(levels(v))) {
       bad <- is.na(levels(v))[as.integer(v)] %in% TRUE
       n_na_level <- n_na_level + sum(bad & keep)
+      if (any(bad)) {
+        bad_cols <- c(bad_cols, cn)
+        any_missing <- TRUE
+      }
       keep <- keep & !bad
     }
   }
@@ -195,12 +258,14 @@
   # Inf and -Inf survive complete.cases() but cannot be modelled. Treat them as
   # missing rather than letting them reach a variance or a link function. A
   # rank-based analysis can use them, so a caller may exempt columns.
-  n_infinite <- 0L
   for (cn in setdiff(cols, keep_infinite)) {
     v <- sub[[cn]]
     if (is.numeric(v)) {
       bad <- is.finite(v) == FALSE & !is.na(v)
-      n_infinite <- n_infinite + sum(bad & keep)
+      if (any(bad)) {
+        bad_cols <- c(bad_cols, cn)
+        any_infinite <- TRUE
+      }
       keep <- keep & !bad
     }
   }
@@ -218,11 +283,11 @@
 
   notes <- character(0)
   if (n_removed > 0L) {
-    what <- c("missing", if (n_infinite > 0L) "infinite")
+    what <- c(if (any_missing) "missing", if (any_infinite) "infinite")
     notes <- c(notes, sprintf(
       "Dropped %d row(s) with %s values in: %s.",
       n_removed, paste(what, collapse = " or "),
-      paste(cols, collapse = ", ")))
+      paste(intersect(cols, bad_cols), collapse = ", ")))
     if (n_na_level > 0L) {
       notes <- c(notes, sprintf(
         "%d of them had NA as an explicit factor level, which is treated as missing. Recode it to a named level to keep those rows.",
@@ -230,29 +295,15 @@
     }
   }
   if (nrow(out) == 0L) {
-    .stopf("No complete cases remain after removing rows with missing values in: %s.",
-           paste(cols, collapse = ", "))
+    .stopf("No complete cases remain after removing rows with %s values in: %s.",
+           paste(what, collapse = " or "),
+           paste(intersect(cols, bad_cols), collapse = ", "))
   }
 
   # A group whose every row was incomplete disappears from the analysis once
   # its level is dropped below, turning, say, a three-group comparison into a
   # two-group one. The row count above does not show that, so name the group.
-  if (n_removed > 0L) {
-    for (f in factors) {
-      v <- sub[[f]]
-      key <- if (is.factor(v)) as.character(v) else v
-      lost <- unique(key[!keep])
-      lost <- lost[!is.na(lost) & !lost %in% key[keep]]
-      if (is.factor(v)) lost <- intersect(levels(v), lost)
-      if (length(lost) > 0L) {
-        notes <- c(notes, sprintf(
-          "%s %s of `%s` had no complete rows, so %s dropped from the analysis.",
-          if (length(lost) == 1L) "Level" else "Levels",
-          .abbrev(sprintf("\"%s\"", as.character(lost))), f,
-          if (length(lost) == 1L) "it was" else "they were"))
-      }
-    }
-  }
+  if (n_removed > 0L) notes <- c(notes, .lost_level_notes(sub, keep, factors))
 
   for (f in factors) {
     if (!is.factor(out[[f]])) {
@@ -268,6 +319,36 @@
   }
 
   list(data = out, n_removed = n_removed, notes = notes)
+}
+
+#' Name the groups that lost every row
+#'
+#' A group whose every row is dropped disappears from the analysis once its
+#' level is dropped, turning, say, a three-group comparison into a two-group
+#' one. A row count does not show that, so the group is named.
+#' @param data the rows before dropping.
+#' @param keep logical, the rows kept.
+#' @param factors grouping columns of \code{data}.
+#' @param what what the lost groups had none of, for the note.
+#' @return character vector of notes, one per grouping column that lost a level.
+#' @noRd
+.lost_level_notes <- function(data, keep, factors, what = "complete rows") {
+  notes <- character(0)
+  for (f in factors) {
+    v <- data[[f]]
+    key <- if (is.factor(v)) as.character(v) else v
+    lost <- unique(key[!keep])
+    lost <- lost[!is.na(lost) & !lost %in% key[keep]]
+    if (is.factor(v)) lost <- intersect(levels(v), lost)
+    if (length(lost) > 0L) {
+      notes <- c(notes, sprintf(
+        "%s %s of `%s` had no %s, so %s dropped from the analysis.",
+        if (length(lost) == 1L) "Level" else "Levels",
+        .abbrev(sprintf("\"%s\"", as.character(lost))), f, what,
+        if (length(lost) == 1L) "it was" else "they were"))
+    }
+  }
+  notes
 }
 
 #' Turn a grouping column into a factor whose levels are its distinct values
@@ -451,7 +532,7 @@
   # "(subscript) logical subscript too long". Refuse it here, where the message
   # can say what to do instead. A ONE-column matrix (what scale() returns, and
   # a common way to build a column) is fine: every other function in the
-  # package accepts it, and .prepare_frame() drops the dimension.
+  # package accepts it, and .as_plain_columns() drops the dimension.
   if (is.matrix(y) && ncol(y) > 1L) {
     .stopf("Response `%s` is a %d-column matrix. A successes/failures matrix response is not supported; supply the outcome as one column per row, with `weights` naming the trial counts if the data are aggregated.",
            response, ncol(y))
@@ -463,8 +544,10 @@
              response, fam, paste(class(y), collapse = "/"))
     }
     if (values && (is.factor(y) || is.character(y))) {
-      lv <- if (is.factor(y)) levels(droplevels(y)) else
-        sort(unique(y[!is.na(y)]), method = "radix")
+      # Only the number of levels matters here, so they need not be sorted
+      # (sorting strings read with an "unknown" encoding fails in the radix
+      # sort; .as_group_factor() sorts a UTF-8 copy when the factor is made).
+      lv <- if (is.factor(y)) levels(droplevels(y)) else unique(y[!is.na(y)])
       if (length(lv) != 2L) {
         .stopf("Response `%s` has %d observed level(s); a %s model of a factor response needs exactly two. Recode it to a two-level factor, or 0/1, first.",
                response, length(lv), fam)

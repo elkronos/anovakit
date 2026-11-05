@@ -45,7 +45,13 @@
 #'     test can use infinite values (as the best or worst possible outcome), so
 #'     it keeps them. \code{$n_removed} counts the input rows that are not in
 #'     \code{$data_used}, so \code{nrow($data_used) + $n_removed} is always the
-#'     number of rows supplied.
+#'     number of rows supplied. The note names only the columns that held
+#'     such a value, and a group left with no rows is named.
+#'   \item An analysed numeric column (response, covariate, weights, offset)
+#'     must hold one value per row: a one-column matrix is used as a vector
+#'     and a wider one is refused. A \code{bit64::integer64} column is
+#'     converted to double, exactly; one holding a value of 2^53 or more,
+#'     which a double cannot always hold exactly, is refused.
 #'   \item Grouping columns are coerced to factors; character columns get their
 #'     levels in C-locale order, so the reference level does not depend on the
 #'     session. A factor level that is itself \code{NA} counts as missing.
@@ -64,7 +70,8 @@
 #'   \item Prior weights, where a function accepts them, are named as a column
 #'     rather than passed as a vector, so they are subsetted with the data.
 #'     Rows with a weight of zero contribute nothing and are dropped (and
-#'     counted in \code{$n_removed}). Whole-number weights on a count or 0/1
+#'     counted in \code{$n_removed}); a group whose every weight is zero is
+#'     named in \code{$notes} and dropped. Whole-number weights on a count or 0/1
 #'     response are frequency weights in the families whose likelihood reads
 #'     a weight as a number of identical observations (binomial and
 #'     quasi-binomial on a 0/1 response; Poisson, quasi-Poisson and negative

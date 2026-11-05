@@ -197,7 +197,7 @@ anova_bin <- function(data, response, groups,
                       plots = TRUE,
                       weights = NULL,
                       verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_bin")
   type <- match.arg(type)
   test_statistic <- match.arg(test_statistic)
   ci_method <- match.arg(ci_method)
@@ -212,6 +212,8 @@ anova_bin <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the weights` = weights))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -224,7 +226,7 @@ anova_bin <- function(data, response, groups,
                          keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
-  zw <- .drop_zero_weights(d, weights)
+  zw <- .drop_zero_weights(d, weights, groups)
   d <- zw$data
   n_removed <- prep$n_removed + zw$n_removed
   notes <- c(notes, zw$notes, .weight_scale_note(d, weights))
