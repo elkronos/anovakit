@@ -203,7 +203,7 @@ anova_count <- function(data, response, groups,
                         plots = TRUE,
                         weights = NULL,
                         verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_count")
   model <- match.arg(model)
   type <- match.arg(type)
   test_statistic <- match.arg(test_statistic)
@@ -222,6 +222,8 @@ anova_count <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the exposure offset` = offset, `the weights` = weights))
+  data <- .as_plain_columns(data, list(Response = response, `Offset column` = offset,
+                                       `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -239,7 +241,7 @@ anova_count <- function(data, response, groups,
   prep <- .prepare_frame(data, cols, factors = groups, keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
-  zw <- .drop_zero_weights(d, weights)
+  zw <- .drop_zero_weights(d, weights, groups)
   d <- zw$data
   n_removed <- prep$n_removed + zw$n_removed
   notes <- c(notes, zw$notes)

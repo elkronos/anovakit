@@ -209,7 +209,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
                          posthoc = TRUE,
                          plots = TRUE,
                          verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_manova")
   test <- match.arg(test)
   type <- match.arg(type)
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -222,6 +222,8 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   if (!is.null(covariates)) .check_columns(data, covariates, "Covariate column(s)")
   .check_roles(list(`a response` = responses, `a grouping variable` = groups,
                     `a covariate` = covariates))
+  data <- .as_plain_columns(data, list(Response = responses,
+                                       Covariate = covariates))
   for (r in responses) .check_numeric_col(data, r)
   if (!is.null(covariates)) {
     for (cv in covariates) .check_numeric_col(data, cv, role = "Covariate")

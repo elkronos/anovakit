@@ -225,6 +225,8 @@ anova_glm <- function(data, response, groups,
   # The column's type is checked on the input; the levels and values only on
   # the rows that are analysed, after missing values and zero weights are gone.
   .check_response_for_family(data, response, family, values = FALSE)
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -235,7 +237,7 @@ anova_glm <- function(data, response, groups,
                          keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
-  zw <- .drop_zero_weights(d, weights)
+  zw <- .drop_zero_weights(d, weights, groups)
   d <- zw$data
   n_removed <- prep$n_removed + zw$n_removed
   notes <- c(notes, zw$notes)
