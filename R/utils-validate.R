@@ -234,6 +234,26 @@
            paste(cols, collapse = ", "))
   }
 
+  # A group whose every row was incomplete disappears from the analysis once
+  # its level is dropped below, turning, say, a three-group comparison into a
+  # two-group one. The row count above does not show that, so name the group.
+  if (n_removed > 0L) {
+    for (f in factors) {
+      v <- sub[[f]]
+      key <- if (is.factor(v)) as.character(v) else v
+      lost <- unique(key[!keep])
+      lost <- lost[!is.na(lost) & !lost %in% key[keep]]
+      if (is.factor(v)) lost <- intersect(levels(v), lost)
+      if (length(lost) > 0L) {
+        notes <- c(notes, sprintf(
+          "%s %s of `%s` had no complete rows, so %s dropped from the analysis.",
+          if (length(lost) == 1L) "Level" else "Levels",
+          .abbrev(sprintf("\"%s\"", as.character(lost))), f,
+          if (length(lost) == 1L) "it was" else "they were"))
+      }
+    }
+  }
+
   for (f in factors) {
     if (!is.factor(out[[f]])) {
       n_lev <- length(unique(out[[f]]))
