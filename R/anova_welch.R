@@ -259,6 +259,7 @@ anova_welch <- function(data, response, groups,
     p_value   = unname(welch$p.value),
     stringsAsFactors = FALSE
   )
+  attr(anova_tab, "statistic") <- "Welch F"
 
   ## Group summaries ---------------------------------------------------------
   summary_stats <- .summary_stats(d[[response]], d[[cell]], conf_level)

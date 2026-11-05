@@ -364,9 +364,12 @@ print(zero_fit$posthoc[, c("contrast", "IRR", "conf_low", "conf_high",
                            "p_adjusted")], digits = 3)
 ```
 
-`east vs north` is estimated as practically zero, with an interval from 0 to
-infinity and a p-value of `r round(zero_fit$effect_sizes$p_value[2], 2)`:
-the Wald machinery has nothing to work with, however clear the difference.
+`east vs north` is estimated as practically zero, with a Wald p-value of
+`r round(zero_fit$effect_sizes$p_value[2], 2)`: the Wald machinery has nothing
+to work with, however clear the difference. Its interval in `$effect_sizes`
+is profiled and one-sided, open at 0 and bounded above at about
+`r signif(zero_fit$effect_sizes$conf_high[2], 2)`; only the Wald intervals of
+the comparisons with `east` in `$posthoc` run from 0 to infinity.
 The likelihood-ratio test in the omnibus table does work, and it is the number
 to report for the overall comparison. For the rate ratios involving `east`,
 follow the note's advice: collapse the level with another, or use an exact

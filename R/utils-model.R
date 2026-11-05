@@ -317,8 +317,9 @@
 #' saturated log-linear model is how a G-test of independence is computed --
 #' and only goodness of fit and overdispersion become uncheckable.
 #'
-#' Aliased coefficients are reported as aliased, without guessing why: empty
-#' cells of a crossed design and collinear covariates both produce them.
+#' Aliased coefficients are reported with their cause: the empty level
+#' combinations of a crossed design, named by their levels, or collinearity,
+#' naming the covariates involved (see \code{.aliased_notes()}).
 #' @noRd
 .check_model_size <- function(fit) {
   dfr <- stats::df.residual(fit)
@@ -340,13 +341,94 @@
       "The model has %d parameters and only %d residual degrees of freedom, so it is close to saturated. Consider fewer groups, a simpler interaction structure, or more data.",
       np, dfr))
   }
-  if (any(is.na(stats::coef(fit)))) {
-    bad <- gsub("`", "", names(stats::coef(fit))[is.na(stats::coef(fit))], fixed = TRUE)
-    notes <- c(notes, sprintf(
-      "%d coefficient(s) are aliased and could not be estimated: %s. This happens when level combinations are empty or when predictors are collinear; the affected terms are tested with fewer degrees of freedom than their levels suggest.",
-      length(bad), paste(utils::head(bad, 5L), collapse = ", ")))
-  }
+  cf <- stats::coef(fit)
+  na <- if (is.matrix(cf)) apply(is.na(cf), 1L, any) else is.na(cf)
+  if (any(na)) notes <- c(notes, .aliased_notes(fit, na))
   notes
+}
+
+#' Say why coefficients are aliased
+#'
+#' A coefficient of a term made only of grouping factors, some of whose level
+#' combinations hold no data, is aliased because of those empty cells: the
+#' note names the cells by their levels, not the coefficient, whose name under
+#' sum-to-zero contrasts points at a different cell. The same holds for a
+#' covariate-by-group term, whose slope in an empty combination of its grouping
+#' factors cannot be estimated. Any other aliased
+#' coefficient is collinear with the rest of the model, and the note names it
+#' and any covariate in its term.
+#' @param fit a fitted model.
+#' @param na named logical, one per coefficient: is it aliased?
+#' @noRd
+.aliased_notes <- function(fit, na) {
+  bad <- gsub("`", "", names(na)[na], fixed = TRUE)
+  tail <- "the affected terms are tested with fewer degrees of freedom than their levels suggest."
+  generic <- sprintf(
+    "%d coefficient(s) are aliased and could not be estimated: %s. This happens when level combinations are empty or when predictors are collinear; %s",
+    length(bad), .abbrev(bad, 5L), tail)
+  info <- tryCatch(list(
+    asg = attr(stats::model.matrix(fit), "assign"),
+    fac = attr(stats::terms(fit), "factors"),
+    labs = attr(stats::terms(fit), "term.labels"),
+    mf = stats::model.frame(fit)), error = function(e) NULL)
+  if (is.null(info) || length(info$asg) != length(na) || !is.matrix(info$fac)) {
+    return(generic)
+  }
+  term_vars <- function(j) {
+    if (j < 1L) return(character(0))
+    gsub("`", "", rownames(info$fac)[info$fac[, j] > 0L], fixed = TRUE)
+  }
+  is_group <- function(v) {
+    x <- info$mf[[v]]
+    !is.null(x) && (is.factor(x) || is.character(x) || is.logical(x))
+  }
+  out <- character(0)
+  other <- logical(length(na))
+  for (j in unique(info$asg[na])) {
+    idx <- na & info$asg == j
+    vars <- term_vars(j)
+    grp <- vars[vapply(vars, is_group, logical(1))]
+    covs <- setdiff(vars, grp)
+    if (length(grp) >= 2L) {
+      ec <- .empty_cells(info$mf, grp)
+      # A covariate-by-group term has one slope per combination of its
+      # grouping factors, so an empty combination aliases at most one
+      # coefficient per covariate product; more aliased than that is
+      # collinearity as well, and is reported as such.
+      if (ec$n_empty > 0 &&
+          (length(covs) == 0L || sum(idx) <= ec$n_empty)) {
+        term <- gsub("`", "", info$labs[j], fixed = TRUE)
+        out <- c(out, if (length(covs) == 0L) {
+          sprintf(
+            "%d coefficient(s) of the %s term are aliased and could not be estimated because %s of its %s level combination(s) contain no data: %s; %s",
+            sum(idx), term, .count_text(ec$n_empty), .count_text(ec$n_possible),
+            .empty_cells_text(ec), tail)
+        } else {
+          sprintf(
+            "%d coefficient(s) of the %s term are aliased and could not be estimated because %s of the %s level combination(s) of %s contain no data, so the slope of %s cannot be estimated in them: %s; %s",
+            sum(idx), term, .count_text(ec$n_empty), .count_text(ec$n_possible),
+            paste(grp, collapse = " and "),
+            paste(sprintf("`%s`", covs), collapse = ", "),
+            .empty_cells_text(ec), tail)
+        })
+        next
+      }
+    }
+    other <- other | idx
+  }
+  if (any(other)) {
+    vars <- unique(unlist(lapply(unique(info$asg[other]), term_vars)))
+    covs <- vars[!vapply(vars, is_group, logical(1))]
+    obad <- gsub("`", "", names(na)[other], fixed = TRUE)
+    out <- c(out, sprintf(
+      "%d coefficient(s) are aliased and could not be estimated because they are collinear with other terms of the model, not because of empty cells: %s.%s The affected terms are tested with fewer degrees of freedom than their levels suggest.",
+      length(obad), .abbrev(obad, 5L),
+      if (length(covs) > 0L) sprintf(
+        " They involve the covariate(s) %s: a covariate that is a linear combination of other predictors, or constant within a group it interacts with, does this.",
+        paste(sprintf("`%s`", covs), collapse = ", ")) else
+        " Their grouping variables are confounded with other grouping variables."))
+  }
+  out
 }
 
 #' Drop rows whose prior weight is zero
