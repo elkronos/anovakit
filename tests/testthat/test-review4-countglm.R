@@ -208,3 +208,67 @@ test_that("docs-consistency-F2: anova_glm says when non-integer weights set the 
   fk <- anova_glm(d, "y", "g", family = poisson(), weights = "k", plots = FALSE)
   expect_false(any(grepl("so their scale matters", fk$notes, fixed = TRUE)))
 })
+
+test_that("countglm-C1/R1: a constant large-valued group does not hide real variation in the others", {
+  d <- withr::with_seed(1, data.frame(g = gl(2, 10),
+                                      y = c(stats::rpois(10, 5), rep(1e7, 10))))
+  m <- stats::glm(y ~ g, quasipoisson, d)
+  # reference: real residual variation, and car's F test
+  expect_gt(m$deviance, 1)
+  ref <- car::Anova(m, test.statistic = "F")
+  g <- anova_glm(d, "y", "g", family = "quasipoisson", plots = FALSE)
+  expect_equal(g$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-6)
+  k <- anova_count(d, "y", "g", model = "quasipoisson", plots = FALSE)
+  expect_equal(k$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-6)
+  expect_no_error(anova_count(d, "y", "g", model = "negbin", test_statistic = "F",
+                              plots = FALSE))
+  d3 <- withr::with_seed(3, data.frame(g = gl(3, 8),
+    y = c(stats::runif(8, 1, 3), stats::runif(8, 2, 5), rep(5e6, 8))))
+  d3$y[1:16] <- round(d3$y[1:16])
+  m3 <- stats::glm(y ~ g, quasipoisson, d3)
+  ref3 <- car::Anova(m3, test.statistic = "F")
+  expect_equal(stats::df.residual(m3), 21L)
+  k3 <- anova_count(d3, "y", "g", model = "quasipoisson", plots = FALSE)
+  expect_equal(k3$anova$statistic[1], ref3[["F value"]][1], tolerance = 1e-6)
+  expect_equal(k3$anova$p_value[1], ref3[["Pr(>F)"]][1], tolerance = 1e-6)
+  g3 <- anova_glm(d3, "y", "g", family = quasipoisson(), plots = FALSE)
+  expect_equal(g3$anova$statistic[1], ref3[["F value"]][1], tolerance = 1e-6)
+  # a Gamma fit with real variation is not refused as exact (car's own refit
+  # of this model fails, which the notes report, as before)
+  d2 <- withr::with_seed(1, data.frame(g = gl(2, 10),
+    y = c(stats::rgamma(10, 100, 100), rep(1e6, 10))))
+  expect_no_error(anova_glm(d2, "y", "g", family = Gamma(link = "log"), plots = FALSE))
+  # a large constant group next to a group constant at 0 is still exact
+  dz <- data.frame(g = gl(2, 10), y = rep(c(0, 1e7), each = 10))
+  expect_error(anova_glm(dz, "y", "g", family = quasipoisson(), plots = FALSE),
+               "fits response `y` exactly")
+})
+
+test_that("countglm-C2: anova_glm's F note on a saturated Poisson fit says why F is NA", {
+  sat <- data.frame(y = c(1L, 2L, 4L), g = c("a", "b", "c"))
+  m <- stats::glm(y ~ g, poisson, transform(sat, g = factor(g)))
+  expect_identical(stats::df.residual(m), 0L)   # reference: nothing to estimate from
+  r <- anova_glm(sat, "y", "g", family = poisson(), test_statistic = "F", plots = FALSE)
+  expect_true(is.na(r$anova$statistic[1]))
+  expect_true(any(grepl("cannot be estimated here as there are no residual degrees of freedom (so the F test is NA)",
+                        r$notes, fixed = TRUE)))
+  expect_false(any(grepl("Pearson statistic (NA)", r$notes, fixed = TRUE)))
+})
+
+test_that("countglm-R2: MASS::negative.binomial(theta) in glm() absorbs the scale of the weights", {
+  ins <- InsectSprays
+  ins$w <- withr::with_seed(1, stats::runif(72, .5, 2))
+  ins$w10 <- ins$w * 10
+  fam <- MASS::negative.binomial(10)
+  for (ts in c("LR", "Wald")) {
+    a <- anova_glm(ins, "count", "spray", family = fam, weights = "w",
+                   test_statistic = ts, plots = FALSE)
+    b <- anova_glm(ins, "count", "spray", family = fam, weights = "w10",
+                   test_statistic = ts, plots = FALSE)
+    ref <- car::Anova(stats::glm(count ~ spray, fam, ins, weights = w10),
+                      test.statistic = ts)
+    expect_equal(b$anova$statistic[1], ref[[if (ts == "LR") "LR Chisq" else "Chisq"]][1],
+                 tolerance = 1e-6)
+    expect_equal(a$anova$statistic[1], b$anova$statistic[1], tolerance = 1e-6)
+  }
+})

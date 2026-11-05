@@ -157,12 +157,14 @@
 #'   (precision weights, or the trials behind a proportion) each row is one
 #'   unit for the residual degrees of freedom and the robust covariance. The
 #'   likelihood still multiplies by the weights, as in \code{stats::glm()}: a
-#'   family that estimates its dispersion absorbs their scale, but in a
-#'   Poisson, binomial or \code{MASS::negative.binomial(theta)} fit the
-#'   likelihood-ratio and Wald statistics and the Pearson dispersion (so the
-#'   overdispersion check) scale with them, and the intervals narrow as they
-#'   grow. Unlike \code{\link{anova_count}}, the dispersion is not computed
-#'   with the weights rescaled, since it describes the model as weighted;
+#'   family that estimates its dispersion absorbs their scale (as does
+#'   \code{MASS::negative.binomial(theta)}, whose dispersion
+#'   \code{stats::glm()} and \code{summary.glm()} estimate), but in a
+#'   Poisson or binomial fit the likelihood-ratio and Wald statistics and
+#'   the Pearson dispersion (so the overdispersion check) scale with them,
+#'   and the intervals narrow as they grow. Unlike \code{\link{anova_count}},
+#'   the dispersion is not computed with the weights rescaled, since it
+#'   describes the model as weighted; in a Poisson or binomial fit
 #'   \code{$notes} says so when weights that are not whole numbers do not
 #'   average 1.
 #'
@@ -503,8 +505,9 @@ anova_glm <- function(data, response, groups,
   ## Dispersion ---------------------------------------------------------------
   dispersion <- .dispersion(model)
   # A family that estimates its dispersion absorbs the scale of the weights;
-  # a fixed-dispersion one (Poisson, binomial, negative binomial with theta
-  # given) does not, as in anova_bin() and anova_count(). Unlike there, the
+  # a fixed-dispersion one (Poisson, binomial) does not -- a glm() fit with
+  # MASS::negative.binomial(theta) estimates its dispersion like a quasi
+  # family, see .estimates_dispersion() -- as in anova_bin() and anova_count(). Unlike there, the
   # Pearson dispersion here is the fitted model's own, so it scales too: it
   # measures how far the tests of the model as weighted are inflated.
   if (!.estimates_dispersion(model)) {
@@ -568,11 +571,20 @@ anova_glm <- function(data, response, groups,
   if (identical(test_statistic, "F") && fam_name %in% c("poisson", "binomial")) {
     # With a robust covariance the coefficient table, the marginal means and
     # the comparisons assume no dispersion, so they are not at odds with it.
+    # A saturated fit has no residual degrees of freedom to estimate the
+    # dispersion from, so its F test is NA; the note says why.
+    f_disp <- .dispersion(model)
+    f_disp <- if (isTRUE(is.finite(f_disp)) &&
+                  isTRUE(stats::df.residual(model) >= 1)) {
+      sprintf(" (%.3g)", f_disp)
+    } else {
+      ", which cannot be estimated here as there are no residual degrees of freedom (so the F test is NA),"
+    }
     notes <- c(notes, if (is.null(rv$matrix)) sprintf(
-      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
-      fam_name, .dispersion(model), fam_name) else sprintf(
-      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. It uses the model's variance function scaled by that dispersion, not the robust (%s) covariance, which the coefficient table, $emmeans and $posthoc use and which does not assume a dispersion of 1 either. For an omnibus test that uses the robust covariance, set test_statistic = \"Wald\".",
-      fam_name, .dispersion(model), vcov_type))
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic%s instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
+      fam_name, f_disp, fam_name) else sprintf(
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic%s instead of fixing it at 1. It uses the model's variance function scaled by that dispersion, not the robust (%s) covariance, which the coefficient table, $emmeans and $posthoc use and which does not assume a dispersion of 1 either. For an omnibus test that uses the robust covariance, set test_statistic = \"Wald\".",
+      fam_name, f_disp, vcov_type))
   }
 
   ## Coefficient intervals ----------------------------------------------------
