@@ -88,6 +88,11 @@
 #' @param ci_method Character. \code{"profile"} (default) for
 #'   profile-likelihood intervals, or \code{"wald"}. Profile intervals are
 #'   slow with many coefficients (see Details); \code{"wald"} is much faster.
+#'   The p-values in \code{$effect_sizes} are Wald p-values, so in small or
+#'   sparse samples a profile interval can exclude an odds ratio of 1 while
+#'   the p-value beside it is above \code{1 - conf_level}, or the reverse;
+#'   \code{$notes} names such rows, and \code{"wald"} intervals always agree
+#'   with the p-values.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
 #'   the \pkg{sandwich} package. They reach the coefficient table, the
@@ -676,6 +681,14 @@ anova_bin <- function(data, response, groups,
         .unidentified_clause(ct$term[flag], lo[flag], hi[flag], "odds ratio"),
         if (anyNA(c(lo[flag], hi[flag]))) "; it is NA where that search failed" else ""))
     }
+  }
+
+  if (method_used == "profile") {
+    # A diverged odds ratio has its own separation note.
+    keep <- !(separated & is.finite(ct$se) & ct$se > 10)
+    notes <- c(notes, .profile_wald_note(ct$term[keep], lo[keep], hi[keep],
+                                         ct$p_value[keep], conf_level,
+                                         "odds ratio of 1"))
   }
 
   lab <- .or_labels(model)
