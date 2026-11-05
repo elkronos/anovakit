@@ -11,7 +11,7 @@ test_that("R2-ANCOVA-01: non-estimable group means are dropped and named, not de
   d <- data.frame(g = g, x = x, y = rnorm(60))
   f <- anova_ancova(d, "y", "g", "x", force_interaction = TRUE, plots = FALSE)
   m <- stats::lm(y ~ g * I(x - mean(x)), data = d)
-  ref <- as.data.frame(summary(emmeans::emmeans(m, ~g)))
+  ref <- suppressMessages(as.data.frame(summary(emmeans::emmeans(m, ~g))))
   estimable <- as.character(ref$g[!is.na(ref$emmean)])
   expect_identical(estimable, "a")
   expect_identical(as.character(f$emmeans$g), estimable)
@@ -36,8 +36,8 @@ test_that("R2-ANCOVA-01: non-estimable group means are dropped and named, not de
   f2 <- anova_ancova(d, "y", c("A", "B"), "x", interaction = FALSE,
                      force_interaction = TRUE, plots = FALSE)
   m2 <- stats::lm(y ~ A + B + I(x - mean(x)) * (A + B), data = d)
-  refA <- as.data.frame(summary(emmeans::emmeans(m2, ~A)))
-  refB <- as.data.frame(summary(emmeans::emmeans(m2, ~B)))
+  refA <- suppressMessages(as.data.frame(summary(emmeans::emmeans(m2, ~A))))
+  refB <- suppressMessages(as.data.frame(summary(emmeans::emmeans(m2, ~B))))
   expect_identical(as.character(refA$A[!is.na(refA$emmean)]), "a1")
   expect_true(all(is.na(refB$emmean)))
   expect_false(anyNA(f2$emmeans$estimate))
@@ -45,7 +45,7 @@ test_that("R2-ANCOVA-01: non-estimable group means are dropped and named, not de
   expect_equal(f2$emmeans$estimate, refA$emmean[!is.na(refA$emmean)],
                tolerance = 1e-8)
   # b1 - b2 is estimable even though the B means are not; a1 - a2 is not.
-  refBp <- as.data.frame(summary(pairs(emmeans::emmeans(m2, ~B))))
+  refBp <- suppressMessages(as.data.frame(summary(pairs(emmeans::emmeans(m2, ~B)))))
   expect_false(anyNA(f2$posthoc$estimate))
   expect_identical(f2$posthoc$contrast, "b1 - b2")
   expect_equal(f2$posthoc$estimate, refBp$estimate, tolerance = 1e-8)

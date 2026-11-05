@@ -104,7 +104,8 @@ An \code{\link{anovakit_fit}} object, with \code{$model_type}
   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
   of the \emph{Poisson} fit (the statistic the model choice was made on) and
   \code{$model_dispersion} that of the model actually returned (both with
-  the frequency-weight denominator when the weights are frequencies).
+  the frequency-weight denominator when the weights are frequencies, and
+  with weights that are not whole numbers rescaled to average 1).
   \code{$effect_sizes} holds incidence rate ratios against the reference
   level, with columns \code{term} (the treatment-coded coefficient),
   \code{factor} and \code{comparison} (what it compares), \code{IRR},
@@ -114,10 +115,10 @@ An \code{\link{anovakit_fit}} object, with \code{$model_type}
   \code{model_dispersion} (as above) and \code{cell_counts}, the number of
   observations in each cell (with frequency weights, \code{n} counts the
   observations and \code{rows} the rows of the table). \code{$plots} holds
-  \code{emmeans}, the marginal rates with their intervals, and
-  \code{observed}, box plots of the observed counts by cell -- of the
-  observed rates, count divided by exposure, when there is an
-  \code{offset}.
+  \code{emmeans}, the marginal rates with their intervals (when the
+  marginal means could be computed), and \code{observed}, box plots of the
+  observed counts by cell -- of the observed rates, count divided by
+  exposure, when there is an \code{offset}.
 }
 \description{
 Fits a Poisson, quasi-Poisson or negative binomial regression for a count
@@ -173,9 +174,21 @@ number and some exceed 1, the weights are taken to be frequencies and the
 Pearson dispersion (the one the model choice is made on, reported in
 \code{$dispersion}) divides by the number of observations they represent
 minus the number of parameters rather than by the number of rows, which
-would inflate it by up to the ratio of the two. A quasi-Poisson fit and an
-F test estimate their dispersion from the rows all the same, so for those
-expand a frequency table to one row per observation; \code{$notes} says so.
+would inflate it by up to the ratio of the two. The model's residual
+degrees of freedom are counted in observations too, so a quasi-Poisson fit
+or an F test on a frequency table gives the same dispersion, tests and
+intervals as the data expanded to one row per observation; there is no need
+to expand it, and \code{$notes} says so.
+
+Weights that are not whole numbers are used as given in the fit, the tests
+and the intervals, as \code{glm()} uses prior weights: their scale matters
+(multiplying every weight by 10 multiplies each likelihood-ratio and Wald
+statistic by about 10), and \code{$notes} says so when they do not average
+1. Sampling weights should therefore be rescaled to average 1, or analysed
+with a design-based method such as \code{survey::svyglm()}. The Pearson
+dispersion the model choice is made on is computed with such weights
+rescaled to average 1, so the choice between Poisson and negative binomial
+does not depend on their arbitrary scale.
 
 \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 treatment-coded parameterisation of the fitted model, whatever \code{type}

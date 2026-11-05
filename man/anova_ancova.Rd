@@ -134,7 +134,10 @@ which is held at its mean rather than averaged over its two values. Set
 point you want the intercept (and the Type III group row) to refer to. When
 the covariate mean lies outside the range a group was observed over, that
 group's adjusted mean is an extrapolation along the fitted slope, and
-\code{$notes} names the group.
+\code{$notes} names the group. Under the covariate-by-group interaction a
+group in which a covariate is constant has no estimable slope, so its
+adjusted mean is in general not estimable: it is left out of \code{$emmeans}
+and \code{$posthoc}, and \code{$notes} names it.
 
 A covariate that is constant, that is determined by the grouping variables
 (constant within every group, such as a group-level attribute), or that is
@@ -149,8 +152,10 @@ the full factorial each cell has its own slope. They are compared by one
 nested F test, joint over all covariates: heterogeneity in any one covariate
 retains the slope terms for all of them. \code{homogeneity_alpha} is its
 level. The test is reported as not computable (\code{NA}) when the
-covariate-by-group terms add nothing estimable, or when the model without
-them already fits the data exactly. If the slopes differ, the interaction
+covariate-by-group terms add nothing estimable, when the model with them
+leaves no residual degrees of freedom (too few rows per group for the
+slopes to be tested), or when the model without them already fits the data
+exactly; the additive model is then used. If the slopes differ, the interaction
 model is used, and a note explains that the group effect is then a
 comparison at one point on the covariate rather than a constant difference,
 and that \code{$simple_slopes} is the thing to read.
@@ -182,8 +187,10 @@ which model was fitted and why.
 \code{"model"}, the F tests in \code{$anova} are Wald F tests
 (\code{car::Anova(vcov. = )}) built from the heteroscedasticity-consistent
 covariance, on the model's residual degrees of freedom, so that table has no
-sums of squares. \code{$emmeans}, \code{$posthoc} and \code{$simple_slopes}
-use the same covariance. \code{$effect_sizes} are still computed from the
+sums of squares. (\pkg{car} refuses those tests for a model with aliased
+coefficients; \code{$anova} then keeps the model-based F tests, and
+\code{$notes} says so.) \code{$emmeans}, \code{$posthoc} and
+\code{$simple_slopes} use the same covariance. \code{$effect_sizes} are still computed from the
 model-based sums of squares, which the covariance does not change, and the
 homogeneity-of-slopes test stays the model-based F test.
 }

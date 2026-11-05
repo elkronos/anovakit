@@ -60,7 +60,8 @@ passed to \code{\link[car]{Anova}}.}
 Default \code{0.95}.}
 
 \item{ci_method}{Character. \code{"profile"} (default) for
-profile-likelihood intervals, or \code{"wald"}.}
+profile-likelihood intervals, or \code{"wald"}. Profile intervals are
+slow with many coefficients (see Details); \code{"wald"} is much faster.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
 (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
@@ -88,8 +89,15 @@ against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Whole-number weights (some above 1) are read
 as frequency weights, each row standing for that many identical
 observations, and the robust covariance (\code{vcov_type}) is then that
-of the data expanded to one row per observation; other weights are
-treated as sampling weights, with each row as one unit.}
+of the data expanded to one row per observation. Other weights are used
+as given, as \code{glm()} uses prior weights: the fit, the tests, the
+intervals, the marginal means and the sparse-data check treat them as
+multipliers of each row, like frequencies, so their scale matters
+(weights averaging 0.01 make 300 rows count as 3 observations), and
+\code{$notes} says so when they do not average 1. Only the robust
+covariance treats each row as one unit. Sampling weights should therefore
+be rescaled to average 1, or analysed with a design-based method such as
+\code{survey::svyglm()}.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
@@ -168,8 +176,19 @@ intervals are meaningless even though \code{glm()} reports convergence, so
 of an odds ratio that separation drives to infinity (or to zero) is open on
 that side, and is reported with \code{conf_high = Inf} (or
 \code{conf_low = 0}); its finite end is found by profiling the likelihood
-directly, since \code{stats::confint()} cannot step from a diverged estimate,
-and is \code{NA} when the likelihood rules out no value on that side either.
+directly, since \code{stats::confint()} cannot step from a diverged estimate.
+When the likelihood rules out no value on that side either (for example an
+interaction whose cells are all separated) the interval is \code{(0, Inf)}:
+the data do not identify that odds ratio at all, its point estimate is
+arbitrary, and \code{$notes} says so. An end the search cannot find is
+\code{NA}.
+
+\strong{Interval cost.} A profile-likelihood interval refits the model
+several times for each coefficient, so its cost grows with the number of
+coefficients times the cost of a fit: a factor with 60 levels and 5,000
+rows takes tens of seconds where Wald intervals take about one.
+\code{$notes} says so when there are many coefficients; set
+\code{ci_method = "wald"} for speed when there is no separation.
 
 \strong{Sparse data.} When fewer than about 5 events or non-events are
 expected in a cell under the null hypothesis, the likelihood-ratio omnibus

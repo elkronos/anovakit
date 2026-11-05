@@ -74,9 +74,13 @@ way and return the same S3 class, \code{\link{anovakit_fit}}.
     rather than passed as a vector, so they are subsetted with the data.
     Rows with a weight of zero contribute nothing and are dropped (and
     counted in \code{$n_removed}). Whole-number weights on a count or 0/1
-    response are frequency weights: robust standard errors and residual
-    degrees of freedom are then those of the data expanded to one row per
-    observation.
+    response are frequency weights in the families whose likelihood reads
+    a weight as a number of identical observations (binomial and
+    quasi-binomial on a 0/1 response; Poisson, quasi-Poisson and negative
+    binomial on counts): robust standard errors and residual degrees of
+    freedom are then those of the data expanded to one row per
+    observation. In a Gaussian (or other) family they are precision
+    weights, and each row is one unit.
   \item \code{vcov_type}, where a function accepts it, asks for
     heteroscedasticity-consistent (sandwich) standard errors. Where the
     sandwich is degenerate -- fitted values on the boundary (separation, a
