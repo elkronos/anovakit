@@ -53,22 +53,33 @@
 #' familiar \eqn{n_1 + n_2 - 2}{n1 + n2 - 2}; when the variances differ it
 #' removes the bias that the pooled-variance correction leaves. The correction is a property of the point estimate, so
 #' the interval, which is for \eqn{\delta^*}{delta*} itself, is the same with or
-#' without it. The corrected estimate can fall outside that interval at any
-#' \code{conf_level} when \eqn{\nu}{nu} is near 1, which happens when a group
-#' of two or three holds most of the variance: \eqn{J(\nu)}{J(nu)} then
-#' approaches 0 and pulls the estimate towards zero. With few observations and
-#' a low \code{conf_level} the estimate, corrected or not, can also fall
-#' outside, because the interval inverts a skewed distribution. \code{$notes}
-#' says so when either happens.
+#' without it. When a group of two holds most of the variance,
+#' \eqn{\nu}{nu} approaches 1 and \eqn{J(\nu)}{J(nu)} approaches 0 (the mean
+#' of the uncorrected estimate stops existing there), so the corrected
+#' estimate would collapse towards zero whatever the data say. Below
+#' \eqn{\nu = 2}{nu = 2}, where \eqn{J(\nu)}{J(nu)} is less than 0.57, the
+#' correction is therefore not applied: that pair's \code{hedges_g} is the
+#' uncorrected estimate, and \code{$notes} names the pair. With few
+#' observations and a low \code{conf_level} the estimate, corrected or not,
+#' can fall outside its interval, because the interval inverts a skewed
+#' distribution and the correction shrinks only the estimate; \code{$notes}
+#' says so when it does.
 #'
 #' The interval is found with an exact noncentral t distribution function:
-#' beyond a noncentrality of 30 it is computed by numerical integration,
+#' beyond a noncentrality of 30 it is computed by Gauss-Hermite quadrature,
 #' because \code{stats::pt()} switches to a normal approximation for a large
 #' noncentrality that is badly wrong at small degrees of freedom.
 #'
 #' A pair whose standard error is below the floating-point resolution of its
 #' means, which \code{stats::t.test()} refuses as "essentially constant", is
-#' reported as \code{NA} with a note.
+#' reported as \code{NA} with a note. Welch's F is a weighted sum, over pairs
+#' of groups, of terms that grow with each pair's squared t statistic, so
+#' when the pairs at that resolution make up more than 5\% of it the omnibus
+#' test is rounding noise too: \code{$anova} then reports its statistic,
+#' denominator degrees of freedom and p-value as \code{NA}, with a note. With
+#' two groups that is whenever the single pair is at that resolution. Below
+#' 5\% the test is reported and the note gives the share. Subtracting a
+#' constant close to the values from the response avoids both.
 #'
 #' The standardiser is recorded in the \code{standardiser} column of
 #' \code{$effect_sizes}. The magnitude labels use Cohen's conventional
@@ -252,6 +263,21 @@ anova_welch <- function(data, response, groups,
   welch <- stats::oneway.test(fml, data = d, var.equal = FALSE)
   # oneway.test names the internal cell column; name what the user supplied.
   welch$data.name <- sprintf("%s and %s", response, term_label)
+  noise <- .welch_noise_share(d[[response]], d[[cell]])
+  if (noise$share > 0.05) {
+    welch$statistic[] <- NA_real_
+    welch$parameter[2L] <- NA_real_
+    welch$p.value <- NA_real_
+    notes <- c(notes, sprintf(
+      "The omnibus test is left as NA: for %s, the spread within the groups is at the floating-point resolution of their means, and %s make%s up %s of Welch's F, which would therefore be rounding noise. Subtracting a constant close to the values from the response before the analysis avoids this.",
+      noise$pairs, if (noise$n == 1L) "that pair" else "those pairs",
+      if (noise$n == 1L) "s" else "", .share_pct(noise$share)))
+  } else if (noise$share > 0) {
+    notes <- c(notes, sprintf(
+      "For %s, the spread within the groups is at the floating-point resolution of their means; %s only %s of Welch's F, so the omnibus test is reported.",
+      noise$pairs, if (noise$n == 1L) "that pair contributes" else "those pairs contribute",
+      .share_pct(noise$share)))
+  }
   anova_tab <- data.frame(
     term      = term_label,
     statistic = unname(welch$statistic),
@@ -266,7 +292,8 @@ anova_welch <- function(data, response, groups,
   summary_stats <- .summary_stats(d[[response]], d[[cell]], conf_level)
 
   ## Assumptions -------------------------------------------------------------
-  normality <- .normality_by_group(d[[response]], d[[cell]])
+  normality <- .normality_by_group(d[[response]], d[[cell]],
+                                   unit = "observation")
   notes <- c(notes, .normality_skip_notes(normality))
   group_var <- as.numeric(group_var)
   variance_ratio <- if (length(group_var) >= 2L && all(is.finite(group_var))) {
@@ -345,6 +372,53 @@ anova_welch <- function(data, response, groups,
   sprintf("%s cells", paste(groups, collapse = " x "))
 }
 
+#' How much of Welch's F comes from pairs at floating-point resolution
+#'
+#' The numerator of Welch's F, \code{sum(w * (m - mbar)^2)} with weights
+#' \code{w = n / v} and their weighted mean \code{mbar}, equals
+#' \code{sum(w_g w_h (m_g - m_h)^2) / sum(w)} over pairs of groups. A pair is
+#' at resolution by the rule \code{t.test()} and \code{.welch_pairwise()}
+#' use: its standard error is below \code{10 * .Machine$double.eps} times the
+#' larger absolute mean. Its term is then rounding noise.
+#' @return list with \code{share} (that pairs' fraction of the numerator, 0
+#'   when there are none), \code{n} (how many such pairs) and \code{pairs}
+#'   (their names, abbreviated, for a note).
+#' @noRd
+.welch_noise_share <- function(values, cell) {
+  cell <- droplevels(as.factor(cell))
+  lv <- levels(cell)
+  by_group <- split(values, cell)
+  n <- vapply(by_group, length, numeric(1), USE.NAMES = FALSE)
+  m <- vapply(by_group, mean, numeric(1), USE.NAMES = FALSE)
+  v <- vapply(by_group, stats::var, numeric(1), USE.NAMES = FALSE)
+  idx <- utils::combn(length(lv), 2L)
+  i <- idx[1L, ]; j <- idx[2L, ]
+  se <- sqrt(v[i] / n[i] + v[j] / n[j])
+  noise <- se < 10 * .Machine$double.eps * pmax(abs(m[i]), abs(m[j]))
+  if (!any(noise)) return(list(share = 0, n = 0L, pairs = character(0)))
+  # Welch's F does not depend on the response's units, so neither may the
+  # share: the weights n / v are taken relative to the largest (on the log
+  # scale, as n / v itself can overflow) and the mean differences relative to
+  # the largest, or the products overflow or underflow for a response around
+  # 1e-100 or 1e100.
+  lw <- log(n) - log(v)
+  w <- exp(lw - max(lw))
+  dm <- m[i] - m[j]
+  dmax <- max(abs(dm))
+  if (dmax > 0) dm <- dm / dmax
+  term <- w[i] * w[j] * dm^2
+  total <- sum(term)
+  list(share = if (total > 0) sum(term[noise]) / total else 1,
+       n = sum(noise),
+       pairs = .abbrev(sprintf("%s vs %s", lv[i[noise]], lv[j[noise]]), 5L))
+}
+
+#' A share as a percentage for a note: "1.3%", "100%"
+#' @noRd
+.share_pct <- function(share) {
+  paste0(format(signif(100 * share, 2)), "%")
+}
+
 #' Deviations from each group's mean in units of that group's SD
 #'
 #' Non-finite values and groups with fewer than two finite values or no
@@ -410,7 +484,11 @@ anova_welch <- function(data, response, groups,
   se <- sqrt(vi + vj)
   difference <- m[i] - m[j]
   statistic <- difference / se
-  df <- se^4 / (vi^2 / (n[i] - 1) + vj^2 / (n[j] - 1))
+  # Welch-Satterthwaite df from each group's share of the variance, which,
+  # unlike se^4 / (...), neither overflows nor underflows on a response far
+  # from 1 in magnitude.
+  ai <- vi / (vi + vj); aj <- vj / (vi + vj)
+  df <- 1 / (ai^2 / (n[i] - 1) + aj^2 / (n[j] - 1))
   p_value <- 2 * stats::pt(-abs(statistic), df)
   q <- stats::qt(1 - (1 - conf_level) / 2, df)
   conf_low <- (statistic - q) * se
@@ -423,6 +501,8 @@ anova_welch <- function(data, response, groups,
   statistic[!ok] <- NA_real_; df[!ok] <- NA_real_; p_value[!ok] <- NA_real_
 
   effect <- effect_low <- effect_high <- rep(NA_real_, length(i))
+  uncorrected <- rep(FALSE, length(i))
+  J <- nu <- rep(NA_real_, length(i))
   for (k in which(ok)) {
     es <- .std_mean_diff(by_group[[i[k]]], by_group[[j[k]]],
                          conf_level = conf_level,
@@ -430,6 +510,8 @@ anova_welch <- function(data, response, groups,
     effect[k] <- es$estimate
     effect_low[k] <- es$conf_low
     effect_high[k] <- es$conf_high
+    uncorrected[k] <- hedges_correction && !es$corrected
+    if (es$corrected) { J[k] <- es$J; nu[k] <- es$df }
   }
 
   tab <- data.frame(group1 = lv[i], group2 = lv[j],
@@ -466,18 +548,43 @@ anova_welch <- function(data, response, groups,
       .abbrev(sprintf("%s vs %s", tab$group1[unresolved],
                       tab$group2[unresolved]), 5L)))
   }
-  if (length(outside) > 0L) {
-    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside],
-                             tab$group2[outside]), 5L)
-    notes <- c(notes, if (hedges_correction) {
+  if (any(uncorrected)) {
+    notes <- c(notes, sprintf(
+      "For %s, the standardiser has fewer than 2 degrees of freedom (a group of two observations holds most of the variance), so the bias correction was not applied and the hedges_g column holds the uncorrected estimate, Cohen's d. There the correction would multiply the estimate by less than 0.57, and by nearly zero as the degrees of freedom approach 1, even when the interval excludes small values.",
+      .abbrev(sprintf("%s vs %s", tab$group1[uncorrected],
+                      tab$group2[uncorrected]), 5L)))
+  }
+  # Just above 2 df J is still far below 1 (0.56 at 2, 0.80 at 4), and the
+  # switch to the uncorrected estimate below 2 df makes the estimate jump
+  # between nearly identical data sets, so such pairs are named.
+  strong <- which(!is.na(J) & J < 0.8)
+  if (length(strong) > 0L) {
+    notes <- c(notes, sprintf(
+      "For %s, the standardiser has fewer than 4 degrees of freedom, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
+      .abbrev(sprintf("%s vs %s (%s df, factor %s)", tab$group1[strong],
+                      tab$group2[strong], format(signif(nu[strong], 3)),
+                      format(signif(J[strong], 2))), 5L)))
+  }
+  # A pair left uncorrected holds Cohen's d, so its note is the one for d.
+  outside_d <- outside[!hedges_correction | uncorrected[outside]]
+  outside_g <- setdiff(outside, outside_d)
+  if (length(outside_g) > 0L) {
+    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside_g],
+                             tab$group2[outside_g]), 5L)
+    notes <- c(notes, {
       sprintf(
-        "For %s, Hedges' g lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The bias correction shrinks the estimate towards zero, and shrinks it strongly when the standardiser's degrees of freedom are near 1 (a group of two or three holding most of the variance), while the interval is for the population value and is not shrunk; with few observations and a low conf_level the interval, which inverts a skewed noncentral t distribution, can also miss the estimate. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
-        pairs, .pct(conf_level))
-    } else {
-      sprintf(
-        "For %s, Cohen's d lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The interval inverts the skewed noncentral t distribution of Welch's statistic, so with few degrees of freedom and a low conf_level it need not contain the point estimate.",
+        "For %s, Hedges' g lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The bias correction shrinks the estimate towards zero, most strongly when the standardiser has few degrees of freedom (a group of two or three holding most of the variance), while the interval is for the population value and is not shrunk; with few observations and a low conf_level the interval, which inverts a skewed noncentral t distribution, can also miss the estimate. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
         pairs, .pct(conf_level))
     })
+  }
+  if (length(outside_d) > 0L) {
+    pairs <- .abbrev(sprintf("%s vs %s", tab$group1[outside_d],
+                             tab$group2[outside_d]), 5L)
+    notes <- c(notes, sprintf(
+      "For %s, %s lies outside its %s%% interval, so the magnitude label is taken from the nearer interval bound. The interval inverts the skewed noncentral t distribution of Welch's statistic, so with few degrees of freedom and a low conf_level it need not contain the point estimate.",
+      pairs,
+      if (hedges_correction) "the uncorrected estimate (Cohen's d) in the hedges_g column" else "Cohen's d",
+      .pct(conf_level)))
   }
 
   posthoc <- tab[, c("group1", "group2", "difference", "conf_low", "conf_high",
@@ -494,17 +601,19 @@ anova_welch <- function(data, response, groups,
 #' statistic rescaled to it, for the population value. With \code{hedges_correction} the
 #' estimate (not the interval) is multiplied by the bias correction J at the
 #' Satterthwaite degrees of freedom of the standardiser (Delacre et al.,
-#' 2021).
+#' 2021), except below 2 degrees of freedom, where J is less than 0.57.
 #' @return list with \code{estimate}, \code{conf_low}, \code{conf_high},
-#'   \code{se} (the scale of Welch's statistic on the standardised scale,
-#'   \code{se_w / s*}), \code{standardiser} and
-#'   \code{df} (of the standardiser).
+#'   \code{se} (the scale of Welch's statistic on the standardiser's scale,
+#'   \code{se_w / s*}), \code{standardiser},
+#'   \code{df} (of the standardiser) and \code{corrected} (whether J was
+#'   applied).
 #' @noRd
 .std_mean_diff <- function(x, y, conf_level = 0.95, hedges_correction = TRUE) {
   x <- x[!is.na(x)]; y <- y[!is.na(y)]
   n1 <- length(x); n2 <- length(y)
   na <- list(estimate = NA_real_, conf_low = NA_real_, conf_high = NA_real_,
-             se = NA_real_, standardiser = NA_real_, df = NA_real_)
+             se = NA_real_, standardiser = NA_real_, df = NA_real_,
+             corrected = FALSE, J = NA_real_)
   if (n1 < 2L || n2 < 2L) return(na)
   v1 <- stats::var(x); v2 <- stats::var(y)
   df1 <- n1 - 1; df2 <- n2 - 1
@@ -516,12 +625,23 @@ anova_welch <- function(data, response, groups,
   # to the average-variance standardiser: d* = t * se_w / s*.
   se_w <- sqrt(v1 / n1 + v2 / n2)
   t_w <- (mean(x) - mean(y)) / se_w
-  df_w <- se_w^4 / ((v1 / n1)^2 / df1 + (v2 / n2)^2 / df2)
+  # Both Satterthwaite df are computed from the groups' shares of the
+  # variance, so that they do not depend on the response's units: written as
+  # (v1 + v2)^2 / (v1^2 / df1 + v2^2 / df2) the squares overflow or underflow
+  # on a response around 1e100 or 1e-100 and give NaN.
+  a1 <- (v1 / n1) / (v1 / n1 + v2 / n2); a2 <- 1 - a1
+  df_w <- 1 / (a1^2 / df1 + a2^2 / df2)
   ci <- .ncp_t_interval(t_w, df_w, conf_level) * se_w / s
-  nu <- (v1 + v2)^2 / (v1^2 / df1 + v2^2 / df2)
-  J <- if (hedges_correction) .hedges_j(nu) else 1
+  b1 <- v1 / (v1 + v2); b2 <- 1 - b1
+  nu <- 1 / (b1^2 / df1 + b2^2 / df2)
+  # J(nu) falls to 0 as nu falls to 1, where the mean of d stops existing:
+  # below nu = 2 it is less than 0.57 and would pull the estimate towards a
+  # value its own interval can exclude, so it is not applied there.
+  corrected <- hedges_correction && isTRUE(nu >= 2)
+  J <- if (corrected) .hedges_j(nu) else 1
   list(estimate = J * d, conf_low = ci[1L], conf_high = ci[2L],
-       se = se_w / s, standardiser = s, df = nu)
+       se = se_w / s, standardiser = s, df = nu, corrected = corrected,
+       J = J)
 }
 
 #' Confidence interval for the noncentrality of a t statistic
@@ -537,7 +657,12 @@ anova_welch <- function(data, response, groups,
 #' @noRd
 .ncp_t_interval <- function(t, df, conf_level) {
   a <- (1 - conf_level) / 2
-  f <- function(ncp, p) .pnt(t, df, ncp) - p
+  # On the probit scale the distribution function is close to linear in the
+  # noncentrality, so uniroot() needs about a third fewer evaluations. The
+  # clamp keeps a probability of exactly 0 or 1 finite, with the right sign.
+  f <- function(ncp, p) {
+    stats::qnorm(min(max(.pnt(t, df, ncp), 1e-300), 1 - 1e-16)) - stats::qnorm(p)
+  }
   # Start from the normal approximation to each root, t - z_p * s; uniroot()
   # widens the bracket when that misses, as it does at small df. Starting close
   # saves evaluations, which matters with many pairs.
@@ -557,39 +682,70 @@ anova_welch <- function(data, response, groups,
 #' it agrees with the integral below to about 1e-11 at every df, and it is
 #' much faster, so it is used there.
 #'
-#' Beyond that, P(T <= t) for T = (Z + ncp) / sqrt(V / df) is integrated over
-#' the standard normal Z, conditioning on which leaves a chi-square
-#' probability for V: for t < 0 the event needs Z + ncp < 0 and
-#' V <= df ((Z + ncp) / t)^2; for t > 0 it holds whenever Z + ncp <= 0, and
-#' otherwise needs V >= df ((Z + ncp) / t)^2. The integral is split where the
-#' integrand changes fastest, so \code{integrate()} sees every feature.
+#' Beyond that, P(T <= t) for T = (Z + ncp) / sqrt(V / df) is an expectation
+#' over one of its two variables, taken with fixed Gauss-Hermite nodes
+#' (\code{.gh}) rather than \code{integrate()}, which made the interval of a
+#' well-separated pair cost about 10 ms and many such pairs very slow.
+#' Conditioning on the standard normal Z leaves a chi-square probability for
+#' V: for t < 0 the event needs Z + ncp < 0 and V <= df ((Z + ncp) / t)^2; for
+#' t > 0 it holds whenever Z + ncp <= 0, and otherwise needs
+#' V >= df ((Z + ncp) / t)^2. That probability changes over a width of about
+#' r = |t| / sqrt(2 df) in Z, so it is smooth on the scale of the nodes when
+#' r >= 1. When r < 1 the roles swap, and the expectation is taken over
+#' U = sqrt(V / df) instead, of Phi(t U - ncp), standardising U by its
+#' approximate mean and standard deviation and weighting each node by the
+#' ratio of U's density to the normal one; that ratio is smooth only for a
+#' large df, so below 100 df the first form is kept (r < 1 then means
+#' |t| < 14, where the noncentralities near the roots are within the range
+#' of \code{pt()} and those beyond it give probabilities near 0 or 1). Against
+#' \code{integrate()} the two agree to about 1e-12 for t from -200 to 1000 and df
+#' from 1 to 1e6.
 #' @noRd
 .pnt <- function(t, df, ncp) {
   if (abs(ncp) <= 30) return(stats::pt(t, df, ncp))
   if (t == 0) return(stats::pnorm(-ncp))
-  # dnorm() is zero to double precision beyond +-38.5.
-  if (t < 0) {
-    lo <- -38.5; hi <- -ncp; base <- 0; lower <- TRUE
+  z <- .gh$x
+  if (abs(t) >= sqrt(2 * df) || df < 100) {
+    w <- z + ncp
+    if (t > 0) {
+      g <- rep(1, length(z))
+      k <- w > 0
+      g[k] <- stats::pchisq(df * (w[k] / t)^2, df, lower.tail = FALSE)
+    } else {
+      g <- numeric(length(z))
+      k <- w < 0
+      g[k] <- stats::pchisq(df * (w[k] / t)^2, df)
+    }
   } else {
-    lo <- -ncp; hi <- 38.5; base <- stats::pnorm(-ncp); lower <- FALSE
+    sdu <- sqrt(1 / (2 * df))
+    u <- sqrt(1 - 1 / (2 * df)) + sdu * z
+    ok <- u > 0
+    # f_U(u) = dchisq(df u^2, df) * 2 df u, over the normal density of z.
+    ratio <- numeric(length(z))
+    ratio[ok] <- exp(stats::dchisq(df * u[ok]^2, df, log = TRUE) +
+                       log(2 * df * u[ok] * sdu) -
+                       stats::dnorm(z[ok], log = TRUE))
+    g <- ratio * stats::pnorm(t * u - ncp)
   }
-  if (lo >= hi) return(base)
-  g <- function(z) {
-    stats::pchisq(df * ((z + ncp) / t)^2, df, lower.tail = lower) *
-      stats::dnorm(z)
-  }
-  # The chi-square probability changes fastest around z = t - ncp, over a
-  # width of about |t| sqrt(2 / df); the normal density over a width of 1.
-  h <- abs(t) * sqrt(2 / df)
-  br <- sort(unique(c(lo, hi, (t - ncp) + c(-6, -2, 0, 2, 6) * h,
-                      -8, -4, -2, 0, 2, 4, 8)))
-  br <- br[br >= lo & br <= hi]
-  pieces <- vapply(seq_len(length(br) - 1L), function(k) {
-    stats::integrate(g, br[k], br[k + 1L], rel.tol = 1e-10, abs.tol = 1e-15,
-                     subdivisions = 1000L)$value
-  }, numeric(1))
-  min(1, base + sum(pieces))
+  min(1, max(0, sum(.gh$w * g)))
 }
+
+#' Gauss-Hermite nodes and weights for the standard normal density
+#'
+#' By the Golub-Welsch algorithm: the nodes are the eigenvalues of the Jacobi
+#' matrix of the probabilists' Hermite polynomials, the weights the squared
+#' first components of its eigenvectors. \code{n} nodes integrate a polynomial
+#' of degree up to 2n - 1 against \code{dnorm()} exactly.
+#' @noRd
+.gauss_hermite <- function(n) {
+  i <- seq_len(n - 1L)
+  jac <- matrix(0, n, n)
+  jac[cbind(i, i + 1L)] <- jac[cbind(i + 1L, i)] <- sqrt(i)
+  e <- eigen(jac, symmetric = TRUE)
+  list(x = e$values, w = e$vectors[1L, ]^2)
+}
+
+.gh <- .gauss_hermite(40L)
 
 #' Hedges' small-sample bias correction for a standardiser on \code{df}
 #' degrees of freedom, in its exact gamma-function form
