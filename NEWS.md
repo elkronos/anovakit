@@ -126,7 +126,10 @@ cases. Each is fixed and has a regression test.
   with an estimated dispersion is an error instead of an absurd F. This
   includes a response that is constant within every group, at 0 or 1. A
   constant count with a varying offset is still analysed, because its rates
-  differ. A saturated model that estimates its dispersion reports NA tests.
+  differ. A response with a large level and small but real variation (epoch
+  seconds, pressures in Pa) is analysed, not mistaken for an exact fit. A
+  saturated model that estimates its dispersion reports NA tests; a saturated
+  Poisson or binomial model still gets its Wald chi-square table.
   `test_statistic = "LR"` on a quasi family gives F, and `$method` says
   "quasi-likelihood F test" when F is asked of a Poisson, binomial or negative
   binomial model.
@@ -135,8 +138,10 @@ cases. Each is fixed and has a regression test.
   * binomial AIC and BIC are NA;
   * in `anova_bin()` and `anova_count()`, the count dispersion and the
     sparse-data check do not depend on the weights' scale;
-  * a note warns that the scale matters. In `anova_glm()` the tests and the
-    Pearson dispersion scale with the weights, as in `glm()`.
+  * a note warns that the scale matters. The reported tests and the Pearson
+    dispersion of `anova_glm()` scale with the weights, as in `glm()`, and the
+    overdispersion notes of both `anova_glm()` and `anova_count()` give the
+    inflation of the tests as reported.
 
   A group whose weights are all zero is named and dropped.
 * **Negative binomial.** A fit that collapses to Poisson is reported as such.
