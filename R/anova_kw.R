@@ -164,13 +164,14 @@ anova_kw <- function(data, response, groups,
                      posthoc = TRUE,
                      plots = TRUE,
                      verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_kw")
   .check_adjust(adjust, stats::p.adjust.methods, "adjust")
   data <- .as_df(data)
   .check_name(response, "response")
   .check_names(groups, "groups")
   .check_columns(data, response, "Response column")
   .check_columns(data, groups, "Grouping column(s)")
+  data <- .as_plain_columns(data, list(Response = response))
   .check_numeric_col(data, response)
   .check_roles(list(`the response` = response, `a grouping variable` = groups))
   .check_conf_level(conf_level)
