@@ -107,7 +107,7 @@
 #'   always agree with the p-values.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 #'   marginal means and the comparisons; the omnibus table uses them only with
 #'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
 #'   deviances. \code{$notes} says which applies.
@@ -321,7 +321,8 @@ anova_bin <- function(data, response, groups,
                    vcov_matrix = if (robust_wald) rv$matrix else NULL)
   notes <- c(notes, av$note)
   if (!is.null(rv$matrix) && !is.null(av$table)) {
-    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald,
+                                         table = "$effect_sizes"))
   }
 
   ## Model versus null, from the model's own (weighted) deviances -------------

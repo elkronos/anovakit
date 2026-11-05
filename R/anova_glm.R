@@ -155,7 +155,18 @@
 #'   family (Gaussian, a linear probability model on a 0/1 response included,
 #'   Gamma, inverse Gaussian, \code{quasi()}) and for other weights
 #'   (precision weights, or the trials behind a proportion) each row is one
-#'   unit.
+#'   unit for the residual degrees of freedom and the robust covariance. The
+#'   likelihood still multiplies by the weights, as in \code{stats::glm()}: a
+#'   family that estimates its dispersion absorbs their scale (as does
+#'   \code{MASS::negative.binomial(theta)}, whose dispersion
+#'   \code{stats::glm()} and \code{summary.glm()} estimate), but in a
+#'   Poisson or binomial fit the likelihood-ratio and Wald statistics and
+#'   the Pearson dispersion (so the overdispersion check) scale with them,
+#'   and the intervals narrow as they grow. Unlike \code{\link{anova_count}},
+#'   the dispersion is not computed with the weights rescaled, since it
+#'   describes the model as weighted; in a Poisson or binomial fit
+#'   \code{$notes} says so when weights that are not whole numbers do not
+#'   average 1.
 #'
 #' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
@@ -357,12 +368,17 @@ anova_glm <- function(data, response, groups,
   # With an estimated dispersion (or car's F test, which estimates one for
   # any family) an exact fit leaves only rounding error to divide by. A
   # saturated model, with no residual degrees of freedom at all, is reported
-  # with NA inference instead (see .check_model_size()).
-  if ((.estimates_dispersion(model) || identical(test_statistic, "F")) &&
-      isTRUE(stats::df.residual(model) >= 1)) {
-    exact <- .glm_exact_fit_message(model, response)
-    if (!is.null(exact)) .stopf("%s", exact)
+  # with NA inference instead (see .check_model_size() and .saturated_na()).
+  # Checked again after the refit below, which can take a fit that glm()
+  # stopped short of exact to one that is.
+  check_exact <- function(model) {
+    if ((.estimates_dispersion(model) || identical(test_statistic, "F")) &&
+        isTRUE(stats::df.residual(model) >= 1)) {
+      exact <- .glm_exact_fit_message(model, response)
+      if (!is.null(exact)) .stopf("%s", exact)
+    }
   }
+  check_exact(model)
   # glm() stops when the change in deviance is below epsilon * (|deviance| +
   # 0.1). The 0.1 is absolute, and the deviance of a Gaussian (non-identity
   # link), inverse Gaussian or quasi fit carries the units of the response (or
@@ -383,6 +399,7 @@ anova_glm <- function(data, response, groups,
       model <- re$value
       if (abs(model$deviance - dev) <= 1e-6 * dev) break
     }
+    check_exact(model)
   }
   notes <- c(notes, .said_note(fitted$said, "stats::glm()"))
   if (!isTRUE(model$converged)) {
@@ -472,7 +489,10 @@ anova_glm <- function(data, response, groups,
       "test_statistic = \"LR\" was requested for a %s family, which estimates its dispersion: car::Anova() divides each change in deviance by the estimated dispersion (%.3g) and refers it to a chi-square distribution as though that dispersion were known. That is a scaled-deviance chi-square rather than a likelihood-ratio test, and it is anti-conservative in small samples; the default F test allows for the estimated dispersion.",
       fam_name, .dispersion(model)))
   }
-  if (!is.null(rv$matrix) && !is.null(av$table)) {
+  # An F test on a Poisson or binomial fit gets its own note below, which
+  # also says which covariance it uses.
+  if (!is.null(rv$matrix) && !is.null(av$table) &&
+      !(identical(test_statistic, "F") && fam_name %in% c("poisson", "binomial"))) {
     notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type,
                                          identical(test_statistic, "Wald")))
   }
@@ -484,6 +504,19 @@ anova_glm <- function(data, response, groups,
 
   ## Dispersion ---------------------------------------------------------------
   dispersion <- .dispersion(model)
+  # A family that estimates its dispersion absorbs the scale of the weights;
+  # a fixed-dispersion one (Poisson, binomial) does not -- a glm() fit with
+  # MASS::negative.binomial(theta) estimates its dispersion like a quasi
+  # family, see .estimates_dispersion() -- as in anova_bin() and anova_count(). Unlike there, the
+  # Pearson dispersion here is the fitted model's own, so it scales too: it
+  # measures how far the tests of the model as weighted are inflated.
+  if (!.estimates_dispersion(model)) {
+    ws <- .weight_scale_note(d, weights)
+    if (length(ws) && !binary_y) {
+      ws <- paste(ws, "In this family the Pearson dispersion in $assumptions$dispersion, and so the overdispersion check, scale with the weights too.")
+    }
+    notes <- c(notes, ws)
+  }
   if (!is.null(freq_n)) {
     notes <- c(notes, sprintf(
       "The weights in `%s` are whole numbers, so they are treated as frequency weights: the residual degrees of freedom are counted in the %s observations they represent, not the %d rows, so the dispersion, F tests and intervals equal those of the data expanded to one row per observation.",
@@ -512,8 +545,9 @@ anova_glm <- function(data, response, groups,
     # Under a true dispersion phi a test statistic of this family is about phi
     # times its nominal chi-square; say what that does rather than only that
     # it happened.
-    size <- stats::pchisq(stats::qchisq(0.95, 1) / dispersion, 1,
-                          lower.tail = FALSE)
+    # The size is given for the largest term's degrees of freedom too, as
+    # anova_count() gives it for the same fit.
+    size_text <- .inflated_size_text(dispersion, .largest_term_df(model))
     # With a robust covariance the coefficient table, the marginal means and
     # the comparisons do not rest on the model variance; only an omnibus test
     # that compares deviances with the dispersion fixed at 1 still does.
@@ -521,12 +555,10 @@ anova_glm <- function(data, response, groups,
       "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1. %s",
       dispersion, .fmt_p(p_over), fam_name,
       .robust_overdispersion_text(
-        test_statistic, vcov_type,
-        sprintf("a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses",
-                100 * size),
+        test_statistic, vcov_type, size_text,
         sprintf("family = \"quasi%s\"", fam_name))) else sprintf(
-      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. %s",
-      dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), 100 * size,
+      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and %s. %s",
+      dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), size_text,
       if (identical(test_statistic, "F")) {
         sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
                 fam_name)
@@ -539,11 +571,20 @@ anova_glm <- function(data, response, groups,
   if (identical(test_statistic, "F") && fam_name %in% c("poisson", "binomial")) {
     # With a robust covariance the coefficient table, the marginal means and
     # the comparisons assume no dispersion, so they are not at odds with it.
+    # A saturated fit has no residual degrees of freedom to estimate the
+    # dispersion from, so its F test is NA; the note says why.
+    f_disp <- .dispersion(model)
+    f_disp <- if (isTRUE(is.finite(f_disp)) &&
+                  isTRUE(stats::df.residual(model) >= 1)) {
+      sprintf(" (%.3g)", f_disp)
+    } else {
+      ", which cannot be estimated here as there are no residual degrees of freedom (so the F test is NA),"
+    }
     notes <- c(notes, if (is.null(rv$matrix)) sprintf(
-      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
-      fam_name, .dispersion(model), fam_name) else sprintf(
-      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. The coefficient table, $emmeans and $posthoc use the robust (%s) covariance, which does not assume a dispersion of 1 either.",
-      fam_name, .dispersion(model), vcov_type))
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic%s instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
+      fam_name, f_disp, fam_name) else sprintf(
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic%s instead of fixing it at 1. It uses the model's variance function scaled by that dispersion, not the robust (%s) covariance, which the coefficient table, $emmeans and $posthoc use and which does not assume a dispersion of 1 either. For an omnibus test that uses the robust covariance, set test_statistic = \"Wald\".",
+      fam_name, f_disp, vcov_type))
   }
 
   ## Coefficient intervals ----------------------------------------------------
@@ -623,6 +664,20 @@ anova_glm <- function(data, response, groups,
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
+  # A saturated fit that estimates a dispersion has none to estimate: its
+  # tests are NA, not car's 0 or NaN (see .saturated_na()).
+  if ((.estimates_dispersion(model) || identical(test_statistic, "F")) &&
+      isTRUE(stats::df.residual(model) < 1)) {
+    sat <- .saturated_na(list(anova = av$table, effect_sizes = eff$table,
+                              emmeans = emm$table, posthoc = emm$posthoc,
+                              coefficients = ci$table, notes = notes))
+    av$table <- sat$anova
+    eff$table <- sat$effect_sizes
+    emm$table <- sat$emmeans
+    emm$posthoc <- sat$posthoc
+    ci$table <- sat$coefficients
+    notes <- sat$notes
+  }
   # R's binomial log-likelihood rounds the prior weights, so with weights that
   # are not whole numbers AIC and BIC describe other data than the fit (with
   # every weight below 0.5, a log-likelihood of exactly 0); as in anova_bin().
