@@ -89,18 +89,20 @@ test_that("R2-WELCHKW-02: a g collapsed by J(nu) near nu = 1 is not labelled 'ne
   J <- gamma(nu / 2) / (sqrt(nu / 2) * gamma((nu - 1) / 2))
   g <- J * (mean(x) - mean(z)) / sqrt((v1 + v2) / 2)
   expect_lt(nu, 1.01)
-  expect_equal(fit$effect_sizes$hedges_g, g, tolerance = 1e-10)
   expect_lt(abs(g), 0.2)                       # what would read "negligible"
+  # Since R3-46 the correction is not applied below nu = 2: the reported
+  # estimate is the uncorrected one, with a note.
+  d_hand <- (mean(x) - mean(z)) / sqrt((v1 + v2) / 2)
+  expect_equal(fit$effect_sizes$hedges_g, d_hand, tolerance = 1e-10)
 
   # Welch p (t.test) and the interval both rule out anything near zero.
   expect_lt(stats::t.test(x, z)$p.value, 0.05)
   expect_lt(fit$effect_sizes$conf_high, -0.8)
   expect_equal(fit$effect_sizes$magnitude, "large")
 
-  note <- grep("outside its 95% interval", fit$notes, value = TRUE)
+  expect_false(any(grepl("outside its 95% interval", fit$notes)))
+  note <- grep("fewer than 2 degrees of freedom", fit$notes, value = TRUE)
   expect_length(note, 1L)
-  expect_match(note, "Hedges' g")
-  expect_match(note, "degrees of freedom are near 1")
   expect_false(grepl("only with very small groups and a low conf_level", note))
 })
 

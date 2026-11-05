@@ -288,7 +288,8 @@ anova_kw <- function(data, response, groups,
   assumptions <- list()
   if (diagnostics) {
     .say(verbose, "Computing optional normality diagnostics.")
-    assumptions$normality <- .normality_by_group(y, d[[cell]])
+    assumptions$normality <- .normality_by_group(y, d[[cell]],
+                                                  unit = "observation")
     notes <- c(notes, "The normality diagnostics are contextual only. Kruskal-Wallis does not assume normality and the test does not depend on them.",
                .normality_skip_notes(assumptions$normality))
   }

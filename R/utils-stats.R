@@ -11,20 +11,23 @@
 #'
 #' @param x numeric vector, or a matrix (which is flattened explicitly rather
 #'   than left to \code{shapiro.test}'s recycling behaviour).
+#' @param unit what the values are, for the notes: \code{"residual"} after a
+#'   model fit, \code{"observation"} when raw group values are tested.
 #' @return list with \code{test} (an \code{htest} or \code{NULL}), \code{n} and
 #'   \code{note} (character, possibly empty).
 #' @noRd
-.check_normality <- function(x) {
+.check_normality <- function(x, unit = c("residual", "observation")) {
+  unit <- match.arg(unit)
   x <- as.numeric(x)
   x <- x[is.finite(x)]                  # drops NA, NaN and +/-Inf alike
   n <- length(x)
   if (n < 3L) {
     return(list(test = NULL, n = n, note = sprintf(
-      "Shapiro-Wilk skipped: %d usable residual(s), at least 3 are required.", n)))
+      "Shapiro-Wilk skipped: %d usable %s(s), at least 3 are required.", n, unit)))
   }
   if (n > 5000L) {
     return(list(test = NULL, n = n, note = sprintf(
-      "Shapiro-Wilk skipped: %d residuals exceeds the 5000 the test supports. Inspect the Q-Q plot instead.", n)))
+      "Shapiro-Wilk skipped: %d %ss exceeds the 5000 the test supports. Inspect the Q-Q plot instead.", n, unit)))
   }
   sdx <- stats::sd(x)
   if (!is.finite(sdx) || sdx == 0) {
@@ -48,14 +51,18 @@
 #' residuals across groups with different spreads produces a mixture that fails
 #' normality tests even when every group is normal.
 #'
-#' @param values numeric response.
+#' @param values numeric response, or residuals.
 #' @param cell factor of group memberships.
+#' @param unit passed to \code{.check_normality()}: \code{"observation"} for
+#'   raw group values (Welch, Kruskal-Wallis), \code{"residual"} for residuals.
 #' @noRd
-.normality_by_group <- function(values, cell) {
+.normality_by_group <- function(values, cell,
+                                unit = c("residual", "observation")) {
+  unit <- match.arg(unit)
   cell <- droplevels(as.factor(cell))
   rows <- lapply(levels(cell), function(lv) {
     v <- values[cell == lv]
-    nm <- .check_normality(v)
+    nm <- .check_normality(v, unit = unit)
     data.frame(
       group     = lv,
       n         = nm$n,        # the number the test actually used, not length(v)
