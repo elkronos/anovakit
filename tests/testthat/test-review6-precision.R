@@ -208,6 +208,62 @@ test_that("a negative Poisson likelihood-ratio statistic within rounding is show
   g <- factor(rep(c("a", "b", "c"), each = 6))
   d <- data.frame(g = g, y = 1e12 + c(0, 5, 10)[as.integer(g)] + rep(c(-3, -1, 0, 0, 1, 3), 3))
   f <- anova_count(d, "y", "g", model = "poisson", plots = FALSE, posthoc = FALSE)
-  expect_gte(f$anova$statistic[1], 0)
-  expect_true(any(grepl("limited precision", f$notes, fixed = TRUE)))
+  # rounding (about 0.004) is far below the df scale, so it is shown as 0
+  # with p = 1, silently: that is the true answer to within the error
+  expect_identical(f$anova$statistic[1], 0)
+  expect_identical(f$anova$p_value[1], 1)
+  # an ordinary null effect gets no precision note
+  d2 <- data.frame(g = gl(2, 4), y = c(8, 12, 16, 12, 12, 16, 8, 12))
+  f2 <- anova_count(d2, "y", "g", model = "poisson", plots = FALSE)
+  expect_false(any(grepl("precision", f2$notes, fixed = TRUE)))
+})
+
+test_that("Gaussian responses constant within groups are refused, a zero group included", {
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 4)))
+  for (v in list(c(0, 1, 3), c(0, 1e9, 2e9), c(1e9, 0, 2e9))) {
+    d$y <- rep(v, each = 4)
+    expect_error(anova_glm(d, "y", "g", plots = FALSE), "fits response `y` exactly")
+  }
+  # real variation of 1e-6 at level 1 beside a group at 1e8 is analysed (lm)
+  d5 <- data.frame(g = gl(3, 5), y = c(rep(1e8, 5), 1 + c(-1, 1, 0, 1, -1) * 1e-6, rep(5, 5)))
+  expect_s3_class(anova_glm(d5, "y", "g", plots = FALSE), "anovakit_fit")
+})
+
+test_that("an exactly multiplicative quasi-Poisson response near 1 is an exact fit", {
+  d <- expand.grid(a = gl(3, 1), b = gl(3, 1))
+  d$y <- with(d, 0.5 * c(1, 2, 3)[a] * c(1, 1.5, 2)[b])
+  expect_error(anova_glm(d, "y", c("a", "b"), family = quasipoisson(), plots = FALSE),
+               "fits response `y` exactly")
+  d$y2 <- d$y * (1 + 1e-9 * c(1, -1, 0, 0, 1, -1, -1, 0, 1))
+  expect_s3_class(anova_glm(d, "y2", c("a", "b"), family = quasipoisson(), plots = FALSE),
+                  "anovakit_fit")
+})
+
+test_that("a saturated GLM keeps its deviance explained of 1", {
+  sat <- data.frame(g = gl(3, 1), s = c(3, 7, 12))
+  f <- anova_glm(sat, "s", "g", family = poisson(), plots = FALSE)
+  expect_equal(f$effect_sizes$estimate[f$effect_sizes$measure == "deviance_explained"], 1)
+})
+
+test_that("binomial sampling weights and quasi-Poisson weights get the inflation note; trials do not", {
+  d <- data.frame(g = gl(3, 100))
+  d$w <- ifelse(seq_len(300) %% 10 == 0, 9.1, 0.1)
+  d$y <- withr::with_seed(2, stats::rbinom(300, 1, 0.4))
+  b <- anova_bin(d, "y", "g", weights = "w", plots = FALSE, posthoc = FALSE)
+  note <- grep("are unequal and not frequencies", b$notes, value = TRUE)
+  expect_length(note, 1L)
+  q <- as.numeric(sub(".*test of g rejects roughly ([0-9]+)%.*", "\\1", note)) / 100
+  sim <- withr::with_seed(6, mean(replicate(200, {
+    yy <- stats::rbinom(300, 1, 0.4)
+    suppressWarnings(car::Anova(stats::glm(yy ~ g, stats::binomial(), d, weights = w)))[1, 3] < 0.05
+  })))
+  expect_lt(abs(q - sim), 0.15)
+  d$c <- withr::with_seed(3, stats::rpois(300, 5))
+  gq <- anova_glm(d, "c", "g", family = quasipoisson(), weights = "w", plots = FALSE,
+                  posthoc = FALSE)
+  expect_true(any(grepl("so the F tests are inflated", gq$notes, fixed = TRUE)))
+  d$nt <- withr::with_seed(4, sample(c(5, 10, 200), 300, TRUE))
+  d$p <- withr::with_seed(5, stats::rbinom(300, d$nt, 0.3)) / d$nt
+  t <- anova_glm(d, "p", "g", family = binomial(), weights = "nt", plots = FALSE, posthoc = FALSE)
+  expect_false(any(grepl("sandwich", t$notes, fixed = TRUE)))
 })

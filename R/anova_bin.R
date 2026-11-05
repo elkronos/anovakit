@@ -325,6 +325,26 @@ anova_bin <- function(data, response, groups,
     notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald,
                                          table = "$effect_sizes"))
   }
+  # Unequal weights that are not whole numbers are sampling weights, used as
+  # given: the model-based tests are inflated by an amount that depends on
+  # where the heavy rows fall (.weight_inflation(), with the Bernoulli
+  # variance as the truth). Rescaling them to average 1 removes only their
+  # scale, not this.
+  if (!is.null(weights) && !freq_rows) {
+    wnum <- d[[weights]]
+    wp <- wnum[wnum > 0]
+    if (any(abs(wnum - round(wnum)) > sqrt(.Machine$double.eps)) && length(wp) &&
+        stats::var(wp) > 1e-4 * mean(wp)^2) {
+      wi <- .weight_inflation(model, 1, type)
+      if (!is.null(wi) && isTRUE(max(wi$size) >= 0.075)) {
+        wt <- .weight_inflation_text(wi)
+        notes <- c(notes, sprintf(
+          "The weights in `%s` are unequal and not frequencies, so the model-based tests are inflated %s: %s.%s",
+          weights, wt$by, wt$size,
+          if (robust_wald) "" else " test_statistic = \"Wald\" with vcov_type = \"HC3\" gives an omnibus test that does not depend on that."))
+      }
+    }
+  }
 
   ## Model versus null, from the model's own (weighted) deviances -------------
   ms <- .bin_model_stats(model, success,

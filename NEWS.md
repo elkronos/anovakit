@@ -142,11 +142,13 @@ cases. Each is fixed and has a regression test.
   * in `anova_bin()` and `anova_count()`, the count dispersion and the
     sparse-data check do not depend on the weights' scale;
   * a note warns that the scale matters. The reported tests and the Pearson
-    dispersion of `anova_glm()` scale with the weights, as in `glm()`. For a
-    Poisson or binomial model, the notes of both `anova_glm()` and
-    `anova_count()` give the inflation of the tests as reported. With unequal
-    weights it comes from the sandwich covariance, because it depends on where
-    the heavy rows fall.
+    dispersion of `anova_glm()` scale with the weights, as in `glm()`.
+  * With unequal weights that are not frequencies the tests are inflated by
+    an amount that depends on where the heavy rows fall. `$notes` gives it,
+    from the sandwich covariance, for Poisson, negative binomial,
+    quasi-Poisson and binomial fits, and for F tests (`anova_glm()`,
+    `anova_count()`, `anova_bin()`). A binomial's whole-number weights on
+    proportions are its trials, which inflate nothing.
 
   A group whose weights are all zero is named and dropped.
 * **Negative binomial.** A fit that collapses to Poisson is reported as such.
