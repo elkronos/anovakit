@@ -50,9 +50,10 @@
   got <- .collect_conditions(do.call(car::Anova, args))
   raw <- got$value
   if (inherits(raw, "error")) {
+    # car's error messages can span lines; $notes is one bullet per element.
     return(list(table = NULL, raw = NULL, note = sprintf(
       "The Type %s ANOVA table could not be computed: %s",
-      type, conditionMessage(raw))))
+      type, trimws(gsub("[[:space:]]+", " ", conditionMessage(raw))))))
   }
   if (k != 1 && "Sum Sq" %in% names(raw)) raw[["Sum Sq"]] <- raw[["Sum Sq"]] / k^2
   said <- got$said
