@@ -171,7 +171,8 @@ anova_kw <- function(data, response, groups,
   .check_names(groups, "groups")
   .check_columns(data, response, "Response column")
   .check_columns(data, groups, "Grouping column(s)")
-  data <- .as_plain_columns(data, list(Response = response))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups))
   .check_numeric_col(data, response)
   .check_roles(list(`the response` = response, `a grouping variable` = groups))
   .check_conf_level(conf_level)

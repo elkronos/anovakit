@@ -235,6 +235,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   .check_roles(list(`a response` = responses, `a grouping variable` = groups,
                     `a covariate` = covariates))
   data <- .as_plain_columns(data, list(Response = responses,
+                                       `Grouping column` = groups,
                                        Covariate = covariates))
   for (r in responses) .check_numeric_col(data, r)
   if (!is.null(covariates)) {
