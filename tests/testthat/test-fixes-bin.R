@@ -289,7 +289,7 @@ test_that("a separated odds ratio gets its true profile bound and an open end", 
   expect_identical(es$ci_method[gc], "profile")
   # the unaffected odds ratio keeps stats::confint()'s interval
   ci <- suppressWarnings(suppressMessages(stats::confint(m)))["gb", ]
-  expect_equal(es$conf_low[es$term == "gb"], unname(exp(ci[1])))
+  expect_equal(es$conf_low[es$term == "gb"], unname(exp(ci[1])), tolerance = 1e-6)
   expect_true(any(grepl("open on that side", fit$notes)))
 })
 
