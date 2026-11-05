@@ -107,8 +107,9 @@ cases. Each is fixed and has a regression test.
   is named. Omnibus headers name their statistic.
 * **ANCOVA.** Marginal means that are not estimable are left out and named,
   not reported as NA rows. The coefficient-count guard counts observed cells
-  only. Levene's test leaves out cells with one or two observations. A
-  covariate with a large offset is handled correctly. The covariate plot draws
+  only. Levene's test leaves out cells with one or two observations, and
+  cells the model fits exactly (such as a cell with no more observations than
+  coefficients under a slope per group). A covariate with a large offset is handled correctly. The covariate plot draws
   the fitted model's lines. The docs no longer say randomised groups are
   unaffected by the slopes pretest.
 * **Repeated measures.** Residuals under a large offset, zero error variance
