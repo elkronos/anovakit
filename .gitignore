@@ -24,3 +24,4 @@ Thumbs.db
 *~
 .vscode/
 .idea/
+tests/testthat/testthat-problems.rds
