@@ -41,17 +41,20 @@
 #' \code{NA}.
 #'
 #' \strong{Interval cost.} A profile-likelihood interval refits the model
-#' several times for each coefficient, so its cost grows with the number of
-#' coefficients times the cost of a fit: a factor with 60 levels and 5,000
-#' rows takes tens of seconds where Wald intervals take about one, and so does
-#' a model with a few coefficients and a million rows. Left at its default,
-#' \code{ci_method} therefore gives Wald intervals, with a note, when the
-#' model has more than 50 coefficients or the number of coefficients times
-#' the number of rows exceeds 200,000, as \code{\link{anova_glm}} does for
-#' many coefficients; with large groups the two kinds of interval agree
-#' closely. Under separation profile intervals are kept, since Wald ones are
-#' meaningless there, and \code{$notes} says when there are many of them.
-#' Give \code{ci_method = "profile"} explicitly to profile in every case.
+#' several times for each coefficient. The model has only grouping factors,
+#' so the refits run over the data collapsed to one weighted row per cell and
+#' outcome, which has the same likelihood: the number of rows does not add to
+#' the cost, and individual rows and the same data aggregated with counts as
+#' weights get the same intervals. The number of coefficients does: a factor
+#' with 200 levels can take minutes where Wald intervals take about a second.
+#' Left at its default, \code{ci_method} therefore gives Wald intervals, with
+#' a note, when the model has more than 50 coefficients, as
+#' \code{\link{anova_glm}} does. An odds ratio that separation drives to
+#' infinity or to zero still gets its profile-likelihood interval then, since
+#' a Wald interval means nothing there. Wald and profile intervals are close
+#' when every cell has many events and non-events, and can differ noticeably
+#' when events are rare. Give \code{ci_method = "profile"} explicitly to
+#' profile every coefficient.
 #'
 #' \strong{Sparse data.} When fewer than about 5 events or non-events are
 #' expected in a cell under the null hypothesis, the likelihood-ratio omnibus
@@ -94,8 +97,9 @@
 #'   Default \code{0.95}.
 #' @param ci_method Character. \code{"profile"} (default) for
 #'   profile-likelihood intervals, or \code{"wald"}. Profile intervals are
-#'   slow with many coefficients or many rows; left at the default, a large
-#'   model without separation gets Wald intervals instead, with a note (see
+#'   slow with many coefficients; left at the default, a model with more
+#'   than 50 coefficients gets Wald intervals instead, with a note, except
+#'   for odds ratios that separation drives to infinity or zero (see
 #'   Details).
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
@@ -158,7 +162,8 @@
 #'       \code{"(b vs a) x (south vs north)"} is a ratio of odds ratios),
 #'       \code{odds_ratio}, \code{conf_low}, \code{conf_high},
 #'       \code{se_log_or}, \code{statistic}, \code{p_value} and
-#'       \code{ci_method}.}
+#'       \code{ci_method} (\code{"profile"} or \code{"wald"}, row by row:
+#'       see Details).}
 #'     \item{\code{$assumptions}}{\code{dispersion}, which is \code{NA}: the
 #'       Pearson dispersion of a 0/1 response carries no information about
 #'       overdispersion, so it is not reported (a note says why); and
@@ -323,19 +328,21 @@ anova_bin <- function(data, response, groups,
     ci_method <- "wald"
     notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
   }
-  # Profiling refits the model several times per coefficient, so its cost
-  # grows with the number of coefficients and with the number of rows each
-  # refit runs over. Left at the default, a large problem gets Wald intervals
-  # instead, as in anova_glm(), unless separation makes Wald intervals
-  # meaningless; asked for by name, profiling is honoured.
+  # Profiling refits the model several times per coefficient. The refits run
+  # over the data collapsed to one row per cell and outcome (see
+  # .collapsed_bin_fit()), so the number of rows does not add to the cost,
+  # but the number of coefficients does. Left at the default, a model with
+  # many coefficients gets Wald intervals instead, as in anova_glm(), except
+  # for the coefficients separation diverges, whose Wald intervals mean
+  # nothing; asked for by name, profiling is honoured. The note comes before
+  # the cost would have been incurred.
   n_or <- sum(!is.na(stats::coef(trt)))
-  if (ci_default && ci_method == "profile" && length(sep_note) == 0L &&
-      (n_or > .max_profiled_coefficients ||
-         n_or * nrow(d) > .max_profiled_work)) {
-    ci_method <- "wald"
+  if (ci_default && ci_method == "profile" &&
+      n_or > .max_profiled_coefficients) {
+    ci_method <- if (length(sep_note) == 0L) "wald" else "separated"
     notes <- c(notes, sprintf(
-      "The model has %d coefficients and %s rows, and profiling the likelihood of each coefficient refits the model many times, so the odds-ratio intervals are Wald intervals; give ci_method = \"profile\" explicitly to profile them.",
-      n_or, format(nrow(d), big.mark = ",")))
+      "The model has %d coefficients, and profiling the likelihood of each refits the model many times, so the odds-ratio intervals are Wald intervals%s; give ci_method = \"profile\" explicitly to profile them all.",
+      n_or, if (ci_method == "separated") ", except for any odds ratio that separation drives to infinity or zero, whose profile-likelihood interval is computed directly (a Wald interval means nothing there)" else ""))
   }
   rv_trt <- if (is.null(rv$matrix) || !tf$refit) rv$matrix else
     .robust_vcov(trt, vcov_type, freq_weights = freq_rows)$matrix
@@ -653,19 +660,12 @@ anova_bin <- function(data, response, groups,
   out
 }
 
-#' Above this many coefficients times rows, anova_bin()'s default profile
-#' intervals give way to Wald
-#'
-#' Each profile refits the model over every row, so with few coefficients the
-#' cost grows with the number of rows: 4 coefficients and 100,000 rows take
-#' about 7 seconds where Wald intervals take under one, and 1,000,000 rows
-#' about 45 seconds, for intervals that agree with Wald ones to 7 digits.
-#' @noRd
-.max_profiled_work <- 2e5
-
 #' Odds ratios with profile-likelihood or Wald intervals
 #'
 #' @param model a reference-coded binomial GLM.
+#' @param ci_method \code{"profile"}, \code{"wald"}, or \code{"separated"}:
+#'   Wald intervals except for the coefficients separation diverges, which
+#'   get their profile intervals computed directly.
 #' @param separated whether separation was detected. A coefficient it drives
 #'   to infinity then gets its profile interval computed directly.
 #' @noRd
@@ -673,10 +673,14 @@ anova_bin <- function(data, response, groups,
                          vcov_matrix = NULL, separated = FALSE) {
   ct <- .coef_table(model, vcov_matrix)
   notes <- character(0)
+  # Profiles are computed on the same model fitted to the data collapsed to
+  # one row per cell and outcome: the likelihood, and so every profile, is
+  # the same, and the refits no longer run over every row.
+  pm <- if (ci_method %in% c("profile", "separated")) .collapsed_bin_fit(model)
   if (ci_method == "profile") {
     ci <- tryCatch(
       suppressWarnings(suppressMessages(
-        stats::confint(model, level = conf_level))),
+        stats::confint(pm, level = conf_level))),
       error = function(e) e)
     if (inherits(ci, "error")) {
       notes <- c(notes, sprintf(
@@ -716,11 +720,13 @@ anova_bin <- function(data, response, groups,
   # steps scaled by its enormous standard error, and returns bounds that are
   # meaningless on both sides. A standard error above 10 on the log-odds scale
   # does not occur for a coefficient the data identify.
-  if (method_used == "profile" && separated) {
+  method <- rep(method_used, nrow(ct))
+  if ((method_used == "profile" || ci_method == "separated") && separated) {
     flag <- which(ct$term != "(Intercept)" & is.finite(ct$estimate) &
                     is.finite(ct$se) & ct$se > 10)
+    method[flag] <- "profile"
     for (k in flag) {
-      b <- .separated_profile(model, ct$term[k], conf_level)
+      b <- .separated_profile(pm, ct$term[k], conf_level)
       lo[k] <- b[1L]
       hi[k] <- b[2L]
     }
@@ -745,12 +751,55 @@ anova_bin <- function(data, response, groups,
     se_log_or  = ct$se,
     statistic  = ct$statistic,
     p_value    = ct$p_value,
-    ci_method  = method_used,
+    ci_method  = method,
     stringsAsFactors = FALSE, row.names = NULL
   )
   out <- out[out$term != "(Intercept)", , drop = FALSE]
   row.names(out) <- NULL
   list(table = out, note = notes)
+}
+
+#' The same logistic model fitted to its data collapsed by cell and outcome
+#'
+#' The model has only grouping factors, so rows with the same cell and the
+#' same outcome differ in nothing but their weight, and the binomial
+#' log-likelihood sum(w * log p) is unchanged when they are merged into one
+#' row carrying the sum of their weights (whole or not). The collapsed fit
+#' therefore has the same coefficients, standard errors, deviance and profile
+#' likelihoods, at a cost set by the number of cells rather than of rows. The
+#' model itself is returned when collapsing would not save much, when it has
+#' an offset, or when the refit does not reproduce it.
+#' @noRd
+.collapsed_bin_fit <- function(model) {
+  mf <- model$model
+  if (is.null(mf) || !is.null(stats::model.offset(mf))) return(model)
+  w <- stats::model.weights(mf)
+  if (is.null(w)) w <- rep(1, nrow(mf))
+  keep <- setdiff(names(mf), "(weights)")
+  key <- do.call(paste, c(lapply(mf[keep], function(x) as.integer(factor(x))),
+                          sep = "\r"))
+  first <- !duplicated(key)
+  if (sum(first) > 0.5 * nrow(mf)) return(model)
+  agg <- mf[first, keep, drop = FALSE]
+  wsum <- rowsum(as.numeric(w), key, reorder = FALSE)
+  fit <- tryCatch(suppressWarnings(do.call(stats::glm, list(
+    formula = stats::formula(model), family = stats::family(model),
+    data = agg, weights = as.numeric(wsum[key[first], 1L]),
+    contrasts = model$contrasts, control = model$control))),
+    error = function(e) NULL)
+  if (is.null(fit)) return(model)
+  b0 <- stats::coef(model)
+  b1 <- stats::coef(fit)
+  se0 <- sqrt(pmax(diag(stats::vcov(model)), 0))
+  ok <- identical(names(b0), names(b1)) && identical(is.na(b0), is.na(b1)) &&
+    abs(fit$deviance - model$deviance) <= 1e-6 * max(1, model$deviance)
+  if (ok) {
+    # Coefficients that separation diverges stop wherever the iterations did;
+    # the others are the same estimates.
+    id <- !is.na(b0) & is.finite(se0[names(b0)]) & se0[names(b0)] <= 10
+    ok <- isTRUE(all.equal(unname(b0[id]), unname(b1[id]), tolerance = 1e-6))
+  }
+  if (ok) fit else model
 }
 
 #' The part of a separation note about intervals open on both sides

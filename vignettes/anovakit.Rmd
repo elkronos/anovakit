@@ -123,8 +123,9 @@ bin$effect_sizes
 bin$emmeans
 ```
 
-Odds-ratio intervals are profile-likelihood by default; `ci_method = "wald"`
-switches them. Separation, which makes Wald intervals meaningless while `glm()`
+Odds-ratio intervals are profile-likelihood by default (for a model with more
+than 50 coefficients, Wald intervals except where separation needs profiling,
+with a note); `ci_method = "wald"` switches them. Separation, which makes Wald intervals meaningless while `glm()`
 still reports convergence, is detected and named in `$notes`.
 
 ```{r bin-separated}

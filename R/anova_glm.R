@@ -398,9 +398,13 @@ anova_glm <- function(data, response, groups,
       }))
   }
   if (identical(test_statistic, "F") && fam_name %in% c("poisson", "binomial")) {
-    notes <- c(notes, sprintf(
+    # With a robust covariance the coefficient table, the marginal means and
+    # the comparisons assume no dispersion, so they are not at odds with it.
+    notes <- c(notes, if (is.null(rv$matrix)) sprintf(
       "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. $effect_sizes, the coefficient table, $emmeans and $posthoc still assume a dispersion of 1; family = \"quasi%s\" makes all of them consistent with the F table.",
-      fam_name, .dispersion(model), fam_name))
+      fam_name, .dispersion(model), fam_name) else sprintf(
+      "test_statistic = \"F\" on a %s fit is a quasi-likelihood test: car::Anova() estimates the dispersion from the Pearson statistic (%.3g) instead of fixing it at 1. The coefficient table, $emmeans and $posthoc use the robust (%s) covariance, which does not assume a dispersion of 1 either.",
+      fam_name, .dispersion(model), vcov_type))
   }
 
   ## Coefficient intervals ----------------------------------------------------
@@ -562,9 +566,15 @@ anova_glm <- function(data, response, groups,
   if (same) {
     return("With two cells the single pairwise comparison is the omnibus test; no multiplicity adjustment was applied.")
   }
-  stat <- switch(test_statistic, LR = "likelihood-ratio", F = "F", Wald = "Wald")
-  sprintf("With two cells there is a single pairwise comparison, so no multiplicity adjustment was applied. It is a Wald test%s and can differ from the omnibus %s test.",
-          if (robust) sprintf(" with the robust (%s) covariance", vcov_type) else "",
+  # Name what sets the two apart: with an estimated dispersion the comparison
+  # is a t test on the residual degrees of freedom, whatever the omnibus test.
+  est <- .estimates_dispersion(model)
+  stat <- switch(test_statistic, LR = "likelihood-ratio",
+                 F = "F", Wald = "Wald chi-square")
+  sprintf("With two cells there is a single pairwise comparison, so no multiplicity adjustment was applied. It is a %s %s and can differ from the omnibus %s test.",
+          if (est) "t test" else "Wald z test",
+          if (robust) sprintf("with the robust (%s) covariance", vcov_type) else
+            if (est) "with the estimated dispersion" else "with the model covariance",
           stat)
 }
 
