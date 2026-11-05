@@ -99,9 +99,11 @@
 #' Counts on a large level with little variation (1e9 varying by a few
 #' units) are beyond what the Poisson and negative binomial deviances can
 #' resolve in double precision. A likelihood-ratio or F test that rounding
-#' could move by more than a fifth of its size or of its degrees of freedom,
+#' could move by more than a fifth of its size or of its size under the
+#' null hypothesis (its degrees of freedom for a chi-square, 1 for an F),
 #' whichever is larger, is then NA, and one it could move by more than 2\%
-#' of that gets a note; \code{test_statistic = "Wald"}, which does not use
+#' of that gets a note (a negative statistic within its rounding error is
+#' shown as 0, with p = 1); \code{test_statistic = "Wald"}, which does not use
 #' the deviance, can still test them.
 #'
 #' \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
@@ -511,7 +513,8 @@ anova_count <- function(data, response, groups,
   # absorbs the average inflation but not the unevenness. The kept Poisson
   # model's likelihood-ratio and Wald tests get this from
   # .choose_count_model() above.
-  if (!is.null(wi_at) && is.null(rv$matrix) &&
+  robust_omnibus <- !is.null(rv$matrix) && test_statistic == "Wald"
+  if (!is.null(wi_at) && !robust_omnibus &&
       (model_type != "poisson" || test_statistic == "F")) {
     phi_x <- if (model_type == "negbin") 1 else dispersion
     if (test_statistic == "F" || model_type == "quasipoisson") {

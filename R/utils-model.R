@@ -854,7 +854,13 @@
     # small ones; but a residual within a few dozen units in the last place
     # of the response's overall level is rounding error whatever its row
     # (a Gaussian group at 0 beside groups at 1e9 is fitted to about 1e-7).
-    floor_ <- 32 * .Machine$double.eps * max(abs(y))
+    # (Only where the fit is linear in the response -- identity link,
+    # constant variance -- is its rounding set by the overall level; a log
+    # link fits each group on its own scale.)
+    gauss_like <- identical(famobj$link, "identity") &&
+      (identical(fam, "gaussian") ||
+         (identical(fam, "quasi") && identical(famobj$varfun, "constant")))
+    floor_ <- if (gauss_like) 32 * .Machine$double.eps * max(abs(y)) else 0
     rel_of <- function(mu) {
       res <- abs(y - mu)
       scl <- pmax(abs(y), abs(mu))
@@ -866,8 +872,11 @@
     # convergence (about 3e-12 for a quasi-Poisson fit near 1), not to
     # rounding: when the residuals are that small, the fit is pushed to full
     # convergence before it is judged. Real variation stays where it is.
-    gauss_id <- identical(fam, "gaussian") && identical(famobj$link, "identity")
-    if (!gauss_id && isTRUE(rel_i > 1e-13 && rel_i <= 1e-9)) {
+    # The trigger is wide (1e-4): glm() stops by a change in deviance
+    # relative to the deviance plus 0.1, so on a small level an exact
+    # response can be left at 1e-5. The refit's tolerance is made relative
+    # to the deviance for the same reason.
+    if (!gauss_like && isTRUE(rel_i > 1e-13 && rel_i <= 1e-4)) {
       X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
       cf <- stats::coef(model)
       if (!is.null(X) && nrow(X) == length(keep)) {
@@ -878,7 +887,9 @@
           start = cf[!is.na(cf)],
           offset = if (length(o) == length(keep)) o else NULL,
           family = famobj,
-          control = list(epsilon = 1e-15, maxit = 200, trace = FALSE))),
+          control = list(epsilon = 1e-15 * min(1, model$deviance /
+                                                  (model$deviance + 0.1)),
+                         maxit = 100, trace = FALSE))),
           error = function(e) NULL)
         if (!is.null(fr) && all(is.finite(fr$fitted.values))) {
           mu <- as.numeric(fr$fitted.values)[keep]
@@ -902,9 +913,11 @@
     } else if (!any(bnd) && isTRUE(rel_i <= 1e-10) &&
                .constant_within_cells(model, keep, off)) {
       what <- "the response is constant within every design cell and every fitted value equals it to rounding error"
-    } else if (!any(bnd) && isTRUE(rel_i <= 1e-13)) {
+    } else if (!any(bnd) && isTRUE(if (gauss_like) rel_i == 0 else rel_i <= 1e-13)) {
       # The fit reproduces every response to the rounding error of the fit
-      # itself (an exactly additive two-factor response, say): the Pearson
+      # itself (an exactly additive two-factor response, say) -- for a fit
+      # linear in the response, to the floor above; otherwise to 1e-13 of
+      # each row's size: the Pearson
       # residuals, and so the estimated dispersion, are rounding error. Real
       # variation of even 1e-12 of the response's level (counts of 1e12
       # differing by a few) is above this; whether the deviance can resolve
@@ -923,10 +936,10 @@
 #'
 #' A design cell is a set of analysed rows (\code{keep}) that share their row
 #' of the model matrix and their offset, so the model cannot tell them apart.
-#' The response is constant within a cell when its values agree to within
-#' 1e-13 of their size: a few hundred units in the last place, which a
-#' constant entered or computed in double precision meets and real variation,
-#' even 1e-3 on a level of 1e10, does not. FALSE unless the model has a
+#' The response is constant within a cell when its values agree to within a
+#' few units in the last place, which a constant entered or computed in
+#' double precision meets and real variation, even 1 on a level of 1e14,
+#' does not. FALSE unless the model has a
 #' coefficient for every cell and some cell has two rows or more.
 #' @noRd
 .constant_within_cells <- function(model, keep, off = NULL) {
@@ -947,7 +960,7 @@
   if (model$rank < max(cell) || !any(tabulate(cell) >= 2L)) return(FALSE)
   lo <- stats::ave(y, cell, FUN = min)
   hi <- stats::ave(y, cell, FUN = max)
-  all(hi - lo <= 1e-13 * pmax(abs(lo), abs(hi)))
+  all(hi - lo <= 8 * .Machine$double.eps * pmax(abs(lo), abs(hi)))
 }
 
 #' How precisely a GLM's deviance is computed
@@ -1028,8 +1041,8 @@
 #' Pearson dispersion (and, for F, the term's degrees of freedom) when car
 #' scales by one. The bound is about three times the error seen in practice.
 #' A test whose statistic is uncertain by more than 20\% of itself or of its
-#' degrees of freedom, whichever is larger (the degrees of freedom are the
-#' statistic's size under the null hypothesis), cannot be read, and is made NA
+#' size under the null hypothesis, whichever is larger (its degrees of
+#' freedom for a chi-square, 1 for an F), cannot be read, and is made NA
 #' with a note; between 2\% and 20\% the test is kept and a note gives the
 #' uncertainty. A negative statistic within its rounding error is shown as 0,
 #' with p = 1. Families whose deviance does not cancel (Gaussian, inverse
@@ -1064,7 +1077,9 @@
   # dispersion-based statistic, and so its error, by k (.freq_weight_anova()).
   err <- k * err_d / phi / if (identical(stat, "F")) dfs else 1
   orig <- k * tab$statistic
-  scale_ <- pmax(abs(orig), dfs)
+  # The statistic's size under the null hypothesis: its degrees of freedom
+  # for a chi-square, 1 for an F (already divided by them).
+  scale_ <- pmax(abs(orig), if (identical(stat, "F")) 1 else dfs)
   bad <- eff & err > 0.2 * scale_
   shaky <- eff & !bad & err > 0.02 * scale_
   # A negative statistic within its rounding error is rounding error: it is
@@ -1397,4 +1412,60 @@
     by = sprintf("by %s (the weights are used as given and are not frequencies; computed from the sandwich covariance, assuming the weights are not inverse variances, which would not inflate them)", fac),
     size = sprintf("a nominal 5%% test of %s rejects roughly %.0f%% of true null hypotheses",
                    worst$term, 100 * worst$size))
+}
+
+#' One note on what unequal weights that are not frequencies do to the tests
+#'
+#' Shared by \code{\link{anova_glm}} and \code{\link{anova_bin}}, so that the
+#' note always describes the test that \code{$anova} reports: none when that
+#' is a robust Wald test (it does not rest on the weights' reading); the F
+#' test's own inflation when an estimated dispersion divides it (that
+#' removes the average inflation but not the unevenness); otherwise the
+#' likelihood-ratio and Wald tests'. The response's own dispersion phi0 is 1
+#' for a 0/1 response and a negative binomial, and the Pearson dispersion of
+#' the weighted fit over the mean weight otherwise. No note is given when no
+#' test is inflated to a size of 7.5\% or more.
+#' @param wnum the weights of the analysed rows.
+#' @param binary is the response 0/1?
+#' @param robust the HC type in use, or \code{NULL}.
+#' @return list with \code{note} and \code{applies} (the weights are unequal
+#'   sampling weights, so the caller's overdispersion note, which assumes
+#'   otherwise, should give way).
+#' @noRd
+.weight_note <- function(model, wnum, weights, binary, test_statistic, robust,
+                         type) {
+  out <- list(note = character(0), applies = FALSE)
+  wp <- wnum[wnum > 0]
+  if (length(wp) < 2L || stats::var(wp) <= 1e-4 * mean(wp)^2) return(out)
+  out$applies <- TRUE
+  if (!is.null(robust) && identical(test_statistic, "Wald")) return(out)
+  fam <- tryCatch(stats::family(model)$family, error = function(e) "")
+  disp_w <- .dispersion(model)
+  phi0 <- if (binary || startsWith(fam, "Negative Binomial")) 1 else
+    if (isTRUE(is.finite(disp_w) && disp_w > 0)) disp_w / mean(wp) else NA_real_
+  f_kind <- identical(test_statistic, "F") || .estimates_dispersion(model)
+  phi_t <- if (f_kind) {
+    if (isTRUE(is.finite(disp_w) && disp_w > 0)) phi0 / disp_w else NA_real_
+  } else phi0
+  if (!is.finite(phi_t)) return(out)
+  wi <- .weight_inflation(model, phi_t, type)
+  if (is.null(wi) || !isTRUE(max(wi$size) >= 0.075)) return(out)
+  wt <- .weight_inflation_text(wi)
+  out$note <- sprintf(
+    "The weights in `%s` are unequal and not frequencies, so the %s in $anova %s inflated %s: %s.%s",
+    weights,
+    if (f_kind) "F tests" else "likelihood-ratio and Wald tests",
+    "are", wt$by, wt$size,
+    if (is.null(robust)) {
+      if (f_kind && !identical(test_statistic, "F")) {
+        " The estimated dispersion removes the average inflation, not that of unequal weights, and the standard errors elsewhere are affected alike; vcov_type = \"HC3\" gives ones that are not."
+      } else if (f_kind) {
+        " The F test's estimated dispersion removes the average inflation, not that of unequal weights."
+      } else {
+        " The standard errors in the other tables are too small for the same reason; vcov_type = \"HC3\" gives ones that are not."
+      }
+    } else {
+      sprintf(" The robust (%s) standard errors in the other tables do not depend on this, and test_statistic = \"Wald\" gives an omnibus test that does not either.", robust)
+    })
+  out
 }
