@@ -658,29 +658,27 @@ anova_count <- function(data, response, groups,
 #'
 #' Whether an empty combination of levels is estimable depends on the model:
 #' the full factorial cannot estimate it, an additive model extrapolates it
-#' from the main effects.
+#' from the main effects. The additive case is noted by \code{.emm_block()},
+#' which every model-based function shares.
 #' @noRd
 .sparse_cell_note <- function(d, groups, response, interaction = FALSE,
                               weights = NULL) {
-  levs <- lapply(groups, function(g) levels(droplevels(as.factor(d[[g]]))))
-  n_possible <- prod(lengths(levs))
   cell <- .cell_vector(d, groups)
-  n_observed <- nlevels(cell)
   notes <- character(0)
-  empty <- n_possible - n_observed
-  if (empty > 0L) {
+  ec <- .empty_cells(d, groups)
+  # Under an additive model .emm_block() names the empty combinations, with
+  # what they mean for the per-factor means; every model function shares it.
+  if (length(ec$labels) > 0L && !.is_additive(interaction)) {
     full <- isTRUE(interaction) ||
       (is.numeric(interaction) && interaction >= length(groups))
     notes <- c(notes, sprintf(
-      "%d of the %d possible group combination(s) contain no observations; %s",
-      empty, n_possible,
-      if (.is_additive(interaction)) {
-        "the additive model still estimates them from the main effects, so marginal means that average over them rely on there being no interaction."
-      } else if (full) {
+      "%d of the %d possible group combination(s) contain no observations; %s They are: %s.",
+      length(ec$labels), ec$n_possible,
+      if (full) {
         "contrasts involving them are not estimable."
       } else {
         "they are estimable only where the lower-order terms determine them (see the notes on the marginal means)."
-      }))
+      }, .abbrev(ec$labels)))
   }
   w <- if (is.null(weights)) 1 else d[[weights]]
   events <- tapply(w * d[[response]], cell, sum)
