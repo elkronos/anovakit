@@ -38,6 +38,15 @@
   # left alone and still refused.
   k <- .lm_rescale_factor(model)
   mod <- if (k != 1) .rescale_lm(model, k) else model
+  # A Wald chi-square test of a fixed-dispersion GLM uses only the
+  # coefficients and their covariance, so it stays valid on a saturated fit
+  # (see .check_model_size()); car's linearHypothesis() refuses residual df 0
+  # all the same, and is given infinite residual df, which a chi-square test
+  # does not read.
+  if (identical(test_statistic, "Wald") && inherits(mod, "glm") &&
+      !.estimates_dispersion(mod) && isTRUE(stats::df.residual(mod) < 1)) {
+    mod$df.residual <- Inf
+  }
   args <- list(mod = mod, type = if (type == "III") 3L else 2L)
   if (!is.null(test_statistic)) args$test.statistic <- test_statistic
   # A covariance for the coefficients rescales with them (by k^2), so Wald
@@ -783,12 +792,17 @@
 #' some group is fitted only in the limit: glm() stops with fitted values of
 #' about 1e-11 there, a residual deviance of about 1e-11 of the null deviance
 #' (the deviance of such a cell is linear, not quadratic, in its fitted
-#' value), and F statistics of 1e12 to 1e17. The fit is therefore also exact
-#' when every fitted value equals the response to within 1e-6 of its own
-#' size, or, where the response is 0, to within 1e-6 of the response's range.
-#' Measuring each residual against its own row keeps a constant group of
-#' large values (1e7, say) from hiding real variation in a group of small
-#' ones.
+#' value), and F statistics of 1e12 to 1e17. When some response is at such a
+#' boundary (0, or 1 for a binomial family) the fit is therefore also exact
+#' when every boundary value is fitted to within 1e-6 of the response's range
+#' and every other value to within 1e-10 of its own size. Measuring each
+#' interior residual against its own row keeps a constant group of large
+#' values (1e7, say) from hiding real variation in a group of small ones.
+#' Interior rows of such a fit are fitted to rounding error (about 1e-13 of
+#' their size), so the 1e-10 tolerance does not refuse a response with a large
+#' level and small but real variation (epoch seconds varying by minutes, say),
+#' which lm() and car resolve; and a fit with no response at a boundary is
+#' judged on its deviance alone.
 #' @return \code{NULL} when the fit leaves residual variation; otherwise the
 #'   error message.
 #' @noRd
@@ -818,18 +832,25 @@
     what <- sprintf("its residual deviance is %s of the null deviance, which is rounding error",
                     format(signif(dev / dev0, 3)))
   } else if (length(mu) == length(y) && all(is.finite(mu))) {
-    # Each residual is measured against its own row's size, so that a
-    # constant group of large values cannot hide real variation in a group of
-    # small ones. Only a response of exactly 0, which glm() fits by about
-    # 1e-11 in the limit, is measured against the response's range instead.
+    # Only a fit with a response at a boundary of its family (0, or 1 for a
+    # proportion), which glm() fits by about 1e-11 in the limit, needs more
+    # than the deviance rule. Those rows are measured against the response's
+    # range; every other row against its own size, so that a constant group
+    # of large values cannot hide real variation in a group of small ones,
+    # and to a tolerance (1e-10) that rounding error meets but real variation
+    # on a large level (1.7e9 +- 300, say) does not.
+    fam <- tryCatch(stats::family(model)$family, error = function(e) "")
+    binom <- fam %in% c("binomial", "quasibinomial")
+    bnd <- y == 0 | (binom & y == 1)
     spread <- diff(range(y))
-    if (spread == 0) spread <- max(abs(y))
-    scale <- ifelse(y == 0, spread, pmax(abs(y), abs(mu)))
-    if (spread > 0 && all(scale > 0)) {
-      rel <- max(abs(y - mu) / scale)
-      if (rel <= 1e-6) {
-        what <- sprintf("every fitted value equals the response to within %s of its own size (of the response's range where the response is 0), which is rounding error",
-                        format(signif(rel, 3)))
+    if (any(bnd) && spread > 0) {
+      res <- abs(y - mu)
+      rel_b <- max(res[bnd]) / spread
+      rel_i <- if (any(!bnd)) max(res[!bnd] / pmax(abs(y), abs(mu))[!bnd]) else 0
+      if (rel_b <= 1e-6 && rel_i <= 1e-10) {
+        what <- sprintf("every fitted value equals the response to within %s of the response's range where the response is %s, and to within %s of its own size elsewhere, which is rounding error",
+                        format(signif(rel_b, 3)), if (binom) "0 or 1" else "0",
+                        format(signif(rel_i, 3)))
       }
     }
   }

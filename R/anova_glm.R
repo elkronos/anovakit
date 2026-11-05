@@ -32,7 +32,11 @@
 #' family with \code{test_statistic = "F"}) divides every test statistic by
 #' the residual variation. When the response is constant, or constant within
 #' every group, there is none, and the function stops with an error instead
-#' of reporting F statistics that are ratios of rounding errors.
+#' of reporting F statistics that are ratios of rounding errors. That
+#' includes a frequency table with one row per group, which stands for a
+#' response constant within every group. A response with a large level and
+#' small but real variation (epoch seconds varying by minutes, say) is not an
+#' exact fit and gets its F tests.
 #'
 #' \strong{Convergence.} \code{stats::glm()} judges convergence by a change
 #' in deviance relative to the deviance plus 0.1, so a fit whose deviance is
@@ -366,15 +370,37 @@ anova_glm <- function(data, response, groups,
   if (inherits(model, "error")) {
     .stopf("The model could not be fitted: %s", conditionMessage(model))
   }
+  # A frequency table (whole-number weights, some above 1) of counts or of a
+  # 0/1 response holds one row per distinct outcome. glm() counts residual
+  # degrees of freedom in rows; the data the table stands for have them in
+  # observations. The Pearson statistic and the deviance are already those of
+  # the expanded data, so with the residual degrees of freedom corrected the
+  # dispersion, F tests, t intervals and marginal means all equal the expanded
+  # data's, as in anova_count(). That holds for every family whose likelihood
+  # treats a weight as a count of identical observations -- the quasi-binomial
+  # and Negative Binomial(theta) fits estimate their dispersion just as
+  # quasi-Poisson does. A Gaussian or quasi() fit reads weights as precision
+  # weights, and keeps the row as the unit.
+  binary_y <- fam_name %in% c("binomial", "quasibinomial") &&
+    all(model$y %in% c(0, 1))
+  freq_n <- if (.frequency_weights(d, weights) &&
+                (fam_name %in% c("poisson", "quasipoisson") || binary_y ||
+                   grepl("^Negative Binomial", fam_name))) {
+    sum(d[[weights]])
+  } else NULL
   # With an estimated dispersion (or car's F test, which estimates one for
   # any family) an exact fit leaves only rounding error to divide by. A
   # saturated model, with no residual degrees of freedom at all, is reported
   # with NA inference instead (see .check_model_size() and .saturated_na()).
+  # The degrees of freedom are those the tests use: in observations under
+  # frequency weights, where one row per group is saturated in rows but is,
+  # in the expanded data, a response constant within every group.
   # Checked again after the refit below, which can take a fit that glm()
   # stopped short of exact to one that is.
   check_exact <- function(model) {
+    dfr <- if (is.null(freq_n)) stats::df.residual(model) else freq_n - model$rank
     if ((.estimates_dispersion(model) || identical(test_statistic, "F")) &&
-        isTRUE(stats::df.residual(model) >= 1)) {
+        isTRUE(dfr >= 1)) {
       exact <- .glm_exact_fit_message(model, response)
       if (!is.null(exact)) .stopf("%s", exact)
     }
@@ -413,24 +439,6 @@ anova_glm <- function(data, response, groups,
       "The fitted model's deviance (%s) exceeds that of the intercept-only model (%s), which a maximum-likelihood fit cannot do: the fitting algorithm did not find the maximum, and every result below is unreliable.",
       format(signif(model$deviance, 6)), format(signif(model$null.deviance, 6))))
   }
-  # A frequency table (whole-number weights, some above 1) of counts or of a
-  # 0/1 response holds one row per distinct outcome. glm() counts residual
-  # degrees of freedom in rows; the data the table stands for have them in
-  # observations. The Pearson statistic and the deviance are already those of
-  # the expanded data, so with the residual degrees of freedom corrected the
-  # dispersion, F tests, t intervals and marginal means all equal the expanded
-  # data's, as in anova_count(). That holds for every family whose likelihood
-  # treats a weight as a count of identical observations -- the quasi-binomial
-  # and Negative Binomial(theta) fits estimate their dispersion just as
-  # quasi-Poisson does. A Gaussian or quasi() fit reads weights as precision
-  # weights, and keeps the row as the unit.
-  binary_y <- fam_name %in% c("binomial", "quasibinomial") &&
-    all(model$y %in% c(0, 1))
-  freq_n <- if (.frequency_weights(d, weights) &&
-                (fam_name %in% c("poisson", "quasipoisson") || binary_y ||
-                   grepl("^Negative Binomial", fam_name))) {
-    sum(d[[weights]])
-  } else NULL
   # Returned as $model: anova(), update() and drop1() refit it, and every
   # refit counts its residual degrees of freedom in rows again, so a stored
   # glm with the observation count would be compared with refits on another
@@ -867,7 +875,7 @@ anova_glm <- function(data, response, groups,
     why <- if (grepl("^quasi", fname)) {
       "a quasi family has no likelihood. The deviance explained is reported instead"
     } else {
-      sprintf("the log-likelihood of a %s family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead", fname)
+      sprintf("the log-likelihood of the %s family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead", fname)
     }
     return(list(value = NA_real_, note = sprintf(
       "McFadden's pseudo R squared is not reported (NA): %s.", why)))
