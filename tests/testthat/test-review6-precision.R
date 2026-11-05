@@ -261,9 +261,69 @@ test_that("binomial sampling weights and quasi-Poisson weights get the inflation
   d$c <- withr::with_seed(3, stats::rpois(300, 5))
   gq <- anova_glm(d, "c", "g", family = quasipoisson(), weights = "w", plots = FALSE,
                   posthoc = FALSE)
-  expect_true(any(grepl("so the F tests are inflated", gq$notes, fixed = TRUE)))
+  expect_true(any(grepl("so the F tests in $anova are inflated", gq$notes, fixed = TRUE)))
   d$nt <- withr::with_seed(4, sample(c(5, 10, 200), 300, TRUE))
   d$p <- withr::with_seed(5, stats::rbinom(300, d$nt, 0.3)) / d$nt
   t <- anova_glm(d, "p", "g", family = binomial(), weights = "nt", plots = FALSE, posthoc = FALSE)
   expect_false(any(grepl("sandwich", t$notes, fixed = TRUE)))
+})
+
+test_that("an F test is judged on the F scale: same verdict as the LR test on the same deviance", {
+  g <- factor(rep(letters[1:6], each = 6))
+  d <- withr::with_seed(3, data.frame(g = g, y = 5e7 + round(stats::rnorm(36, 0, 3))))
+  fF <- anova_glm(d, "y", "g", family = Gamma("log"), plots = FALSE, posthoc = FALSE)
+  fL <- anova_glm(d, "y", "g", family = Gamma("log"), test_statistic = "LR",
+                  plots = FALSE, posthoc = FALSE)
+  expect_true(is.na(fF$anova$statistic[1]))
+  expect_true(is.na(fL$anova$statistic[1]))
+})
+
+test_that("exact multiplicative quasi-Poisson responses at small levels are refused", {
+  d <- expand.grid(a = factor(1:2), b = factor(1:3), rep = 1:2)
+  d$y <- c(1, 2)[d$a] * c(1, 3, 7)[d$b] * 1e-3
+  expect_error(anova_glm(d, "y", c("a", "b"), family = quasipoisson(), plots = FALSE),
+               "fits response `y` exactly")
+  d2 <- expand.grid(a = gl(3, 1), b = gl(4, 1))
+  d2$y <- 1e-6 * c(1, 2.5, 7)[d2$a] * c(1, 1.3, 0.4, 3)[d2$b]
+  expect_error(anova_glm(d2, "y", c("a", "b"), family = quasipoisson(), plots = FALSE),
+               "fits response `y` exactly")
+})
+
+test_that("Gaussian integer variation on a level of 1e14 is analysed (centred lm)", {
+  d <- data.frame(g = gl(2, 3), y = 1e14 + c(0, 1, 2, 5, 6, 8))
+  ref <- stats::anova(stats::lm(I(y - 1e14) ~ g, d))[["F value"]][1]
+  expect_equal(anova_glm(d, "y", "g", plots = FALSE)$anova$statistic[1], ref, tolerance = 0.01)
+})
+
+test_that("equal group means keep a deviance explained of 0", {
+  d <- data.frame(g = rep(c("ctrl", "trt"), each = 5), y = c(10, 14, 9, 15, 12, 11, 13, 12, 16, 8))
+  f <- anova_glm(d, "y", "g", family = poisson(), plots = FALSE, posthoc = FALSE)
+  m <- stats::glm(y ~ g, stats::poisson(), d)
+  expect_equal(f$effect_sizes$estimate[f$effect_sizes$measure == "deviance_explained"],
+               1 - stats::deviance(m) / m$null.deviance, tolerance = 1e-8)
+})
+
+test_that("weight notes describe the reported test: none beside a robust Wald test", {
+  aq <- stats::na.omit(airquality)
+  aq$Month <- factor(aq$Month); aq$hot <- as.integer(aq$Temp > 80)
+  aq$w <- withr::with_seed(5, stats::runif(nrow(aq), 0.5, 2))
+  rw <- anova_glm(aq, "hot", "Month", family = binomial(), weights = "w",
+                  test_statistic = "Wald", vcov_type = "HC3", plots = FALSE)
+  expect_false(any(grepl("are unequal and not frequencies", rw$notes, fixed = TRUE)))
+  rb <- anova_bin(aq, "hot", "Month", weights = "w", test_statistic = "Wald",
+                  vcov_type = "HC3", plots = FALSE)
+  expect_false(any(grepl("are unequal and not frequencies", rb$notes, fixed = TRUE)))
+  d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 200)))
+  d$w <- withr::with_seed(11, stats::rexp(600) + 0.2)
+  d$y <- withr::with_seed(12, stats::rpois(600, 4))
+  q <- anova_glm(d, "y", "g", family = quasipoisson(), weights = "w",
+                 test_statistic = "Wald", vcov_type = "HC3", plots = FALSE)
+  expect_false(any(grepl("are unequal and not frequencies", q$notes, fixed = TRUE)))
+  # trial counts that are not whole numbers are still trials on proportions
+  es <- esoph
+  for (v in c("agegp", "alcgp", "tobgp")) es[[v]] <- factor(es[[v]], ordered = FALSE)
+  es$n <- es$ncases + es$ncontrols; es$prop <- es$ncases / es$n; es$wn <- es$n + 0.5
+  fe <- anova_glm(es, "prop", c("agegp", "alcgp", "tobgp"), family = binomial(),
+                  weights = "wn", plots = FALSE, posthoc = FALSE)
+  expect_false(any(grepl("sandwich", fe$notes, fixed = TRUE)))
 })

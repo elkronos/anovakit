@@ -172,7 +172,9 @@ test_that("exactfit-dispersion-F3: anova_count's inflation note describes the te
   expect_true(any(grepl(fac, kc$notes, fixed = TRUE)))
   expect_true(any(grepl(sprintf("Pearson residuals (%.2f)", disp), kc$notes, fixed = TRUE)))
   expect_true(any(grepl(s1, kc$notes, fixed = TRUE)))
-  expect_true(any(grepl(sprintf("Pearson dispersion is %.2f", disp), kg$notes, fixed = TRUE)))
+  # anova_glm gives the weight note in place of its overdispersion note,
+  # whose Pearson dispersion mixes the weights with the response's own
+  expect_false(any(grepl(sprintf("Pearson dispersion is %.2f", disp), kg$notes, fixed = TRUE)))
   expect_true(any(grepl(fac, kg$notes, fixed = TRUE)))
   expect_true(any(grepl(s1, kg$notes, fixed = TRUE)))
 })

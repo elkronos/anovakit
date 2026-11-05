@@ -40,9 +40,11 @@
 #' negative binomial deviances, however, are computed as differences of
 #' nearly equal terms, and on such a level rounding can swamp the change in
 #' deviance a test is built on. A likelihood-ratio or F test that rounding
-#' could move by more than a fifth of its size or of its degrees of freedom,
+#' could move by more than a fifth of its size or of its size under the
+#' null hypothesis (its degrees of freedom for a chi-square, 1 for an F),
 #' whichever is larger, is then NA, and one it could move by more than 2\%
-#' of that gets a note; \code{$notes} says which, and
+#' of that gets a note; a negative statistic within its rounding error is
+#' shown as 0, with p = 1; \code{$notes} says which, and
 #' \code{test_statistic = "Wald"}, which does not use the deviance, can still
 #' test them.
 #'
@@ -438,7 +440,14 @@ anova_glm <- function(data, response, groups,
   }
   notes <- c(notes, .said_note(fitted$said, "stats::glm()"))
   if (!isTRUE(model$converged)) {
-    notes <- c(notes, "The model did not converge; every result below is unreliable.")
+    # glm() tests convergence by the change in deviance; when the deviance is
+    # itself mostly rounding error (a large level, see .deviance_rounding())
+    # that change never settles, although the estimates have.
+    rnd_c <- .deviance_rounding(model)
+    notes <- c(notes, if (isTRUE(attr(rnd_c, "cancels")) &&
+                          isTRUE(as.numeric(rnd_c) >= 0.01 * abs(model$deviance))) {
+      "stats::glm() reported that the fit did not converge, but its deviance is at the level of its own rounding error (the response varies little relative to its level), where glm()'s convergence test, a change in deviance, cannot settle; the estimates are not affected, but the deviance-based tests are judged for precision separately."
+    } else "The model did not converge; every result below is unreliable.")
   }
   # No maximum-likelihood fit with an intercept can do worse than the
   # intercept-only model.
@@ -527,16 +536,15 @@ anova_glm <- function(data, response, groups,
   eff <- .glm_effect_sizes(model, av$raw, type = type,
                            test_statistic = test_statistic)
   notes <- c(notes, eff$notes)
-  # The deviance explained, 1 - dev / dev0, is uncertain by about the
-  # rounding of the deviances over dev0 (see .deviance_rounding()); when
-  # that is large, or swamps dev0 - dev, it is as arbitrary as the tests. A
-  # saturated fit's residual deviance of 1e-14 is not a problem: the measure
-  # is then 1, to within rnd / dev0.
+  # The deviance explained, 1 - dev / dev0, is uncertain by about twice the
+  # rounding of the deviances over dev0 (see .deviance_rounding()); when that
+  # is more than 0.02 it is as arbitrary as the tests. A saturated fit (1) and
+  # equal group means (0) are fine.
   if (!is.null(eff$table) && "measure" %in% names(eff$table)) {
     rnd <- .deviance_rounding(model)
     dv <- model$deviance; dv0 <- model$null.deviance
     if (isTRUE(attr(rnd, "cancels")) && isTRUE(is.finite(rnd) && is.finite(dv) && is.finite(dv0) &&
-               (rnd > 0.05 * abs(dv0) || 2 * rnd > 0.2 * abs(dv0 - dv)))) {
+               2 * rnd > 0.02 * abs(dv0))) {
       i <- eff$table$measure == "deviance_explained"
       if (any(i) && !is.na(eff$table$estimate[i])) {
         eff$table$estimate[i] <- NA_real_
@@ -585,86 +593,45 @@ anova_glm <- function(data, response, groups,
   }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
   p_over <- .overdispersion_p(dispersion, stats::df.residual(model))
-  # Weights that are not frequencies are used as given, so a fit's tests are
-  # inflated by more than the Pearson dispersion when they are unequal: by
-  # how much, from the sandwich covariance (.weight_inflation()), depends on
-  # where the heavy rows fall. The Pearson dispersion of the weighted fit
-  # estimates phi0 * mean(w), phi0 being that of the response's variance
-  # (1 for a 0/1 response). Whole-number weights on proportions are the
-  # trials, inverse variances that inflate nothing; weights that are not
-  # whole numbers on a binomial response are sampling weights.
-  wi <- NULL
-  wi_F <- NULL
+  # Unequal weights that are not frequencies inflate the tests by an amount
+  # that depends on where the heavy rows fall (.weight_note()); the Pearson
+  # dispersion of such a weighted fit mixes that with the response's own,
+  # so the overdispersion note below gives way to the weight note. Whole-
+  # number weights on proportions are the trials, inverse variances that
+  # inflate nothing; on a binomial response only weights that are not whole
+  # numbers on a 0/1 response are read as sampling weights.
   wnum <- if (!is.null(weights)) d[[weights]] else NULL
   sampling_w <- !is.null(wnum) && is.null(freq_n) &&
     (fam_name %in% c("poisson", "quasipoisson") ||
-       (fam_name %in% c("binomial", "quasibinomial") &&
+       startsWith(fam_name, "Negative Binomial") ||
+       (fam_name %in% c("binomial", "quasibinomial") && binary_y &&
           any(abs(wnum - round(wnum)) > sqrt(.Machine$double.eps))))
-  if (sampling_w) {
-    wp <- wnum[wnum > 0]
-    if (length(wp) && stats::var(wp) > 1e-4 * mean(wp)^2) {
-      disp_w <- .dispersion(model)
-      phi0 <- if (binary) 1 else if (is.finite(disp_w) && disp_w > 0) disp_w / mean(wp) else NA_real_
-      if (is.finite(phi0)) {
-        if (fam_name %in% c("poisson", "binomial")) wi <- .weight_inflation(model, phi0, type)
-        # An F test (any test of a quasi family) divides by the Pearson
-        # dispersion of the weighted fit, which absorbs the average
-        # inflation but not the unevenness.
-        if ((identical(test_statistic, "F") || startsWith(fam_name, "quasi")) &&
-            is.finite(disp_w) && disp_w > 0) {
-          wi_F <- .weight_inflation(model, phi0 / disp_w, type)
-        }
-      }
-    }
-  }
-  # A 0/1 response has no overdispersion note to carry this (its Pearson
-  # dispersion says nothing), so it gets its own.
-  if (binary && !is.null(wi) && isTRUE(max(wi$size) >= 0.075)) {
-    wt <- .weight_inflation_text(wi)
-    notes <- c(notes, sprintf(
-      "The weights in `%s` are unequal and not frequencies, so the binomial tests are inflated %s: %s. vcov_type = \"HC3\" gives standard errors, and test_statistic = \"Wald\" an omnibus test, that do not depend on that.",
-      weights, wt$by, wt$size))
-  }
-  if (startsWith(fam_name, "quasi") && !is.null(wi_F) &&
-      isTRUE(max(wi_F$size) >= 0.075)) {
-    wt <- .weight_inflation_text(wi_F)
-    notes <- c(notes, sprintf(
-      "The weights in `%s` are unequal and not frequencies, so the F tests are inflated %s: %s. The estimated dispersion removes the average inflation, not that of unequal weights.",
-      weights, wt$by, wt$size))
-  }
+  wn <- if (sampling_w) {
+    .weight_note(model, wnum, weights, binary_y, test_statistic,
+                 if (!is.null(rv$matrix)) vcov_type, type)
+  } else list(note = character(0), applies = FALSE)
+  notes <- c(notes, wn$note)
   k_big <- .largest_term_df(model)
-  phi_t <- if (!is.null(wi)) max(wi$factor) else dispersion
-  weight_inflated <- !is.null(wi) && isTRUE(max(wi$size) >= 0.075)
-  if (fixed_family && is.finite(dispersion) &&
-      ((dispersion > 1 && is.finite(p_over) && p_over < 0.05) ||
-       weight_inflated)) {
+  if (fixed_family && is.finite(dispersion) && !wn$applies &&
+      dispersion > 1 && is.finite(p_over) && p_over < 0.05) {
     # Under a true dispersion phi a test statistic of this family is about phi
     # times its nominal chi-square; say what that does rather than only that
     # it happened.
     # The size is given for the largest term's degrees of freedom too, as
     # anova_count() gives it for the same fit.
-    wt <- if (!is.null(wi)) .weight_inflation_text(wi) else NULL
-    size_text <- if (!is.null(wt)) wt$size else .inflated_size_text(phi_t, k_big)
-    by <- if (!is.null(wt)) paste("inflated", wt$by) else "inflated by about that factor"
+    size_text <- .inflated_size_text(dispersion, k_big)
     # With a robust covariance the coefficient table, the marginal means and
     # the comparisons do not rest on the model variance; only an omnibus test
     # that compares deviances with the dispersion fixed at 1 still does.
     notes <- c(notes, if (!is.null(rv$matrix)) sprintf(
       "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1. %s",
       dispersion, .fmt_p(p_over), fam_name,
-      sub("inflated by about that factor", by,
-          .robust_overdispersion_text(
-            test_statistic, vcov_type, size_text,
-            sprintf("family = \"quasi%s\"", fam_name)), fixed = TRUE)) else sprintf(
-      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are %s, its standard errors are %s too small, and %s. %s",
-      dispersion, .fmt_p(p_over), fam_name, by,
-      if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else "correspondingly",
-      size_text,
-      if (identical(test_statistic, "F") && !is.null(wi_F) &&
-          isTRUE(max(wi_F$size) >= 0.06)) {
-        sprintf("The F table scales by the Pearson dispersion, which removes the average inflation but not that of unequal weights: %s. The coefficient table, the marginal means and the comparisons do not scale at all.",
-                .weight_inflation_text(wi_F)$size)
-      } else if (identical(test_statistic, "F")) {
+      .robust_overdispersion_text(
+        test_statistic, vcov_type, size_text,
+        sprintf("family = \"quasi%s\"", fam_name))) else sprintf(
+      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and %s. %s",
+      dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), size_text,
+      if (identical(test_statistic, "F")) {
         sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
                 fam_name)
       } else {
