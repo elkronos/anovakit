@@ -745,9 +745,23 @@ anova_count <- function(data, response, groups,
   ptxt <- if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else ""
   if (hedged) {
     size_text <- sub("rejects roughly", "would reject roughly", size_text, fixed = TRUE)
-    return(paste0(
+    # "Little power" only when the Pearson test would usually miss a
+    # dispersion large enough to matter: the one at which a nominal 5% test on
+    # the largest term rejects 7.5% (with the weights as given). With many
+    # residual degrees of freedom it would not, and the note says only what
+    # the upper bound would cost.
+    phi_c <- .count_phi_mattering(term_df, w_mean)
+    pw <- if (is.finite(df) && df > 0 && is.finite(phi_c) && phi_c > 1)
+      stats::pchisq(stats::qchisq(0.95, df) / phi_c, df, lower.tail = FALSE) else NA_real_
+    lead <- if (isTRUE(pw < 0.5)) {
       sprintf("The Pearson test of overdispersion (%s) cannot tell the dispersion from 1, but with %s residual degrees of freedom it has little power: the data are consistent with a dispersion of up to %.2f (its upper 95%% confidence bound), and at that dispersion ",
-              .fmt_p(p_over), format(round(df)), phi),
+              .fmt_p(p_over), format(round(df)), phi)
+    } else {
+      sprintf("The Pearson test of overdispersion (%s) cannot tell the dispersion from 1, but the data are consistent with a dispersion of up to %.2f (its upper 95%% confidence bound), and at that dispersion ",
+              .fmt_p(p_over), phi)
+    }
+    return(paste0(
+      lead,
       if (is.null(robust)) {
         sprintf("the Poisson likelihood-ratio and Wald statistics would be inflated %s and the standard errors would be about %.2f times too small: %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
                 by, sqrt(phi_t), size_text)
@@ -767,6 +781,18 @@ anova_count <- function(data, response, groups,
   }
   sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated %s and its standard errors are about %.2f times too small, so its intervals are too narrow and %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
           phi, ptxt, by, sqrt(phi_t), size_text)
+}
+
+#' The dispersion at which kept Poisson tests start to matter
+#'
+#' The dispersion phi at which a nominal 5\% test on \code{term_df} degrees
+#' of freedom, with its statistic inflated by \code{phi * w_mean}, rejects
+#' 7.5\% of true null hypotheses (1.5 times nominal): the threshold that
+#' \code{.choose_count_model()} uses for its notes.
+#' @noRd
+.count_phi_mattering <- function(term_df = 1L, w_mean = 1) {
+  k <- max(1L, as.integer(term_df))
+  stats::qchisq(0.95, k) / stats::qchisq(0.925, k) / w_mean
 }
 
 #' The size of nominal 5\% tests at dispersion phi, as a clause
@@ -842,8 +868,20 @@ anova_count <- function(data, response, groups,
   size_hi <- if (is.finite(phi_hi) && phi_hi > 0)
     stats::pchisq(stats::qchisq(0.95, k) / (phi_hi * w_mean), k,
                   lower.tail = FALSE) else NA_real_
+  # Weights that are not frequencies and average more than 1 inflate the
+  # kept tests by dispersion * w_mean. When the weights alone do it -- a
+  # nominal 5% test rejects 7.5% or more even at a dispersion of 1 (or at the
+  # estimate, if smaller) -- the inflation is not a possibility the data
+  # cannot rule out but the state of the reported tests, however many
+  # residual degrees of freedom there are, and the plain note says so at the
+  # estimate.
+  scaled <- !isTRUE(all.equal(w_mean, 1))
+  size_est <- if (is.finite(dispersion) && dispersion > 0)
+    stats::pchisq(stats::qchisq(0.95, k) / (min(dispersion, 1) * w_mean), k,
+                  lower.tail = FALSE) else NA_real_
+  weight_inflated <- scaled && isTRUE(size_est >= 0.075)
   mild <- is.finite(p_over) && !beyond_chance && is.finite(size_hi) &&
-    size_hi >= 0.075
+    size_hi >= 0.075 && !weight_inflated
   infl <- function(hedged = FALSE)
     .inflation_note(if (hedged) phi_hi else dispersion, p_over,
                     term_df = term_df, robust = robust,
@@ -862,7 +900,7 @@ anova_count <- function(data, response, groups,
     notes <- if (finite && dispersion > threshold) {
       sprintf("Pearson dispersion is %.2f, above the threshold of %.2f: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. %s",
               dispersion, threshold, infl())
-    } else if (finite && dispersion > 1 && beyond_chance) {
+    } else if (finite && ((dispersion > 1 && beyond_chance) || weight_inflated)) {
       sprintf("Pearson dispersion is %.2f. %s", dispersion, infl())
     } else if (mild) {
       sprintf("Pearson dispersion is %.2f. %s", dispersion, infl(hedged = TRUE))
@@ -877,7 +915,7 @@ anova_count <- function(data, response, groups,
     note <- sprintf(
       "Pearson dispersion is %.2f, at or below the threshold of %.2f, so a Poisson model was kept.",
       dispersion, threshold)
-    if (dispersion > 1 && beyond_chance) {
+    if ((dispersion > 1 && beyond_chance) || weight_inflated) {
       note <- paste(note, infl())
     } else if (mild) {
       note <- paste(c(note, infl(hedged = TRUE)), collapse = " ")
