@@ -42,6 +42,54 @@ test_that("R3-07: an offset covariate is not called constant within groups", {
                "constant within every group")
 })
 
+test_that("R3-07: an offset covariate aliased only in the interaction model is refused", {
+  d <- withr::with_seed(1, {
+    d <- data.frame(g = factor(rep(c("a", "b", "c"), each = 10)),
+                    t = 1.7e9 + stats::runif(30, 0, 10^2.85))
+    d$y <- as.integer(d$g) + (d$t - 1.7e9) / 10^2.85 + stats::rnorm(30)
+    d
+  })
+  # Uncentred, lm() keeps the additive model whole but drops a slope-by-group
+  # coefficient of the interaction model; centred, it keeps all of them
+  expect_false(anyNA(stats::coef(stats::lm(y ~ t + g, data = d))))
+  expect_true(anyNA(stats::coef(stats::lm(y ~ t * g, data = d))))
+  d$tc <- d$t - mean(d$t)
+  m_c <- stats::lm(y ~ tc * g, data = d)
+  expect_false(anyNA(stats::coef(m_c)))
+
+  for (fi in list(NULL, TRUE, FALSE)) {
+    err <- tryCatch(anova_ancova(d, "y", "g", "t", center_covariates = FALSE,
+                                 force_interaction = fi, plots = FALSE),
+                    error = function(e) e)
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "vary too little relative to their distance from zero")
+    expect_match(conditionMessage(err), "t:g", fixed = TRUE)
+    expect_match(conditionMessage(err), "center_covariates = TRUE", fixed = TRUE)
+  }
+
+  # The default centred fit matches the centred references
+  ref <- stats::anova(stats::lm(y ~ tc + g, data = d), m_c)
+  f <- anova_ancova(d, "y", "g", "t", force_interaction = TRUE, plots = FALSE)
+  expect_equal(f$slopes_test$df, 2)
+  expect_equal(f$slopes_test$statistic, ref$F[2L])
+  expect_equal(f$slopes_test$p_value, ref[["Pr(>F)"]][2L])
+  tr <- as.data.frame(summary(emmeans::emtrends(m_c, ~g, var = "tc")))
+  expect_equal(f$simple_slopes$slope, tr$tc.trend)
+  expect_equal(f$simple_slopes$df, tr$df)
+  m3 <- stats::lm(y ~ tc * g, data = d, contrasts = list(g = "contr.sum"))
+  a3 <- as.data.frame(car::Anova(m3, type = 3))
+  row <- f$anova[f$anova$term == "t:g", ]
+  expect_equal(row$df, a3["tc:g", "Df"])
+  expect_equal(row$p_value, a3["tc:g", "Pr(>F)"])
+
+  # A moderate offset is still fitted uncentred, and agrees with the reference
+  d$t2 <- d$t - 1.7e9 + 1e4
+  f2 <- anova_ancova(d, "y", "g", "t2", center_covariates = FALSE,
+                     force_interaction = TRUE, plots = FALSE)
+  expect_equal(f2$slopes_test$statistic, ref$F[2L])
+  expect_equal(f2$simple_slopes$slope, tr$tc.trend)
+})
+
 # R3-08: digits in the covariate notes ------------------------------------------
 
 test_that("R3-08: the notes print covariate values with enough digits", {
