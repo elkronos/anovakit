@@ -533,10 +533,7 @@
   # can say what to do instead. A ONE-column matrix (what scale() returns, and
   # a common way to build a column) is fine: every other function in the
   # package accepts it, and .as_plain_columns() drops the dimension.
-  if (is.matrix(y) && ncol(y) > 1L) {
-    .stopf("Response `%s` is a %d-column matrix. A successes/failures matrix response is not supported; supply the outcome as one column per row, with `weights` naming the trial counts if the data are aggregated.",
-           response, ncol(y))
-  }
+  .check_no_matrix_response(data, response)
   if (fam %in% c("binomial", "quasibinomial")) {
     ok <- is.numeric(y) || is.logical(y) || is.factor(y) || is.character(y)
     if (!ok) {
@@ -563,6 +560,21 @@
       any(y[is.finite(y)] < 0)) {
     .stopf("Response `%s` contains negative values, which a Poisson family cannot model.",
            response)
+  }
+  invisible(TRUE)
+}
+
+#' Refuse a successes/failures (multi-column matrix) response with a message
+#' that says what to supply instead
+#'
+#' Called before .as_plain_columns(), whose generic "supply a single column"
+#' message would not mention the weights alternative.
+#' @noRd
+.check_no_matrix_response <- function(data, response) {
+  y <- data[[response]]
+  if (is.matrix(y) && ncol(y) > 1L) {
+    .stopf("Response `%s` is a %d-column matrix. A successes/failures matrix response is not supported; supply the outcome as one column per row, with `weights` naming the trial counts if the data are aggregated.",
+           response, ncol(y))
   }
   invisible(TRUE)
 }
