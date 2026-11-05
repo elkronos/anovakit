@@ -28,6 +28,24 @@
 #' where coefficients, Wald tests and comparisons are not identified;
 #' \code{$notes} says so when it happens.
 #'
+#' \strong{Exact fits.} A family that estimates its dispersion (and any
+#' family with \code{test_statistic = "F"}) divides every test statistic by
+#' the residual variation. When the response is constant, or constant within
+#' every group, there is none, and the function stops with an error instead
+#' of reporting F statistics that are ratios of rounding errors.
+#'
+#' \strong{Convergence.} \code{stats::glm()} judges convergence by a change
+#' in deviance relative to the deviance plus 0.1, so a fit whose deviance is
+#' small because of the units of the response (or the scale of the weights)
+#' would stop early. Such a fit is repeated with a convergence tolerance
+#' scaled to its deviance, so the results do not depend on the units. A
+#' binomial fit with prior weights is \code{glm()}'s own fit whenever that
+#' reaches the maximum of the likelihood. When it does not (\code{glm()}'s
+#' default start diverges for a frequency-weighted 0/1 response under a
+#' cloglog link), the model is refitted from the overall proportion, to a
+#' tight convergence tolerance, and \pkg{car}'s refits of reduced models start
+#' there too.
+#'
 #' For binary responses see \code{\link{anova_bin}}, and for counts see
 #' \code{\link{anova_count}}: both add family-specific diagnostics and effect
 #' sizes that this general wrapper does not.
@@ -57,7 +75,16 @@
 #'   Gaussian, quasi, quasi-Poisson and quasi-binomial families, and
 #'   \code{MASS::negative.binomial(theta)}, whose coefficient table also uses
 #'   t -- and a likelihood ratio test when the dispersion is fixed (binomial,
-#'   Poisson).
+#'   Poisson). A quasi family has no likelihood, so \code{"LR"} becomes
+#'   \code{"F"} there, with a note, as in \code{\link{anova_count}}. For any
+#'   other family that estimates its dispersion, \code{"LR"} is \pkg{car}'s
+#'   scaled-deviance chi-square, each change in deviance divided by the
+#'   estimated dispersion as though it were known; the table heading and
+#'   \code{$notes} say so. \code{"F"} on a binomial or Poisson fit is a
+#'   quasi-likelihood test, since \pkg{car} estimates the dispersion from the
+#'   Pearson statistic; the method label and \code{$notes} say so, and the
+#'   coefficient table, \code{$emmeans} and \code{$posthoc} still assume a
+#'   dispersion of 1.
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
 #'   Default \code{0.95}.
 #' @param ci_method Character. \code{"profile"} (default) or \code{"wald"} for
@@ -66,15 +93,22 @@
 #'   (binomial, Poisson) the profile interval is \code{stats::confint()}'s,
 #'   which cuts the signed-root deviance profile at normal quantiles. For a
 #'   family that estimates its dispersion the same profile is cut at
-#'   \code{qt(., df.residual)} instead, so that the interval agrees with the
-#'   t test beside it; for the Gaussian identity model it equals
-#'   \code{confint(lm())}. If profiling fails, Wald intervals are used, with a
-#'   note. A bound the profile cannot reach (as under separation) is
-#'   \code{NA}, also with a note. Profiling refits the model many times for
-#'   every coefficient, so when \code{ci_method} is left at its default and the
-#'   model has more than 50 coefficients, Wald intervals are used instead,
-#'   with a note; give \code{ci_method = "profile"} explicitly to profile
-#'   them anyway. Under separation the interval of a diverged coefficient is
+#'   \code{qt(., df.residual)} instead, the distribution of the t test beside
+#'   it; for the Gaussian identity model, whose profile is exactly quadratic,
+#'   it is the Wald t interval \code{confint(lm())}, and is computed as such.
+#'   The p-values in the coefficient table are Wald p-values, so in small or
+#'   sparse samples a profile interval can exclude the null value while the
+#'   p-value beside it is above \code{1 - conf_level}, or the reverse;
+#'   \code{$notes} names such rows, and \code{ci_method = "wald"} gives
+#'   intervals that always agree with the p-values. If profiling fails, Wald
+#'   intervals are used, with a note. A bound the profile cannot reach (as
+#'   under separation) is \code{NA}, also with a note. Profiling refits the
+#'   model many times for every coefficient, so when \code{ci_method} is left
+#'   at its default and the model has more than 50 coefficients, or the
+#'   number of coefficients squared times the number of rows exceeds
+#'   \code{1e7}, Wald intervals are used instead, with a note; give
+#'   \code{ci_method = "profile"} explicitly to profile them anyway. Under
+#'   separation the interval of a diverged coefficient is
 #'   found by profiling the likelihood directly when \code{ci_method =
 #'   "profile"}, and its \code{ci_method} column then says \code{"profile"};
 #'   \code{ci_method = "wald"} keeps the Wald interval, as
@@ -125,7 +159,10 @@
 #'
 #' @return An \code{\link{anovakit_fit}} object, with \code{$family} (the
 #'   family object actually used) and \code{$model_stats} (AIC, BIC, the null
-#'   and residual deviances, and the residual degrees of freedom).
+#'   and residual deviances, and the residual degrees of freedom). For a
+#'   binomial family with weights that are not all whole numbers, AIC and BIC
+#'   are \code{NA} with a note, as in \code{\link{anova_bin}}: R's binomial
+#'   log-likelihood rounds the weights.
 #'   \code{$anova} has the columns \code{term}, \code{sum_sq} (F tests only),
 #'   \code{df}, \code{statistic} and \code{p_value}, in that order whatever
 #'   \code{test_statistic}. In an F table of a non-Gaussian family, as
@@ -139,8 +176,10 @@
 #'     \item Gaussian: partial eta squared and partial omega squared for each
 #'       term, from the F table's sums of squares whatever
 #'       \code{test_statistic} is. Partial omega squared is floored at 0, with
-#'       a note. When the ANOVA table cannot be computed (a Type III table
-#'       with an empty cell, say) the table is empty and a note says why.
+#'       a note. When the ANOVA table cannot be computed the table is empty
+#'       and a note says why. (A Type III request on a model with an empty
+#'       cell is not such a case: Type II tests are computed instead; see
+#'       \code{type}.)
 #'     \item Any other family: \code{deviance_explained},
 #'       \code{1 - deviance / null deviance}, and \code{mcfadden_r2},
 #'       McFadden's pseudo R squared \code{1 - logLik(model) /
@@ -261,18 +300,95 @@ anova_glm <- function(data, response, groups,
   .say(verbose, "Fitting %s with family %s.",
        paste(deparse(fml), collapse = " "), family$family)
 
-  fitted <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, family, weights),
+  fam_name <- family$family
+  # With prior weights (frequencies of a 0/1 response above all) glm()'s
+  # default start puts every row next to 0 or 1, from where a cloglog fit can
+  # diverge, sometimes while reporting convergence; see .null_start_family().
+  # The fit from glm()'s own start is kept whenever it reaches the maximum,
+  # so ordinary fits are exactly glm()'s. Otherwise the model is refitted from
+  # the overall proportion, to a tight tolerance: a fit from that start meets
+  # glm()'s default test an iteration or so earlier than glm() would. The
+  # family and the tolerance are part of the model's call, so car's refits of
+  # reduced models use them too.
+  null_start <- fam_name %in% c("binomial", "quasibinomial") && !is.null(weights)
+  fit_one <- function(dd, fam, control) .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, dd, fam, weights, control = control),
     type = type))
+  fit_family <- family
+  fit_on <- function(dd, control = NULL) {
+    # A later refit with its own tolerance keeps the start already chosen.
+    if (!is.null(control)) return(fit_one(dd, fit_family, control))
+    out <- fit_one(dd, family, NULL)
+    fit_family <<- family
+    if (!null_start) return(out)
+    alt <- fit_one(dd, .null_start_family(family),
+                   stats::glm.control(epsilon = 1e-10, maxit = 100L))
+    if (inherits(alt$value, "error") || !isTRUE(alt$value$converged)) {
+      return(out)
+    }
+    m <- out$value
+    reached <- !inherits(m, "error") && isTRUE(m$converged) &&
+      isTRUE(m$deviance <= alt$value$deviance +
+               1e-6 * (abs(alt$value$deviance) + 0.1))
+    if (reached) return(out)
+    fit_family <<- .null_start_family(family)
+    alt
+  }
+  fitted <- fit_on(d)
+  # Grouping columns whose names and levels paste to the same coefficient
+  # name (a/b1 and ab/1 both give ab1) would make the marginal means and the
+  # coefficient table read the wrong column.
+  uc <- .unclash_group_coefs(fitted, fit_on, d, groups, type,
+                             table = "$assumptions$coefficients",
+                             what = "the coefficient table")
+  fitted <- uc$fitted
+  d <- uc$data
+  notes <- c(notes, uc$note)
   model <- fitted$value
   if (inherits(model, "error")) {
     .stopf("The model could not be fitted: %s", conditionMessage(model))
+  }
+  # With an estimated dispersion (or car's F test, which estimates one for
+  # any family) an exact fit leaves only rounding error to divide by. A
+  # saturated model, with no residual degrees of freedom at all, is reported
+  # with NA inference instead (see .check_model_size()).
+  if ((.estimates_dispersion(model) || identical(test_statistic, "F")) &&
+      isTRUE(stats::df.residual(model) >= 1)) {
+    exact <- .glm_exact_fit_message(model, response)
+    if (!is.null(exact)) .stopf("%s", exact)
+  }
+  # glm() stops when the change in deviance is below epsilon * (|deviance| +
+  # 0.1). The 0.1 is absolute, and the deviance of a Gaussian (non-identity
+  # link), inverse Gaussian or quasi fit carries the units of the response (or
+  # the scale of the weights): in small units the test passes after an
+  # iteration or two, on an unconverged fit that glm() reports as converged.
+  # The fit is repeated with epsilon scaled to the deviance, which makes the
+  # test relative. A Gaussian identity fit is exact in one step.
+  if (.estimates_dispersion(model) && isTRUE(model$converged) &&
+      !(fam_name == "gaussian" && family$link == "identity")) {
+    for (i in 1:3) {
+      dev <- model$deviance
+      if (!isTRUE(is.finite(dev) && dev > 0 && dev < 1)) break
+      ctrl <- stats::glm.control(epsilon = 1e-8 * dev / (dev + 0.1),
+                                 maxit = max(100L, model$control$maxit))
+      re <- fit_on(d, ctrl)
+      if (inherits(re$value, "error") || !isTRUE(re$value$converged)) break
+      fitted <- re
+      model <- re$value
+      if (abs(model$deviance - dev) <= 1e-6 * dev) break
+    }
   }
   notes <- c(notes, .said_note(fitted$said, "stats::glm()"))
   if (!isTRUE(model$converged)) {
     notes <- c(notes, "The model did not converge; every result below is unreliable.")
   }
-  fam_name <- family$family
+  # No maximum-likelihood fit with an intercept can do worse than the
+  # intercept-only model.
+  if (isTRUE(model$deviance > model$null.deviance * (1 + 1e-6) + 1e-8)) {
+    notes <- c(notes, sprintf(
+      "The fitted model's deviance (%s) exceeds that of the intercept-only model (%s), which a maximum-likelihood fit cannot do: the fitting algorithm did not find the maximum, and every result below is unreliable.",
+      format(signif(model$deviance, 6)), format(signif(model$null.deviance, 6))))
+  }
   # A frequency table (whole-number weights, some above 1) of counts or of a
   # 0/1 response holds one row per distinct outcome. glm() counts residual
   # degrees of freedom in rows; the data the table stands for have them in
@@ -316,6 +432,12 @@ anova_glm <- function(data, response, groups,
   # summary.glm() estimates, from a fixed-dispersion fit.
   if (is.null(test_statistic)) {
     test_statistic <- if (.estimates_dispersion(model)) "F" else "LR"
+  } else if (identical(test_statistic, "LR") && grepl("^quasi", fam_name)) {
+    # As in anova_count(): with no likelihood there is no likelihood ratio.
+    test_statistic <- "F"
+    notes <- c(notes, sprintf(
+      "A %s family has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.",
+      fam_name))
   }
 
   ## Robust covariance --------------------------------------------------------
@@ -334,6 +456,17 @@ anova_glm <- function(data, response, groups,
                              .estimates_dispersion(model) || identical(test_statistic, "F"))
   }
   notes <- c(notes, av$note)
+  if (identical(test_statistic, "LR") && .estimates_dispersion(model) &&
+      !is.null(av$table)) {
+    # car divides each change in deviance by the estimated dispersion and
+    # refers it to chi-square as if the dispersion were known: not the
+    # likelihood ratio of a model whose dispersion is a free parameter.
+    attr(av$table, "statistic") <-
+      "scaled-deviance chi-square, estimated dispersion treated as known"
+    notes <- c(notes, sprintf(
+      "test_statistic = \"LR\" was requested for a %s family, which estimates its dispersion: car::Anova() divides each change in deviance by the estimated dispersion (%.3g) and refers it to a chi-square distribution as though that dispersion were known. That is a scaled-deviance chi-square rather than a likelihood-ratio test, and it is anti-conservative in small samples; the default F test allows for the estimated dispersion.",
+      fam_name, .dispersion(model)))
+  }
   if (!is.null(rv$matrix) && !is.null(av$table)) {
     notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type,
                                          identical(test_statistic, "Wald")))
@@ -401,17 +534,22 @@ anova_glm <- function(data, response, groups,
       vcov_type))
   }
   # Profiling refits the model several times per coefficient, so its cost
-  # grows with the square of their number (and with n): a 60-level factor
-  # takes as long as stats::confint() itself, half a minute and more. Left at
-  # the default, a large model gets Wald intervals instead, as posthoc skips
-  # an unmanageable number of comparisons; asked for by name, it is honoured.
+  # grows with the square of their number times the number of rows: a
+  # 60-level factor, or 20 levels on 1e5 rows, takes half a minute and more.
+  # Left at the default, a large model gets Wald intervals instead, as posthoc
+  # skips an unmanageable number of comparisons; asked for by name, it is
+  # honoured. A Gaussian identity model's profile interval is computed in
+  # closed form (see .coef_intervals()) and costs nothing.
   n_coef <- sum(!is.na(stats::coef(model)))
+  n_rows <- length(model$y)
   if (ci_default && ci_method == "profile" && is.null(rv$matrix) &&
-      n_coef > .max_profiled_coefficients) {
+      !.profile_is_wald_t(model) &&
+      (n_coef > .max_profiled_coefficients ||
+         as.numeric(n_coef)^2 * n_rows > .max_profile_cost)) {
     ci_method <- "wald"
     notes <- c(notes, sprintf(
-      "The model has %d coefficients, and profiling the likelihood of each refits the model many times, so the coefficient intervals are Wald intervals; give ci_method = \"profile\" explicitly to profile them.",
-      n_coef))
+      "The model has %d coefficients and %s rows, and profiling the likelihood of each coefficient refits the model many times, so the coefficient intervals are Wald intervals; give ci_method = \"profile\" explicitly to profile them.",
+      n_coef, format(n_rows, big.mark = ",")))
   }
   ci <- .coef_intervals(model, conf_level = conf_level,
                         ci_method = if (is.null(rv$matrix)) ci_method else "wald",
@@ -466,9 +604,21 @@ anova_glm <- function(data, response, groups,
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
+  # R's binomial log-likelihood rounds the prior weights, so with weights that
+  # are not whole numbers AIC and BIC describe other data than the fit (with
+  # every weight below 0.5, a log-likelihood of exactly 0); as in anova_bin().
+  pw <- model$prior.weights
+  ll_rounded <- fam_name == "binomial" && !is.null(pw) &&
+    any(abs(pw - round(pw)) > 1e-8)
+  if (ll_rounded) {
+    notes <- c(notes, "AIC and BIC in $model_stats are NA: some weights are not whole numbers, and R's binomial log-likelihood rounds them, so it would describe different data from the fit. The deviances, the tests and the effect sizes use the weights as given.")
+  }
   .new_fit(
-    method       = sprintf("Analysis of deviance (%s family, %s link, Type %s)",
-                           family$family, family$link, type),
+    method       = sprintf("Analysis of deviance (%s family, %s link, Type %s%s)",
+                           family$family, family$link, type,
+                           if (identical(test_statistic, "F") &&
+                               fam_name %in% c("poisson", "binomial"))
+                             ", quasi-likelihood F test" else ""),
     call         = cl,
     model        = row_model,
     anova        = av$table,
@@ -488,8 +638,10 @@ anova_glm <- function(data, response, groups,
       # stats::BIC() takes log(nobs()), and nobs() of a weighted glm counts
       # rows; with frequency weights the penalty is that of the observations,
       # as on the expanded data (the log-likelihood, and so AIC, already is).
-      model_stats = list(AIC = .quiet_number(stats::AIC(model)),
-                         BIC = if (is.null(freq_n)) .quiet_number(stats::BIC(model)) else
+      model_stats = list(AIC = if (ll_rounded) NA_real_ else
+                           .quiet_number(stats::AIC(model)),
+                         BIC = if (ll_rounded) NA_real_ else
+                           if (is.null(freq_n)) .quiet_number(stats::BIC(model)) else
                            .quiet_number({
                              ll <- stats::logLik(model)
                              -2 * as.numeric(ll) + log(freq_n) * attr(ll, "df")
@@ -673,6 +825,52 @@ anova_glm <- function(data, response, groups,
 #' @noRd
 .max_profiled_coefficients <- 50L
 
+#' Above this many coefficients squared times rows, likewise
+#'
+#' About ten seconds of profiling on an ordinary machine: 4 coefficients on
+#' 6e5 rows, or 20 on 25,000.
+#' @noRd
+.max_profile_cost <- 1e7
+
+#' Is a profile interval the Wald t interval?
+#'
+#' For a Gaussian model with the identity link the profile deviance is exactly
+#' quadratic in each coefficient, so the profile cut at t quantiles is the
+#' Wald t interval, \code{confint(lm())}, to rounding error.
+#' @noRd
+.profile_is_wald_t <- function(model) {
+  fam <- stats::family(model)
+  identical(fam$family, "gaussian") && identical(fam$link, "identity")
+}
+
+#' A note on rows whose interval and p-value lead to opposite conclusions
+#'
+#' A profile-likelihood interval and the Wald p-value beside it are different
+#' approximations; in small or sparse samples one can exclude the null value
+#' while the other does not reject it.
+#' @param term,lo,hi,p coefficient names, interval ends on the link scale and
+#'   Wald p-values.
+#' @param what what the coefficients are called in the table.
+#' @noRd
+.profile_wald_note <- function(term, lo, hi, p, conf_level, what) {
+  alpha <- 1 - conf_level
+  excl <- (lo > 0 | hi < 0)
+  rej <- p < alpha
+  ok <- !is.na(excl) & !is.na(rej) & term != "(Intercept)"
+  lab <- gsub("`", "", term, fixed = TRUE)
+  a <- ok & excl & !rej
+  b <- ok & !excl & rej
+  if (!any(a | b)) return(character(0))
+  parts <- c(
+    if (any(a)) sprintf("the interval of %s excludes the null %s while its p-value is %s or more",
+                        paste(lab[a], collapse = ", "), what, format(alpha)),
+    if (any(b)) sprintf("the interval of %s includes the null %s while its p-value is below %s",
+                        paste(lab[b], collapse = ", "), what, format(alpha)))
+  sprintf(
+    "The profile-likelihood intervals and the Wald p-values beside them lead to opposite conclusions at the %s level: %s. They are different approximations, which disagree in small or sparse samples, and the profile interval is usually the more accurate; ci_method = \"wald\" gives intervals that agree with the p-values.",
+    format(alpha), paste(parts, collapse = "; and "))
+}
+
 #' Coefficient estimates with intervals
 #'
 #' Profile intervals cut the signed-root deviance profile of each coefficient
@@ -697,7 +895,13 @@ anova_glm <- function(data, response, groups,
   diverged <- if (separated) {
     ct$term[is.finite(ct$se) & ct$se > 10]
   } else character(0)
-  if (ci_method == "profile" && is.finite(crit)) {
+  if (ci_method == "profile" && is.finite(crit) && is.null(vcov_matrix) &&
+      .profile_is_wald_t(model)) {
+    # The profile is exactly quadratic: the t interval is the profile interval,
+    # without refitting the model a few dozen times per coefficient.
+    ci <- cbind(ct$estimate - crit * ct$se, ct$estimate + crit * ct$se)
+    rownames(ci) <- ct$term
+  } else if (ci_method == "profile" && is.finite(crit)) {
     got <- .collect_conditions(.profile_ci(model, conf_level, crit,
                                            skip = diverged))
     tried <- got$value
@@ -774,6 +978,13 @@ anova_glm <- function(data, response, groups,
   out <- data.frame(ct, conf_low = ci[idx, 1L], conf_high = ci[idx, 2L],
                     ci_method = unname(row_method[idx]),
                     stringsAsFactors = FALSE, row.names = NULL)
+  if (method_used == "profile" && !.profile_is_wald_t(model)) {
+    # Rows whose diverged estimate has its own separation note are left out.
+    pr <- out$ci_method == "profile" & !out$term %in% diverged
+    notes <- c(notes, .profile_wald_note(out$term[pr], out$conf_low[pr],
+                                         out$conf_high[pr], out$p_value[pr],
+                                         conf_level, "value 0"))
+  }
   list(table = out, note = notes)
 }
 
