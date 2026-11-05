@@ -494,7 +494,11 @@ variance ratio (`InsectSprays`), combined cells (`warpbreaks`), two groups, and
 `posthoc = FALSE`. The function also writes a note, at any `conf_level`, when
 a group of two observations holds most of a pair's variance, so that the
 standardiser has fewer than 2 degrees of freedom and the bias correction is
-not applied to that pair; a group of 30 beside one of two is enough. It writes
+not applied to that pair; a group of 30 beside one of two is enough. It names,
+with their degrees of freedom and correction factor, the pairs where that
+factor is below 0.8, which is at about 4 degrees of freedom or fewer: two
+groups of three with equal variances give exactly 4 and a factor of 0.798, so
+the correction pulls the estimate well towards zero. It writes
 another when an estimate falls outside its own interval, which can happen with
 very small groups and a low `conf_level`. Read `$notes` on every
 fit, including when you expect it to be empty.

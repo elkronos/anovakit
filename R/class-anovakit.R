@@ -374,7 +374,7 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
 #' are left alone. Other numeric columns become character, each value rounded
 #' to \code{digits} significant digits on its own, so that printing cannot pad
 #' them with places they do not have. p-value columns are formatted with \code{format.pval()},
-#' which prints a p-value below machine precision as "< 2.2e-16" rather than as
+#' also one value at a time, which prints a p-value below machine precision as "< 2.2e-16" rather than as
 #' zero.
 #' @noRd
 .round_df <- function(df, digits = 4L) {
@@ -397,7 +397,13 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
       out <- rep("NA", length(v))
       for (e in unique(eps)) {
         i <- !is.na(v) & eps == e
-        if (any(i)) out[i] <- format.pval(v[i], digits = digits, eps = e)
+        # One value at a time, like the other columns: format.pval() on a
+        # vector gives every value at or above 1e-3 the decimals of the
+        # smallest, padding the larger ones (1 printed as 1.0000000).
+        if (any(i)) {
+          out[i] <- vapply(v[i], function(p) format.pval(p, digits = digits, eps = e),
+                           character(1), USE.NAMES = FALSE)
+        }
       }
       df[[nm]] <- out
       next
