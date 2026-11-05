@@ -95,10 +95,15 @@ An \code{\link{anovakit_fit}} object, with five extra components:
   \code{$model_additive} and \code{$model_interaction}, both candidate fits,
   so the one that was not chosen is still available. \code{$assumptions}
   also holds \code{normality} (Shapiro-Wilk on the residuals) and
-  \code{levene} (Levene's test on the residuals across the cells).
+  \code{levene} (Levene's test on the residuals across the cells; cells
+  with one or two observations, whose absolute deviations from their median
+  cannot vary, are left out of it, and \code{$notes} names them).
   \code{$data_used} holds the analysed columns and the cell factor, with the
   covariates centred when \code{center_covariates = TRUE}. The covariate
-  plot shows each covariate on its original scale.
+  plot shows each covariate on its original scale, with the lines of the
+  model that was fitted and their model-based confidence bands; when the
+  additive model is used those lines are parallel, and each group's own
+  least-squares line is added dashed.
 }
 \description{
 Compares the mean of a numeric response across groups while adjusting for one
@@ -144,6 +149,14 @@ A covariate that is constant, that is determined by the grouping variables
 an exact linear combination of the grouping variables and the other
 covariates is refused with an error naming it: its effect cannot be
 separated from the group effect, so there is nothing to adjust for.
+With \code{center_covariates = FALSE}, a covariate whose spread is below
+about 1e-7 of its level (a Unix timestamp spanning a minute, say) is also
+refused, since \code{lm()} cannot tell it apart from the intercept
+uncentred; the error says so, and the default centring fits it. A
+somewhat larger spread can still be too small for the covariate-by-group
+columns, which \code{lm()} then drops in part; an uncentred fit whose
+models lose coefficients that the centred fit keeps is refused in the same
+way, since the slopes test and \code{$simple_slopes} would be wrong.
 
 \strong{Homogeneity of slopes.} The two candidate models are the grouping
 structure with the covariates entered additively, and the same model plus
@@ -172,10 +185,15 @@ within-group SDs, the default pipeline rejected a true null of equal
 adjusted means for the group row about 11--13\% of the time at the 5\% level
 (about 34\% with 10 per group and means at -2, 0 and 2), against about 5\%
 with \code{force_interaction = TRUE}; always fitting the additive model
-(\code{force_interaction = FALSE}) was worse still. Randomised groups were
-not affected. So when the additive model is used and the covariate means
+(\code{force_interaction = FALSE}) was worse still. Randomised groups are
+affected less, but still affected: with the same slopes and equal expected
+covariate means, the default pipeline rejected about 6--7\% of the time
+with 20 per group, because chance imbalance in the covariate means and the
+selection step itself still inflate the group row. So the note on the
+additive model chosen by the test says that its p-values do not allow for
+the selection, and when the covariate means also
 differ between groups by more than half a pooled within-group SD,
-\code{$notes} says so. Conversely, when the test retains the interaction, the p-values do
+\code{$notes} says so as well. Conversely, when the test retains the interaction, the p-values do
 not allow for that choice and can also be too small. \code{force_interaction
 = TRUE} avoids the selection step: with centred covariates and \code{type =
 "III"}, the group row is then a valid comparison of the groups at the
