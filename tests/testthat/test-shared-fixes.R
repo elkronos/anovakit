@@ -363,7 +363,9 @@ test_that("summary prints the method's own extra tables", {
   skip_if_not_installed("afex")
   fit <- anova_rm(fx_repeated(), "score", "id", "time", plots = FALSE)
   out <- utils::capture.output(print(summary(fit)))
-  expect_true(any(grepl("^Sphericity", out)))
+  # The sphericity table is printed once, under the assumption checks.
+  expect_true(any(grepl("^  sphericity$", out)))
+  expect_false(any(grepl("^Sphericity", out)))
 })
 
 # Plot helpers ----------------------------------------------------------------
