@@ -222,6 +222,13 @@ data.frame(comparison = fit$effect_sizes$comparison,
 They part company in small samples and, above all, under separation, where
 only the profile interval means anything (see [Separation](#separation)).
 
+Profiling refits the model several times for each coefficient, over every
+row, so it is slow for a model with many coefficients or many rows. Left at
+its default, `ci_method` gives Wald intervals instead, with a note, when the
+model has more than 50 coefficients or the coefficients times the rows exceed
+200,000, unless separation was detected; `ci_method = "profile"` given
+explicitly always profiles.
+
 ### Choosing the reference level
 
 `reference` takes a named list, one level per factor:

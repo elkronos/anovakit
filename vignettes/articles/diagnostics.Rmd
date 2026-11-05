@@ -761,7 +761,10 @@ co <- trg$assumptions$coefficients
 exp(co[co$term == "siteC", c("conf_low", "conf_high")])
 ```
 
-The likelihood-ratio omnibus test remains usable. If a zero group is a
+The likelihood-ratio omnibus test remains usable. A Wald omnibus test
+(`test_statistic = "Wald"`) does not: it is built from the same diverged
+coefficient, its p-value can be near 1 however large the difference, and the
+note says so when one was asked for. If a zero group is a
 structural zero (a species that cannot occur there), drop it; if not, report
 the one-sided interval, or collapse the level.
 
