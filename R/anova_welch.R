@@ -99,8 +99,9 @@
 #' means, standard deviations, differences and intervals are scaled back to
 #' the response's units. Multiplying by a
 #' power of two is exact unless it pushes a value out of the range of normal
-#' doubles, and such a scale is not used; for an ordinary response the power
-#' is \eqn{2^0}{2^0} and nothing changes. The omnibus test is accepted at the
+#' doubles, and such a scale is not used. The power is chosen from the data
+#' and is often not \eqn{2^0}{2^0} even for an ordinary response, but
+#' because the scaling is exact the results there are unchanged. The omnibus test is accepted at the
 #' first of that scale, the response as supplied and the response brought
 #' near 1 at which its F and the sum of its weights are finite. If none
 #' qualifies, \code{$anova} reports the statistic, denominator degrees of
@@ -293,7 +294,9 @@ anova_welch <- function(data, response, groups,
   # only in their sum) and the variances of the means s^2 / n underflow for a
   # response far from 1 (around 1e-155 or 1e-162). They are computed on the
   # response multiplied by a power of two (exact) chosen to centre the group
-  # variances on 1; for an ordinary response that power is 2^0.
+  # variances on 1. The power is chosen from the data and is often not 2^0
+  # even for an ordinary response, but the scaling is exact, so the results
+  # there are unchanged.
   k_centre <- .welch_centre_exponent(as.numeric(group_var))
   y_centred <- .welch_rescale_exact(d[[response]], k_centre)
   if (is.null(y_centred)) {
@@ -366,7 +369,14 @@ anova_welch <- function(data, response, groups,
       format(signif(variance_ratio, 3))
     } else {
       e <- floor(log10_ratio)
-      sprintf("%se+%d", format(signif(10^(log10_ratio - e), 3)), e)
+      m <- signif(10^(log10_ratio - e), 3)
+      # Rounding to 3 figures can carry the mantissa up to 10 (9.996 -> 10);
+      # carry it into the exponent so the power of ten stays normalised.
+      if (m >= 10) {
+        m <- m / 10
+        e <- e + 1
+      }
+      sprintf("%se+%d", format(m), e)
     }
     notes <- c(notes, sprintf(
       "Largest group variance is %s times the smallest. Welch's test handles this; the classical F test would not.",

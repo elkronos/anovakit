@@ -100,3 +100,47 @@ test_that("welch-print-groups-F2: subnormal group variances are not taken for re
                  raw$assumptions$variance_ratio, tolerance = 1e-12)
   }
 })
+
+test_that("welch-R1: an overflowed ratio that rounds up carries into the exponent", {
+  s <- 10^150.49999
+  d <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                  y = c(s * c(1, 2, 4, 3), c(1, 3, 2, 5),
+                        1e-50 * c(1, 2, 4, 3)))
+  v <- tapply(d$y, d$g, var)
+  expect_false(is.finite(max(v) / min(v)))
+  # Reference by hand: the log10 ratio is just under 401, so to three
+  # significant figures the ratio is 1.00e+401. A finite ratio with the same
+  # mantissa (9.9998e300) shows the form format(signif(x, 3)) uses.
+  log10_ratio <- log10(max(v)) - log10(min(v))
+  expect_true(log10_ratio < 401 && log10_ratio > 401 - 1e-3)
+  expect_identical(format(signif(10^(log10_ratio - 100), 3)), "1e+301")
+  fit <- anova_welch(d, "y", "g", plots = FALSE)
+  note <- grep("Largest group variance is", fit$notes, value = TRUE)
+  expect_length(note, 1L)
+  expect_match(note, "Largest group variance is 1e+401 times the smallest",
+               fixed = TRUE)
+  expect_false(grepl("10e+", note, fixed = TRUE))
+
+  # A mantissa that does not round up is kept: ratio 2.5e+400 by hand.
+  d2 <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                   y = c(sqrt(2.5) * 1e150 * c(1, 2, 4, 3), c(1, 3, 2, 5),
+                         1e-50 * c(1, 2, 4, 3)))
+  v2 <- tapply(d2$y, d2$g, var)
+  lr2 <- log10(max(v2)) - log10(min(v2))
+  expect_identical(format(signif(10^(lr2 - 100), 3)), "2.5e+300")
+  fit2 <- anova_welch(d2, "y", "g", plots = FALSE)
+  expect_true(any(grepl("Largest group variance is 2.5e+400 times",
+                        fit2$notes, fixed = TRUE)))
+})
+
+test_that("welch-R2: a data-chosen rescaling power leaves ordinary results unchanged", {
+  # The power is often not 2^0 on ordinary data ...
+  k <- .welch_centre_exponent(as.numeric(tapply(chickwts$weight,
+                                                chickwts$feed, var)))
+  expect_false(k == 0)
+  # ... but the scaling is exact, so the results match base R on the raw data.
+  fit <- anova_welch(chickwts, "weight", "feed", plots = FALSE)
+  ref <- oneway.test(weight ~ feed, data = chickwts)
+  expect_equal(fit$anova$statistic, unname(ref$statistic), tolerance = 1e-12)
+  expect_equal(fit$anova$p_value, ref$p.value, tolerance = 1e-12)
+})
