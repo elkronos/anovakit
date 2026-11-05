@@ -656,30 +656,15 @@ anova_count <- function(data, response, groups,
 #' rows holding two events do not. Sparse cells are therefore judged on the
 #' events they hold (weighted by frequency weights when there are some).
 #'
-#' Whether an empty combination of levels is estimable depends on the model:
-#' the full factorial cannot estimate it, an additive model extrapolates it
-#' from the main effects. The additive case is noted by \code{.emm_block()},
-#' which every model-based function shares.
+#' Empty combinations of levels are not noted here: the notes every
+#' model-based function shares name them once, with what they mean under the
+#' model fitted (\code{.check_model_size()} for the aliased coefficients,
+#' \code{.emm_block()} for the marginal means).
 #' @noRd
 .sparse_cell_note <- function(d, groups, response, interaction = FALSE,
                               weights = NULL) {
   cell <- .cell_vector(d, groups)
   notes <- character(0)
-  ec <- .empty_cells(d, groups)
-  # Under an additive model .emm_block() names the empty combinations, with
-  # what they mean for the per-factor means; every model function shares it.
-  if (length(ec$labels) > 0L && !.is_additive(interaction)) {
-    full <- isTRUE(interaction) ||
-      (is.numeric(interaction) && interaction >= length(groups))
-    notes <- c(notes, sprintf(
-      "%d of the %d possible group combination(s) contain no observations; %s They are: %s.",
-      length(ec$labels), ec$n_possible,
-      if (full) {
-        "contrasts involving them are not estimable."
-      } else {
-        "they are estimable only where the lower-order terms determine them (see the notes on the marginal means)."
-      }, .abbrev(ec$labels)))
-  }
   w <- if (is.null(weights)) 1 else d[[weights]]
   events <- tapply(w * d[[response]], cell, sum)
   small <- sum(events < 5)

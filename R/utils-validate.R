@@ -367,23 +367,62 @@
 #' The level combinations of some factors that hold no rows
 #'
 #' Only levels that occur in \code{data} are crossed, so an unused factor
-#' level does not count as an empty combination.
-#' @return list with \code{labels} (each empty combination, its levels joined
-#'   with " : ") and \code{n_possible}, the number of combinations.
+#' level does not count as an empty combination. The full grid of level
+#' combinations is never built: each observed combination is coded as its
+#' position in that grid (the first factor varying fastest, as in
+#' \code{expand.grid()}), the empty ones are counted as the positions not
+#' observed, and only the first \code{max_labels} of them are labelled.
+#' @param max_labels how many empty combinations to label, in grid order.
+#' @return list with \code{n_empty}, \code{labels} (the first
+#'   \code{max_labels} empty combinations, their levels joined with " : ")
+#'   and \code{n_possible}, the number of combinations.
 #' @noRd
-.empty_cells <- function(data, groups) {
-  levs <- lapply(groups, function(g) levels(droplevels(as.factor(data[[g]]))))
-  n_possible <- prod(lengths(levs))
-  if (length(groups) < 2L) return(list(labels = character(0), n_possible = n_possible))
-  grid <- expand.grid(levs, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
-  key_g <- do.call(paste, c(unname(as.list(grid)), sep = "\r"))
-  key_d <- unique(do.call(paste, c(lapply(groups, function(g) as.character(data[[g]])),
-                                   sep = "\r")))
-  empty <- !key_g %in% key_d
-  list(labels = do.call(paste, c(unname(as.list(grid[empty, , drop = FALSE])),
-                                 sep = " : ")),
-       n_possible = n_possible)
+.empty_cells <- function(data, groups, max_labels = 8L) {
+  fs <- lapply(groups, function(g) droplevels(as.factor(data[[g]])))
+  nl <- vapply(fs, nlevels, numeric(1))
+  n_possible <- prod(nl)
+  out <- list(n_empty = 0, labels = character(0), n_possible = n_possible)
+  if (length(groups) < 2L || n_possible <= 1) return(out)
+  codes <- lapply(fs, as.integer)
+  keep <- Reduce(`&`, lapply(codes, function(cd) !is.na(cd)))
+  codes <- lapply(codes, function(cd) cd[keep])
+  if (n_possible > 2^52) {
+    # Positions would not be exact doubles; count only.
+    obs <- unique(do.call(paste, c(codes, sep = "\r")))
+    out$n_empty <- n_possible - length(obs)
+    return(out)
+  }
+  stride <- cumprod(c(1, nl[-length(nl)]))
+  key <- 1 + Reduce(`+`, Map(function(cd, st) (cd - 1) * st, codes, stride))
+  obs <- unique(key)
+  out$n_empty <- n_possible - length(obs)
+  if (out$n_empty <= 0 || max_labels <= 0) return(out)
+  # The first k unobserved positions lie among the first length(obs) + k.
+  k <- min(max_labels, out$n_empty)
+  cand <- seq_len(min(n_possible, length(obs) + k))
+  miss <- utils::head(cand[!cand %in% obs], k)
+  levs <- lapply(fs, levels)
+  parts <- Map(function(lv, st, n) lv[((miss - 1) %/% st) %% n + 1], levs, stride, nl)
+  out$labels <- do.call(paste, c(unname(parts), sep = " : "))
+  out
 }
+
+#' List the empty combinations .empty_cells() found
+#' @noRd
+.empty_cells_text <- function(ec) {
+  shown <- paste(ec$labels, collapse = ", ")
+  more <- ec$n_empty - length(ec$labels)
+  if (more > 0) {
+    shown <- if (length(ec$labels) > 0L) {
+      sprintf("%s and %s more", shown, .count_text(more))
+    } else "too many to list"
+  }
+  shown
+}
+
+#' A whole number for a note, without scientific notation
+#' @noRd
+.count_text <- function(x) format(x, scientific = FALSE, big.mark = "", trim = TRUE)
 
 #' Attach the combined cell factor under a non-colliding name
 #'

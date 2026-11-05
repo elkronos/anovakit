@@ -227,7 +227,7 @@ test_that("sparse and empty cells are reported", {
   d <- fx_nested()
   d$count <- withr::with_seed(112, stats::rpois(nrow(d), 4))
   fit <- anova_count(d, "count", c("g1", "g2"), plots = FALSE)
-  expect_true(any(grepl("contain no observations", fit$notes)))
+  expect_true(any(grepl("contain no data", fit$notes)))
 })
 
 test_that("nothing is written to stdout", {
