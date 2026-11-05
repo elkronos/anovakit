@@ -220,6 +220,14 @@ for each term (assuming the weights are not inverse variances, which
 would not inflate the tests), for a kept Poisson model, a negative
 binomial one and any F test.
 
+Counts on a large level with little variation (1e9 varying by a few
+units) are beyond what the Poisson and negative binomial deviances can
+resolve in double precision. A likelihood-ratio or F test that rounding
+could move by more than a fifth of its size or of its degrees of freedom,
+whichever is larger, is then NA, and one it could move by more than 2\%
+of that gets a note; \code{test_statistic = "Wald"}, which does not use
+the deviance, can still test them.
+
 \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 treatment-coded parameterisation of the fitted model, whatever \code{type}
 and the global \code{contrasts} option are, and with ordered factors treated

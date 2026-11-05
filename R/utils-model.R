@@ -849,9 +849,44 @@
       (identical(fam, "quasi") && identical(famobj$varfun, "mu"))
     bnd <- bounded & (y == 0 | (binom & y == 1))
     spread <- diff(range(y))
+    # Each residual is measured against its own row's size, so that a
+    # constant group of large values cannot hide real variation in a group of
+    # small ones; but a residual within a few dozen units in the last place
+    # of the response's overall level is rounding error whatever its row
+    # (a Gaussian group at 0 beside groups at 1e9 is fitted to about 1e-7).
+    floor_ <- 32 * .Machine$double.eps * max(abs(y))
+    rel_of <- function(mu) {
+      res <- abs(y - mu)
+      scl <- pmax(abs(y), abs(mu))
+      r <- ifelse(res <= floor_, 0, ifelse(scl > 0, res / scl, Inf))
+      if (any(!bnd)) max(r[!bnd]) else NA_real_
+    }
+    rel_i <- rel_of(mu)
+    # An iteratively fitted family reaches an exact response only to its
+    # convergence (about 3e-12 for a quasi-Poisson fit near 1), not to
+    # rounding: when the residuals are that small, the fit is pushed to full
+    # convergence before it is judged. Real variation stays where it is.
+    gauss_id <- identical(fam, "gaussian") && identical(famobj$link, "identity")
+    if (!gauss_id && isTRUE(rel_i > 1e-13 && rel_i <= 1e-9)) {
+      X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
+      cf <- stats::coef(model)
+      if (!is.null(X) && nrow(X) == length(keep)) {
+        X <- X[, !is.na(cf), drop = FALSE]
+        o <- model$offset
+        fr <- tryCatch(suppressWarnings(stats::glm.fit(
+          X, as.numeric(model$y), weights = model$prior.weights,
+          start = cf[!is.na(cf)],
+          offset = if (length(o) == length(keep)) o else NULL,
+          family = famobj,
+          control = list(epsilon = 1e-15, maxit = 200, trace = FALSE))),
+          error = function(e) NULL)
+        if (!is.null(fr) && all(is.finite(fr$fitted.values))) {
+          mu <- as.numeric(fr$fitted.values)[keep]
+          rel_i <- rel_of(mu)
+        }
+      }
+    }
     res <- abs(y - mu)
-    scl <- pmax(abs(y), abs(mu))
-    rel_i <- if (any(!bnd) && all(scl[!bnd] > 0)) max(res[!bnd] / scl[!bnd]) else NA_real_
     if (any(bnd) && spread > 0) {
       rel_b <- max(res[bnd]) / spread
       if (rel_b <= 1e-6 && (!any(!bnd) || isTRUE(rel_i <= 1e-11))) {
@@ -866,19 +901,16 @@
       }
     } else if (!any(bnd) && isTRUE(rel_i <= 1e-10) &&
                .constant_within_cells(model, keep, off)) {
-      what <- sprintf("the response is constant within every design cell and every fitted value equals it to within %s of its own size, which is rounding error",
-                      format(signif(rel_i, 3)))
+      what <- "the response is constant within every design cell and every fitted value equals it to rounding error"
     } else if (!any(bnd) && isTRUE(rel_i <= 1e-13)) {
       # The fit reproduces every response to the rounding error of the fit
       # itself (an exactly additive two-factor response, say): the Pearson
-      # residuals, and so the estimated dispersion, are rounding error (a few
-      # hundred units in the last place, as .constant_within_cells() reads
-      # it). Real variation of even 1e-12 of the response's level (counts of
-      # 1e12 differing by a few) is above this;
-      # whether the deviance can resolve it is a separate question, which
-      # .deviance_precision() answers for each test.
-      what <- sprintf("every fitted value equals the response to within %s of its own size, which is the rounding error of the fit",
-                      format(signif(rel_i, 3)))
+      # residuals, and so the estimated dispersion, are rounding error. Real
+      # variation of even 1e-12 of the response's level (counts of 1e12
+      # differing by a few) is above this; whether the deviance can resolve
+      # it is a separate question, which .deviance_precision() answers for
+      # each test.
+      what <- "every fitted value equals the response to the rounding error of the fit"
     }
   }
   if (is.null(what)) return(NULL)
@@ -999,9 +1031,9 @@
 #' degrees of freedom, whichever is larger (the degrees of freedom are the
 #' statistic's size under the null hypothesis), cannot be read, and is made NA
 #' with a note; between 2\% and 20\% the test is kept and a note gives the
-#' uncertainty, as it does for a statistic smaller than its own rounding error
-#' (a negative one is shown as 0, with p = 1). Families whose deviance does
-#' not cancel (Gaussian, inverse Gaussian) are left alone. A Wald test does not use the
+#' uncertainty. A negative statistic within its rounding error is shown as 0,
+#' with p = 1. Families whose deviance does not cancel (Gaussian, inverse
+#' Gaussian) are left alone. A Wald test does not use the
 #' deviance and can still be computed. Applied to car's table
 #' before any frequency-weight rescaling, which scales the statistic and its
 #' error alike.
@@ -1011,7 +1043,7 @@
 #' @return \code{av}, with the affected rows NA and a note added to
 #'   \code{av$note}.
 #' @noRd
-.deviance_precision <- function(av, model, scaled) {
+.deviance_precision <- function(av, model, scaled, k = 1) {
   tab <- av$table
   stat <- attr(tab, "statistic")
   if (is.null(tab) || nrow(tab) == 0L || is.null(stat) ||
@@ -1028,21 +1060,22 @@
   }
   eff <- tab$term != "Residuals" & is.finite(tab$statistic)
   dfs <- pmax(tab$df, 1)
-  err <- err_d / phi / if (identical(stat, "F")) dfs else 1
-  orig <- tab$statistic
-  scale_ <- pmax(abs(tab$statistic), dfs)
+  # On the scale of the statistic as reported: frequency weights multiply a
+  # dispersion-based statistic, and so its error, by k (.freq_weight_anova()).
+  err <- k * err_d / phi / if (identical(stat, "F")) dfs else 1
+  orig <- k * tab$statistic
+  scale_ <- pmax(abs(orig), dfs)
   bad <- eff & err > 0.2 * scale_
-  # A statistic smaller than its rounding error is rounding error: a
-  # negative one is shown as 0 (a deviance cannot rise when terms are
-  # added), and either way the note says so.
-  tiny <- eff & !bad & abs(tab$statistic) < err
-  neg <- tiny & tab$statistic < 0
+  shaky <- eff & !bad & err > 0.02 * scale_
+  # A negative statistic within its rounding error is rounding error: it is
+  # shown as 0 (a deviance cannot rise when terms are added), with p = 1,
+  # and noted only when the error itself matters on the statistic's scale.
+  neg <- eff & !bad & tab$statistic < 0 & abs(orig) < err
   if (any(neg)) {
     tab$statistic[neg] <- 0
     if ("sum_sq" %in% names(tab)) tab$sum_sq[neg] <- 0
     tab$p_value[neg] <- 1
   }
-  shaky <- eff & !bad & (tiny | err > 0.02 * scale_)
   if (any(shaky)) {
     av$note <- c(av$note, sprintf(
       "The response varies little relative to its level, so this family's deviance is computed with limited precision: from rounding alone, the statistic(s) of %s are uncertain by about %s (on %s). The tests are still usable; test_statistic = \"Wald\", which uses the estimates and their covariance rather than the deviance, avoids this.",
@@ -1060,7 +1093,7 @@
   av$table <- tab
   av$note <- c(av$note, sprintf(
     "The test(s) of %s are NA: the response varies too little relative to its level for this family's deviance to resolve it. Each deviance is uncertain by about %s from rounding alone, so the change in deviance behind each test is uncertain by about %s on the scale of the statistic, which swamps it (the statistic came out as %s). This is a limit of computing the deviance in double precision, not a property of the data. test_statistic = \"Wald\", which uses the estimates and their covariance rather than the deviance, can still test them.",
-    paste(tab$term[bad], collapse = ", "), format(signif(err_d / 2, 2)),
+    paste(tab$term[bad], collapse = ", "), format(signif(k * err_d / 2, 2)),
     paste(format(signif(err[bad], 2)), collapse = ", "),
     paste(format(signif(orig[bad], 3)), collapse = ", ")))
   av

@@ -96,6 +96,14 @@
 #' would not inflate the tests), for a kept Poisson model, a negative
 #' binomial one and any F test.
 #'
+#' Counts on a large level with little variation (1e9 varying by a few
+#' units) are beyond what the Poisson and negative binomial deviances can
+#' resolve in double precision. A likelihood-ratio or F test that rounding
+#' could move by more than a fifth of its size or of its degrees of freedom,
+#' whichever is larger, is then NA, and one it could move by more than 2\%
+#' of that gets a note; \code{test_statistic = "Wald"}, which does not use
+#' the deviance, can still test them.
+#'
 #' \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 #' treatment-coded parameterisation of the fitted model, whatever \code{type}
 #' and the global \code{contrasts} option are, and with ordered factors treated
@@ -470,7 +478,12 @@ anova_count <- function(data, response, groups,
                    test_statistic = test_statistic,
                    vcov_matrix = if (robust_wald) rv$matrix else NULL)
   av <- .deviance_precision(av, if (nb_limit) pois else row_fit,
-                            model_type == "quasipoisson")
+                            model_type == "quasipoisson",
+                            k = if (freq_w && !robust_wald &&
+                                    (model_type == "quasipoisson" || test_statistic == "F") &&
+                                    isTRUE(stats::df.residual(row_fit) >= 1)) {
+                              stats::df.residual(fit) / stats::df.residual(row_fit)
+                            } else 1)
   if (nb_limit) {
     notes <- c(notes, sprintf(
       "Theta is so large (%.3g) that the negative binomial deviance cannot be computed accurately, so the analysis of deviance is that of the Poisson fit, which is the limit of the negative binomial as theta grows and agrees with it to within about mu / theta.",

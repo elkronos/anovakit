@@ -40,8 +40,9 @@
 #' negative binomial deviances, however, are computed as differences of
 #' nearly equal terms, and on such a level rounding can swamp the change in
 #' deviance a test is built on. A likelihood-ratio or F test that rounding
-#' could move by more than a fifth of its size is then NA, and one it could
-#' move by more than 2\% gets a note; \code{$notes} says which, and
+#' could move by more than a fifth of its size or of its degrees of freedom,
+#' whichever is larger, is then NA, and one it could move by more than 2\%
+#' of that gets a note; \code{$notes} says which, and
 #' \code{test_statistic = "Wald"}, which does not use the deviance, can still
 #' test them.
 #'
@@ -441,7 +442,10 @@ anova_glm <- function(data, response, groups,
   }
   # No maximum-likelihood fit with an intercept can do worse than the
   # intercept-only model.
-  if (isTRUE(model$deviance > model$null.deviance * (1 + 1e-6) + 1e-8)) {
+  # A rise within the deviances' own rounding error (on a large level, see
+  # .deviance_rounding()) is not a failed fit.
+  if (isTRUE(model$deviance > model$null.deviance * (1 + 1e-6) + 1e-8 +
+               2 * as.numeric(.deviance_rounding(model)))) {
     notes <- c(notes, sprintf(
       "The fitted model's deviance (%s) exceeds that of the intercept-only model (%s), which a maximum-likelihood fit cannot do: the fitting algorithm did not find the maximum, and every result below is unreliable.",
       format(signif(model$deviance, 6)), format(signif(model$null.deviance, 6))))
@@ -488,7 +492,12 @@ anova_glm <- function(data, response, groups,
   ## Analysis of deviance -----------------------------------------------------
   av <- .glm_anova(row_model, type = type, test_statistic = test_statistic,
                    vcov_matrix = rv$matrix)
-  av <- .deviance_precision(av, row_model, .estimates_dispersion(row_model))
+  freq_k <- if (!is.null(freq_n) && (.estimates_dispersion(model) ||
+                                     identical(test_statistic, "F")) &&
+                isTRUE(stats::df.residual(row_model) >= 1)) {
+    stats::df.residual(model) / stats::df.residual(row_model)
+  } else 1
+  av <- .deviance_precision(av, row_model, .estimates_dispersion(row_model), k = freq_k)
   if (!is.null(freq_n) && !(identical(test_statistic, "Wald") && !is.null(rv$matrix))) {
     av <- .freq_weight_anova(av, stats::df.residual(row_model),
                              stats::df.residual(model),
@@ -518,13 +527,16 @@ anova_glm <- function(data, response, groups,
   eff <- .glm_effect_sizes(model, av$raw, type = type,
                            test_statistic = test_statistic)
   notes <- c(notes, eff$notes)
-  # The deviance explained is a ratio of deviances; when rounding swamps the
-  # deviance (see .deviance_precision()) it is as arbitrary as the tests.
+  # The deviance explained, 1 - dev / dev0, is uncertain by about the
+  # rounding of the deviances over dev0 (see .deviance_rounding()); when
+  # that is large, or swamps dev0 - dev, it is as arbitrary as the tests. A
+  # saturated fit's residual deviance of 1e-14 is not a problem: the measure
+  # is then 1, to within rnd / dev0.
   if (!is.null(eff$table) && "measure" %in% names(eff$table)) {
     rnd <- .deviance_rounding(model)
     dv <- model$deviance; dv0 <- model$null.deviance
     if (isTRUE(attr(rnd, "cancels")) && isTRUE(is.finite(rnd) && is.finite(dv) && is.finite(dv0) &&
-               (rnd > 0.2 * abs(dv) || 2 * rnd > 0.2 * abs(dv0 - dv)))) {
+               (rnd > 0.05 * abs(dv0) || 2 * rnd > 0.2 * abs(dv0 - dv)))) {
       i <- eff$table$measure == "deviance_explained"
       if (any(i) && !is.na(eff$table$estimate[i])) {
         eff$table$estimate[i] <- NA_real_
@@ -573,27 +585,52 @@ anova_glm <- function(data, response, groups,
   }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
   p_over <- .overdispersion_p(dispersion, stats::df.residual(model))
-  # Weights that are not frequencies are used as given, so a Poisson fit's
-  # tests are inflated by more than the Pearson dispersion when they are
-  # unequal: by how much, from the sandwich covariance (.weight_inflation()),
-  # depends on where the heavy rows fall. The Pearson dispersion of the
-  # weighted fit estimates phi0 * mean(w), phi0 being that of the response's
-  # variance. A binomial's weights are its trials, which are inverse
-  # variances of the proportions and inflate nothing.
+  # Weights that are not frequencies are used as given, so a fit's tests are
+  # inflated by more than the Pearson dispersion when they are unequal: by
+  # how much, from the sandwich covariance (.weight_inflation()), depends on
+  # where the heavy rows fall. The Pearson dispersion of the weighted fit
+  # estimates phi0 * mean(w), phi0 being that of the response's variance
+  # (1 for a 0/1 response). Whole-number weights on proportions are the
+  # trials, inverse variances that inflate nothing; weights that are not
+  # whole numbers on a binomial response are sampling weights.
   wi <- NULL
   wi_F <- NULL
-  if (fam_name == "poisson" && !binary && !is.null(weights) && is.null(freq_n) &&
-      is.finite(dispersion) && dispersion > 0) {
-    wp <- d[[weights]][d[[weights]] > 0]
+  wnum <- if (!is.null(weights)) d[[weights]] else NULL
+  sampling_w <- !is.null(wnum) && is.null(freq_n) &&
+    (fam_name %in% c("poisson", "quasipoisson") ||
+       (fam_name %in% c("binomial", "quasibinomial") &&
+          any(abs(wnum - round(wnum)) > sqrt(.Machine$double.eps))))
+  if (sampling_w) {
+    wp <- wnum[wnum > 0]
     if (length(wp) && stats::var(wp) > 1e-4 * mean(wp)^2) {
-      phi0 <- dispersion / mean(wp)
-      wi <- .weight_inflation(model, phi0, type)
-      # An F test divides by the Pearson dispersion of the weighted fit,
-      # which absorbs the average inflation but not the unevenness.
-      if (identical(test_statistic, "F")) {
-        wi_F <- .weight_inflation(model, phi0 / dispersion, type)
+      disp_w <- .dispersion(model)
+      phi0 <- if (binary) 1 else if (is.finite(disp_w) && disp_w > 0) disp_w / mean(wp) else NA_real_
+      if (is.finite(phi0)) {
+        if (fam_name %in% c("poisson", "binomial")) wi <- .weight_inflation(model, phi0, type)
+        # An F test (any test of a quasi family) divides by the Pearson
+        # dispersion of the weighted fit, which absorbs the average
+        # inflation but not the unevenness.
+        if ((identical(test_statistic, "F") || startsWith(fam_name, "quasi")) &&
+            is.finite(disp_w) && disp_w > 0) {
+          wi_F <- .weight_inflation(model, phi0 / disp_w, type)
+        }
       }
     }
+  }
+  # A 0/1 response has no overdispersion note to carry this (its Pearson
+  # dispersion says nothing), so it gets its own.
+  if (binary && !is.null(wi) && isTRUE(max(wi$size) >= 0.075)) {
+    wt <- .weight_inflation_text(wi)
+    notes <- c(notes, sprintf(
+      "The weights in `%s` are unequal and not frequencies, so the binomial tests are inflated %s: %s. vcov_type = \"HC3\" gives standard errors, and test_statistic = \"Wald\" an omnibus test, that do not depend on that.",
+      weights, wt$by, wt$size))
+  }
+  if (startsWith(fam_name, "quasi") && !is.null(wi_F) &&
+      isTRUE(max(wi_F$size) >= 0.075)) {
+    wt <- .weight_inflation_text(wi_F)
+    notes <- c(notes, sprintf(
+      "The weights in `%s` are unequal and not frequencies, so the F tests are inflated %s: %s. The estimated dispersion removes the average inflation, not that of unequal weights.",
+      weights, wt$by, wt$size))
   }
   k_big <- .largest_term_df(model)
   phi_t <- if (!is.null(wi)) max(wi$factor) else dispersion

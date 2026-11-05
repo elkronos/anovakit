@@ -236,8 +236,9 @@ exact fit: the Gaussian family resolves it. The Poisson, Gamma and
 negative binomial deviances, however, are computed as differences of
 nearly equal terms, and on such a level rounding can swamp the change in
 deviance a test is built on. A likelihood-ratio or F test that rounding
-could move by more than a fifth of its size is then NA, and one it could
-move by more than 2\% gets a note; \code{$notes} says which, and
+could move by more than a fifth of its size or of its degrees of freedom,
+whichever is larger, is then NA, and one it could move by more than 2\%
+of that gets a note; \code{$notes} says which, and
 \code{test_statistic = "Wald"}, which does not use the deviance, can still
 test them.
 
