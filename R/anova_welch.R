@@ -87,15 +87,17 @@
 #' 5\% the test is reported and the note gives the share. Subtracting a
 #' constant close to the values from the response avoids both.
 #'
-#' The omnibus test is run on the response divided by a power of two near its
-#' largest absolute value. That is exact (for values within about 300 orders
-#' of magnitude of the largest), and Welch's F does not depend on the
-#' response's units, so a response around 1e-150, whose variances are too
-#' small for \code{stats::oneway.test()} to weight by, gives the same test as
-#' at an ordinary scale. If the group variances span too wide a range for
-#' their weights to be represented together even then, \code{$anova} reports
-#' the statistic, denominator degrees of freedom and p-value as \code{NA},
-#' with a note.
+#' The omnibus test is run by \code{stats::oneway.test()} on the response as
+#' supplied. Welch's F does not depend on the response's units, so when that
+#' gives a non-finite F (a response around 1e-150, whose variances are too
+#' small for their weights, group size over variance, to be represented), the
+#' test is rerun on the response multiplied by a power of two chosen so the
+#' group variances are centred on 1 on a log scale, and then on the response
+#' brought near 1; the first finite result is reported. Multiplying by a power
+#' of two is exact unless it pushes a value out of the range of normal
+#' doubles, and such a scale is not used. If no scale gives a finite F,
+#' \code{$anova} reports the statistic, denominator degrees of freedom and
+#' p-value as \code{NA}, with a note.
 #'
 #' The standardiser is recorded in the \code{standardiser} column of
 #' \code{$effect_sizes}. The magnitude labels use Cohen's conventional
@@ -278,16 +280,13 @@ anova_welch <- function(data, response, groups,
   .say(verbose, "Running Welch's ANOVA on %d groups.", n_groups)
   fml <- .formula(response, cell)
   # Welch's F does not depend on the response's units, but oneway.test()
-  # forms the weights n / s^2, which overflow when a variance is subnormal
-  # (a response around 1e-150) and return NaN. Scaling by a power of two is
-  # exact, so the test is run on the response brought near 1 and gives the
-  # same F, df and p-value it would at that scale.
-  scaled <- d
-  y_max <- max(abs(d[[response]]))
-  if (y_max > 0) {
-    scaled[[response]] <- d[[response]] / 2^floor(log2(y_max))
-  }
-  welch <- stats::oneway.test(fml, data = scaled, var.equal = FALSE)
+  # forms the weights n / s^2, which overflow when a variance is tiny (a
+  # response around 1e-150) and give NaN. The test is run at the response's
+  # own scale first; only when that is not finite is it rerun on the response
+  # multiplied by a power of two (exact) chosen to centre the group variances
+  # on 1, and then on the response brought near 1.
+  om <- .welch_oneway_scaled(fml, d, response, cell, group_var)
+  welch <- om$test
   # oneway.test names the internal cell column; name what the user supplied.
   welch$data.name <- sprintf("%s and %s", response, term_label)
   noise <- .welch_noise_share(d[[response]], d[[cell]])
@@ -300,7 +299,7 @@ anova_welch <- function(data, response, groups,
       noise$pairs, if (noise$n == 1L) "that pair" else "those pairs",
       if (noise$n == 1L) "s" else "", .share_pct(noise$share)))
   } else if (!is.finite(welch$statistic)) {
-    notes <- c(notes, "The omnibus Welch F could not be computed in double precision, so $anova reports it as NA: the group variances span too wide a range for their weights (group size over variance) to be represented together.")
+    notes <- c(notes, "The omnibus Welch F could not be computed in double precision, so $anova reports it as NA: neither at the response's own scale nor after multiplying the response by a power of two that centres the group variances on 1 (or brings its values near 1) could the weights (group size over variance) and the weighted squared differences between the group means be represented together.")
     welch$statistic[] <- NA_real_
     welch$parameter[2L] <- NA_real_
     welch$p.value <- NA_real_
@@ -328,9 +327,16 @@ anova_welch <- function(data, response, groups,
                                    unit = "observation")
   notes <- c(notes, .normality_skip_notes(normality))
   group_var <- as.numeric(group_var)
-  # A subnormal variance has lost precision; the rescaled response's does not.
+  # A subnormal variance has lost precision; recompute the ratio from the
+  # response rescaled (exactly, by a power of two) so the variances are
+  # centred on 1, when there every variance is a normal double.
   if (any(group_var < .Machine$double.xmin)) {
-    group_var <- as.numeric(tapply(scaled[[response]], scaled[[cell]], stats::var))
+    k <- .welch_centre_exponent(group_var)
+    y_k <- d[[response]] * 2^k
+    if (all(is.finite(y_k))) {
+      v_k <- as.numeric(tapply(y_k, d[[cell]], stats::var))
+      if (all(is.finite(v_k) & v_k >= .Machine$double.xmin)) group_var <- v_k
+    }
   }
   variance_ratio <- if (length(group_var) >= 2L && all(is.finite(group_var))) {
     if (min(group_var) > 0) max(group_var) / min(group_var) else Inf
@@ -801,4 +807,46 @@ anova_welch <- function(data, response, groups,
              ifelse(a < 0.5, "small",
              ifelse(a < 0.8, "medium", "large")))
   out
+}
+
+#' Power-of-two exponent that centres group variances on 1
+#'
+#' Multiplying the response by \code{2^k} multiplies each variance by
+#' \code{2^(2k)}; \code{k} puts the geometric middle of the positive
+#' variances' range at 1.
+#' @noRd
+.welch_centre_exponent <- function(v) {
+  v <- v[is.finite(v) & v > 0]
+  if (length(v) == 0L) return(0)
+  -round((log2(min(v)) + log2(max(v))) / 4)
+}
+
+#' Welch's oneway.test(), rescaled exactly only when needed
+#'
+#' Runs \code{stats::oneway.test()} on \code{d} as supplied; if its F is not
+#' finite, reruns it on the response multiplied by a power of two that
+#' centres the group variances on 1, then by one that brings the largest
+#' absolute value near 1, skipping a scale that would overflow or push a
+#' nonzero value below the normal range. Returns the first finite result
+#' (or the unscaled one) and the data it was run on.
+#' @noRd
+.welch_oneway_scaled <- function(fml, d, response, cell, group_var) {
+  test <- stats::oneway.test(fml, data = d, var.equal = FALSE)
+  if (is.finite(test$statistic)) return(list(test = test, data = d))
+  y <- d[[response]]
+  y_max <- max(abs(y))
+  ks <- c(.welch_centre_exponent(as.numeric(group_var)),
+          if (y_max > 0) -floor(log2(y_max)))
+  for (k in unique(ks)) {
+    if (k == 0) next
+    y_k <- y * 2^k
+    nz <- y != 0
+    if (!all(is.finite(y_k)) ||
+        any(abs(y_k[nz]) < .Machine$double.xmin & abs(y[nz]) >= .Machine$double.xmin)) next
+    d_k <- d
+    d_k[[response]] <- y_k
+    t_k <- stats::oneway.test(fml, data = d_k, var.equal = FALSE)
+    if (is.finite(t_k$statistic)) return(list(test = t_k, data = d_k))
+  }
+  list(test = test, data = d)
 }

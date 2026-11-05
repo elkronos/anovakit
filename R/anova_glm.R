@@ -268,6 +268,7 @@ anova_glm <- function(data, response, groups,
   # are gone.
   .check_no_matrix_response(data, response)
   data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups,
                                        `Weights column` = weights))
   .check_response_for_family(data, response, family, values = FALSE)
   .check_flag(posthoc, "posthoc")

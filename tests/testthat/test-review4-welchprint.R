@@ -150,3 +150,88 @@ test_that("welch-kw-print-inputs-F3: matrix and data-frame grouping columns are 
   expect_error(anova_welch(d, "y", "gd2", plots = FALSE),
                "Grouping column `gd2` is a 2-column data frame", fixed = TRUE)
 })
+
+test_that("welchprint-R1: a finite Welch F at the response's own scale is never lost to rescaling", {
+  # Group c's variance (~1e-301) is a normal double, so oneway.test() gives a
+  # finite F unscaled; dividing the response by 2^16 would make it subnormal
+  # and the weights overflow.
+  d <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                  y = c(1e5 + c(0, 1, 2, 4), 1e5 + c(3, 5, 6, 9),
+                        1e-150 * c(1, 2, 4, 3)))
+  ref <- stats::oneway.test(y ~ g, data = d, var.equal = FALSE)
+  expect_true(is.finite(ref$statistic))
+  fit <- anova_welch(d, "y", "g", plots = FALSE)
+  expect_identical(fit$anova$statistic, unname(ref$statistic))
+  expect_identical(fit$anova$den_df, unname(ref$parameter[2L]))
+  expect_identical(fit$anova$p_value, ref$p.value)
+  expect_false(any(grepl("could not be computed", fit$notes)))
+  # Hand computation of the variance ratio from the unscaled variances.
+  v <- tapply(d$y, d$g, stats::var)
+  expect_true(any(grepl(sprintf("Largest group variance is %s times",
+                                format(signif(max(v) / min(v), 3))),
+                        fit$notes, fixed = TRUE)))
+
+  set.seed(1)
+  d <- data.frame(g = rep(c("a", "b", "c"), each = 6),
+                  y = c(stats::rnorm(6, 1e5, 1), stats::rnorm(6, 1e5 + 3, 2),
+                        stats::rnorm(6, 1e-150, 1e-151)))
+  ref <- stats::oneway.test(y ~ g, data = d, var.equal = FALSE)
+  fit <- anova_welch(d, "y", "g", plots = FALSE)
+  expect_identical(fit$anova$statistic, unname(ref$statistic))
+  expect_identical(fit$anova$p_value, ref$p.value)
+
+  # Where only rescaling helps, the result equals oneway.test() on the
+  # response multiplied by a power of two (exact), done by hand: here group
+  # c's variance is subnormal and the means differ by 1e5.
+  d <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                  y = c(1 + c(0, 1, 2, 4), 2 + c(3, 5, 6, 9),
+                        1e-160 * c(1, 2, 4, 3)))
+  expect_false(is.finite(suppressWarnings(
+    stats::oneway.test(y ~ g, data = d, var.equal = FALSE)$statistic)))
+  e <- d
+  e$y <- e$y * 2^200
+  ref <- stats::oneway.test(y ~ g, data = e, var.equal = FALSE)
+  expect_true(is.finite(ref$statistic))
+  fit <- anova_welch(d, "y", "g", plots = FALSE)
+  expect_equal(fit$anova$statistic, unname(ref$statistic), tolerance = 1e-12)
+  expect_equal(fit$anova$den_df, unname(ref$parameter[2L]), tolerance = 1e-12)
+  expect_equal(fit$anova$p_value, ref$p.value, tolerance = 1e-12)
+  expect_false(any(grepl("could not be computed", fit$notes)))
+})
+
+test_that("welchprint-C1: every function refuses a multi-column matrix grouping column and flattens a one-column data frame", {
+  set.seed(2)
+  d <- data.frame(y = stats::rnorm(24), cnt = stats::rpois(24, 3),
+                  b = stats::rbinom(24, 1, 0.5), y2 = stats::rnorm(24),
+                  x = stats::rnorm(24))
+  d$g2 <- cbind(rep(c("a", "b", "c"), each = 8), rep(c("x", "y"), 12))
+  d$gd <- data.frame(a = rep(c("a", "b", "c"), each = 8))
+  msg <- "Grouping column `g2` is a 2-column matrix; supply a single column."
+  expect_error(anova_glm(d, "y", "g2", plots = FALSE), msg, fixed = TRUE)
+  expect_error(anova_bin(d, "b", "g2", plots = FALSE), msg, fixed = TRUE)
+  expect_error(anova_count(d, "cnt", "g2", plots = FALSE), msg, fixed = TRUE)
+  expect_error(anova_manova(d, c("y", "y2"), "g2", plots = FALSE), msg,
+               fixed = TRUE)
+  expect_error(anova_ancova(d, "y", "g2", "x", plots = FALSE), msg,
+               fixed = TRUE)
+
+  # The one-column data frame gives the same test as the plain column, and
+  # that agrees with car::Anova() on lm().
+  d0 <- data.frame(y = d$y, x = d$x, gd = d$gd$a)
+  fit <- anova_glm(d, "y", "gd", plots = FALSE)
+  ref <- car::Anova(stats::lm(y ~ gd, data = d0), type = 2)
+  expect_equal(fit$anova$p_value[1L], ref[["Pr(>F)"]][1L], tolerance = 1e-8)
+  fit <- anova_ancova(d, "y", "gd", "x", plots = FALSE)
+  expect_equal(fit$anova, anova_ancova(d0, "y", "gd", "x", plots = FALSE)$anova)
+  ref <- car::Anova(stats::lm(y ~ gd + x, data = transform(d0, x = x - mean(x))),
+                    type = 3)
+  expect_equal(fit$anova$p_value[fit$anova$term == "gd"],
+               ref["gd", "Pr(>F)"], tolerance = 1e-8)
+
+  # anova_rm(): a within-subject factor given as a matrix column.
+  r <- data.frame(y = stats::rnorm(24), s = factor(rep(1:8, 3)),
+                  w = factor(rep(1:3, each = 8)))
+  r$wm <- cbind(as.character(r$w), "z")
+  expect_error(anova_rm(r, "y", "s", "wm", plots = FALSE),
+               "Within-subject factor `wm` is a 2-column matrix", fixed = TRUE)
+})
