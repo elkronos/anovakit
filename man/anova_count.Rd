@@ -212,9 +212,13 @@ statistic by about 10), and \code{$notes} says so when they do not average
 with a design-based method such as \code{survey::svyglm()}. The Pearson
 dispersion the model choice is made on is computed with such weights
 rescaled to average 1, so the choice between Poisson and negative binomial
-does not depend on their arbitrary scale; the note on what overdispersion
-does to a kept Poisson model's tests gives the factor they are inflated by
-with the weights as given, that dispersion times the mean weight.
+does not depend on their arbitrary scale. With the weights as given the
+tests are inflated by that dispersion times the weight when the weights
+are equal; when they are unequal, by an amount that depends on where the
+heavy rows fall, which \code{$notes} gives from the sandwich covariance
+for each term (assuming the weights are not inverse variances, which
+would not inflate the tests), for a kept Poisson model, a negative
+binomial one and any F test.
 
 \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 treatment-coded parameterisation of the fitted model, whatever \code{type}

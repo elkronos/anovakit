@@ -88,9 +88,13 @@
 #' with a design-based method such as \code{survey::svyglm()}. The Pearson
 #' dispersion the model choice is made on is computed with such weights
 #' rescaled to average 1, so the choice between Poisson and negative binomial
-#' does not depend on their arbitrary scale; the note on what overdispersion
-#' does to a kept Poisson model's tests gives the factor they are inflated by
-#' with the weights as given, that dispersion times the mean weight.
+#' does not depend on their arbitrary scale. With the weights as given the
+#' tests are inflated by that dispersion times the weight when the weights
+#' are equal; when they are unequal, by an amount that depends on where the
+#' heavy rows fall, which \code{$notes} gives from the sandwich covariance
+#' for each term (assuming the weights are not inverse variances, which
+#' would not inflate the tests), for a kept Poisson model, a negative
+#' binomial one and any F test.
 #'
 #' \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 #' treatment-coded parameterisation of the fitted model, whatever \code{type}
@@ -326,7 +330,7 @@ anova_count <- function(data, response, groups,
   # sandwich covariance (.weight_inflation()): it depends on where the heavy
   # rows fall, not only on the weights, and scales with the dispersion.
   wi_at <- if (!is.null(weights) && !freq_w) {
-    function(phi) .weight_inflation(pois, phi)
+    function(phi) .weight_inflation(pois, phi, type)
   } else NULL
   w_infl <- 1
   if (!is.null(wi_at)) {
@@ -487,6 +491,31 @@ anova_count <- function(data, response, groups,
   if (f_note) {
     notes <- c(notes, .f_test_note(model_type, .dispersion(fit),
                                    robust = if (!is.null(rv$matrix)) vcov_type))
+  }
+  # Unequal weights that are not frequencies also inflate the tests of a
+  # negative binomial fit, and of any F test (a quasi-Poisson one included):
+  # an F test divides by the Pearson dispersion of the weighted fit, which
+  # absorbs the average inflation but not the unevenness. The kept Poisson
+  # model's likelihood-ratio and Wald tests get this from
+  # .choose_count_model() above.
+  if (!is.null(wi_at) && is.null(rv$matrix) &&
+      (model_type != "poisson" || test_statistic == "F")) {
+    phi_x <- if (model_type == "negbin") 1 else dispersion
+    if (test_statistic == "F" || model_type == "quasipoisson") {
+      phi_x <- phi_x / .dispersion(fit)
+    }
+    wi_x <- if (is.finite(phi_x) && phi_x > 0) .weight_inflation(fit, phi_x, type) else NULL
+    if (!is.null(wi_x) && isTRUE(max(wi_x$size) >= 0.075)) {
+      wt <- .weight_inflation_text(wi_x)
+      notes <- c(notes, sprintf(
+        "The weights in `%s` are unequal, so the %s tests are inflated %s: %s.%s",
+        weights,
+        switch(model_type, negbin = "negative binomial", quasipoisson = "quasi-Poisson",
+               "Poisson F"),
+        wt$by, wt$size,
+        if (test_statistic == "F" || model_type == "quasipoisson")
+          " The F test's estimated dispersion removes the average inflation, not that of unequal weights." else ""))
+    }
   }
   if (freq_w && (model_type == "quasipoisson" || test_statistic == "F")) {
     notes <- c(notes, sprintf(

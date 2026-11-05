@@ -523,14 +523,14 @@ anova_glm <- function(data, response, groups,
   if (!is.null(eff$table) && "measure" %in% names(eff$table)) {
     rnd <- .deviance_rounding(model)
     dv <- model$deviance; dv0 <- model$null.deviance
-    if (isTRUE(is.finite(rnd) && is.finite(dv) && is.finite(dv0) &&
+    if (isTRUE(attr(rnd, "cancels")) && isTRUE(is.finite(rnd) && is.finite(dv) && is.finite(dv0) &&
                (rnd > 0.2 * abs(dv) || 2 * rnd > 0.2 * abs(dv0 - dv)))) {
       i <- eff$table$measure == "deviance_explained"
       if (any(i) && !is.na(eff$table$estimate[i])) {
         eff$table$estimate[i] <- NA_real_
         notes <- c(notes, sprintf(
           "The deviance explained in $effect_sizes is NA: the deviances it compares are uncertain by about %s from rounding alone (the response varies too little relative to its level for this family's deviance to resolve it).",
-          format(signif(rnd, 2))))
+          format(signif(as.numeric(rnd), 2))))
       }
     }
   }
@@ -573,23 +573,31 @@ anova_glm <- function(data, response, groups,
   }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
   p_over <- .overdispersion_p(dispersion, stats::df.residual(model))
-  # Weights that are not frequencies are used as given, so the tests are
-  # inflated by more than the Pearson dispersion when they are unequal: by
-  # how much, from the sandwich covariance (.weight_inflation()), depends on
-  # where the heavy rows fall. The Pearson dispersion of the weighted fit
-  # estimates phi0 * mean(w), phi0 being that of the response's variance.
+  # Weights that are not frequencies are used as given, so a Poisson fit's
+  # tests are inflated by more than the Pearson dispersion when they are
+  # unequal: by how much, from the sandwich covariance (.weight_inflation()),
+  # depends on where the heavy rows fall. The Pearson dispersion of the
+  # weighted fit estimates phi0 * mean(w), phi0 being that of the response's
+  # variance. A binomial's weights are its trials, which are inverse
+  # variances of the proportions and inflate nothing.
   wi <- NULL
-  if (fixed_family && !is.null(weights) && is.null(freq_n) &&
+  wi_F <- NULL
+  if (fam_name == "poisson" && !binary && !is.null(weights) && is.null(freq_n) &&
       is.finite(dispersion) && dispersion > 0) {
     wp <- d[[weights]][d[[weights]] > 0]
     if (length(wp) && stats::var(wp) > 1e-4 * mean(wp)^2) {
-      wi <- .weight_inflation(model, dispersion / mean(wp))
+      phi0 <- dispersion / mean(wp)
+      wi <- .weight_inflation(model, phi0, type)
+      # An F test divides by the Pearson dispersion of the weighted fit,
+      # which absorbs the average inflation but not the unevenness.
+      if (identical(test_statistic, "F")) {
+        wi_F <- .weight_inflation(model, phi0 / dispersion, type)
+      }
     }
   }
   k_big <- .largest_term_df(model)
   phi_t <- if (!is.null(wi)) max(wi$factor) else dispersion
-  wi_min <- if (!is.null(wi)) .weight_inflation(model, min(dispersion / mean(wp), 1)) else NULL
-  weight_inflated <- !is.null(wi_min) && isTRUE(max(wi_min$size) >= 0.075)
+  weight_inflated <- !is.null(wi) && isTRUE(max(wi$size) >= 0.075)
   if (fixed_family && is.finite(dispersion) &&
       ((dispersion > 1 && is.finite(p_over) && p_over < 0.05) ||
        weight_inflated)) {
@@ -615,7 +623,11 @@ anova_glm <- function(data, response, groups,
       dispersion, .fmt_p(p_over), fam_name, by,
       if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else "correspondingly",
       size_text,
-      if (identical(test_statistic, "F")) {
+      if (identical(test_statistic, "F") && !is.null(wi_F) &&
+          isTRUE(max(wi_F$size) >= 0.06)) {
+        sprintf("The F table scales by the Pearson dispersion, which removes the average inflation but not that of unequal weights: %s. The coefficient table, the marginal means and the comparisons do not scale at all.",
+                .weight_inflation_text(wi_F)$size)
+      } else if (identical(test_statistic, "F")) {
         sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
                 fam_name)
       } else {

@@ -795,9 +795,11 @@
 #' about 1e-11 there and F statistics of 1e12 to 1e17. When some response is
 #' at such a boundary the fit is therefore also exact when every boundary
 #' value is fitted to within 1e-6 of the response's range and every other
-#' value to within 1e-10 of its own size. A response constant within every
-#' design cell (\code{.constant_within_cells()}) and fitted to within 1e-10
-#' of its size is exact too.
+#' value to within 1e-11 of its own size (only for families bounded there:
+#' Poisson, negative binomial and binomial, with their quasi forms). A
+#' response constant within every design cell of a model saturated in its
+#' cells (\code{.constant_within_cells()}) and fitted to within 1e-10 of its
+#' size is exact too.
 #'
 #' The deviance is not used here: on a large level it can be mostly rounding
 #' error (or negative) while the fit leaves real residual variation, and a
@@ -821,7 +823,9 @@
   if (length(y) == 0L || anyNA(y)) return(NULL)
   const_off <- is.null(off) || anyNA(off) ||
     all(abs(off - off[1L]) <= 1e-12 * max(1, abs(off)))
-  if (all(abs(y - y[1L]) <= 1e-12 * max(abs(y))) &&
+  # The same value to a few units in the last place: whole-number counts of
+  # 1e12 that differ by 1 are different values.
+  if (all(abs(y - y[1L]) <= 8 * .Machine$double.eps * max(abs(y))) &&
       (const_off || all(y == 0))) {
     return(sprintf(
       "Response `%s` takes the same value (%s) in every analysed row, so the model fits it exactly and leaves no residual variation: the dispersion cannot be estimated, and every test, interval and comparison would be a ratio of rounding errors. There is no difference between the groups to test.",
@@ -834,16 +838,23 @@
     # measured against the response's range; every other row against its own
     # size, so that a constant group of large values cannot hide real
     # variation in a group of small ones.
-    fam <- tryCatch(stats::family(model)$family, error = function(e) "")
-    binom <- fam %in% c("binomial", "quasibinomial")
-    bnd <- y == 0 | (binom & y == 1)
+    famobj <- tryCatch(stats::family(model), error = function(e) NULL)
+    fam <- if (is.null(famobj)) "" else famobj$family
+    binom <- fam %in% c("binomial", "quasibinomial") ||
+      (identical(fam, "quasi") && identical(famobj$varfun, "mu(1-mu)"))
+    # Only a family whose mean is bounded at 0 (and 1, for a proportion) is
+    # fitted there in the limit; a Gaussian 0 is an ordinary value.
+    bounded <- binom || fam %in% c("poisson", "quasipoisson") ||
+      startsWith(fam, "Negative Binomial") ||
+      (identical(fam, "quasi") && identical(famobj$varfun, "mu"))
+    bnd <- bounded & (y == 0 | (binom & y == 1))
     spread <- diff(range(y))
     res <- abs(y - mu)
     scl <- pmax(abs(y), abs(mu))
     rel_i <- if (any(!bnd) && all(scl[!bnd] > 0)) max(res[!bnd] / scl[!bnd]) else NA_real_
     if (any(bnd) && spread > 0) {
       rel_b <- max(res[bnd]) / spread
-      if (rel_b <= 1e-6 && (!any(!bnd) || isTRUE(rel_i <= 1e-10))) {
+      if (rel_b <= 1e-6 && (!any(!bnd) || isTRUE(rel_i <= 1e-11))) {
         what <- if (any(!bnd)) {
           sprintf("every fitted value equals the response to within %s of the response's range where the response is %s, and to within %s of its own size elsewhere, which is rounding error",
                   format(signif(rel_b, 3)), if (binom) "0 or 1" else "0",
@@ -883,7 +894,8 @@
 #' The response is constant within a cell when its values agree to within
 #' 1e-13 of their size: a few hundred units in the last place, which a
 #' constant entered or computed in double precision meets and real variation,
-#' even 1e-3 on a level of 1e10, does not. Cells of one row are constant.
+#' even 1e-3 on a level of 1e10, does not. FALSE unless the model has a
+#' coefficient for every cell and some cell has two rows or more.
 #' @noRd
 .constant_within_cells <- function(model, keep, off = NULL) {
   X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
@@ -897,6 +909,10 @@
     format(X[, j], digits = 15)), sep = "\r"))
   if (!is.null(off)) key <- paste(key, format(off, digits = 15), sep = "\r")
   cell <- match(key, unique(key))
+  # Only a model with a coefficient for every cell reproduces a response
+  # constant within its cells; an additive model of the same cells leaves
+  # real lack of fit, and cells of one row are trivially constant.
+  if (model$rank < max(cell) || !any(tabulate(cell) >= 2L)) return(FALSE)
   lo <- stats::ave(y, cell, FUN = min)
   hi <- stats::ave(y, cell, FUN = max)
   all(hi - lo <= 1e-13 * pmax(abs(lo), abs(hi)))
@@ -921,10 +937,14 @@
 #' The fitted means are themselves rounded, to about \code{16 * eps * |mu|}
 #' (a few units in the last place, times the conditioning of the fit), which
 #' moves each unit deviance by about \code{2 w |y - mu| / V(mu)} times that.
-#' The returned bound adds the two, the first summed in quadrature (the
-#' errors of different rows are independent) and the second linearly. Each
-#' is about twice the error a careful analysis gives, so it is a bound to
-#' compare with, not an estimate.
+#' Both are summed in quadrature: the errors of different rows are
+#' independent, and the deviance is stationary at the fit, so a shared error
+#' in the coefficients moves it only to second order. Each is about twice the
+#' error a careful analysis gives, so it is a bound to compare with, not an
+#' estimate. The attribute \code{cancels} is FALSE for the Gaussian and
+#' inverse Gaussian deviances, which are computed from \code{y - mu}
+#' directly; their rounding is that of the residuals themselves, which the
+#' exact-fit guard covers.
 #' @return the bound on the absolute error of \code{deviance(model)}.
 #' @noRd
 .deviance_rounding <- function(model) {
@@ -961,7 +981,9 @@
     tryCatch(fam$variance(mu), error = function(e) rep(NA_real_, length(mu)))
   fit_err <- ifelse(is.finite(V) & V > 0,
                     2 * w * abs(y - mu) / V * 16 * eps * abs(mu), 0)
-  sqrt(sum(cancel^2)) + sum(fit_err)
+  out <- sqrt(sum(cancel^2) + sum(fit_err^2))
+  attr(out, "cancels") <- !vtype %in% c("constant", "mu^3")
+  out
 }
 
 #' Make NA the deviance tests that rounding error swamps
@@ -973,10 +995,13 @@
 #' fixed-dispersion likelihood-ratio test, and the difference divided by the
 #' Pearson dispersion (and, for F, the term's degrees of freedom) when car
 #' scales by one. The bound is about three times the error seen in practice.
-#' A test whose statistic is uncertain by more than 20\% of itself, or of its
-#' degrees of freedom (the statistic's size under the null hypothesis), cannot
-#' be read, and is made NA with a note; between 2\% and 20\% the test is
-#' kept and a note gives the uncertainty. A Wald test does not use the
+#' A test whose statistic is uncertain by more than 20\% of itself or of its
+#' degrees of freedom, whichever is larger (the degrees of freedom are the
+#' statistic's size under the null hypothesis), cannot be read, and is made NA
+#' with a note; between 2\% and 20\% the test is kept and a note gives the
+#' uncertainty, as it does for a statistic smaller than its own rounding error
+#' (a negative one is shown as 0, with p = 1). Families whose deviance does
+#' not cancel (Gaussian, inverse Gaussian) are left alone. A Wald test does not use the
 #' deviance and can still be computed. Applied to car's table
 #' before any frequency-weight rescaling, which scales the statistic and its
 #' error alike.
@@ -994,7 +1019,9 @@
         startsWith(stat, "scaled-deviance"))) {
     return(av)
   }
-  err_d <- 2 * .deviance_rounding(model)
+  rnd <- .deviance_rounding(model)
+  if (!isTRUE(attr(rnd, "cancels"))) return(av)
+  err_d <- 2 * as.numeric(rnd)
   phi <- if (scaled || identical(stat, "F")) .dispersion(model) else 1
   if (!is.finite(err_d) || err_d <= 0 || !isTRUE(is.finite(phi) && phi > 0)) {
     return(av)
@@ -1005,7 +1032,17 @@
   orig <- tab$statistic
   scale_ <- pmax(abs(tab$statistic), dfs)
   bad <- eff & err > 0.2 * scale_
-  shaky <- eff & !bad & err > 0.02 * scale_
+  # A statistic smaller than its rounding error is rounding error: a
+  # negative one is shown as 0 (a deviance cannot rise when terms are
+  # added), and either way the note says so.
+  tiny <- eff & !bad & abs(tab$statistic) < err
+  neg <- tiny & tab$statistic < 0
+  if (any(neg)) {
+    tab$statistic[neg] <- 0
+    if ("sum_sq" %in% names(tab)) tab$sum_sq[neg] <- 0
+    tab$p_value[neg] <- 1
+  }
+  shaky <- eff & !bad & (tiny | err > 0.02 * scale_)
   if (any(shaky)) {
     av$note <- c(av$note, sprintf(
       "The response varies little relative to its level, so this family's deviance is computed with limited precision: from rounding alone, the statistic(s) of %s are uncertain by about %s (on %s). The tests are still usable; test_statistic = \"Wald\", which uses the estimates and their covariance rather than the deviance, avoids this.",
@@ -1013,7 +1050,10 @@
       paste(format(signif(err[shaky], 2)), collapse = ", "),
       paste(format(signif(orig[shaky], 3)), collapse = ", ")))
   }
-  if (!any(bad)) return(av)
+  if (!any(bad)) {
+    av$table <- tab
+    return(av)
+  }
   tab$statistic[bad] <- NA_real_
   tab$p_value[bad] <- NA_real_
   if ("sum_sq" %in% names(tab)) tab$sum_sq[bad] <- NA_real_
@@ -1240,12 +1280,15 @@
 #' that are inverse variances would not inflate the tests, so callers say
 #' which reading they assume.
 #' @param phi the dispersion of the response's variance relative to the
-#'   family's (estimated with the weights rescaled to average 1).
+#'   family's (estimated with the weights rescaled to average 1); divided by
+#'   the dispersion an F test estimates, for the size of that test.
+#' @param type the type of the tests: under Type II a term is tested in the
+#'   model without the terms that contain it.
 #' @return a data frame with one row per term: \code{term}, \code{df},
 #'   \code{factor} (mean lambda), \code{size} (of a nominal 5\% test), or
 #'   \code{NULL} when it cannot be computed.
 #' @noRd
-.weight_inflation <- function(model, phi) {
+.weight_inflation <- function(model, phi, type = "II") {
   X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
   W <- model$weights
   w <- model$prior.weights
@@ -1255,23 +1298,51 @@
   asg <- attr(X, "assign")[keep]
   X <- X[, keep, drop = FALSE]
   ok <- is.finite(W) & W > 0 & is.finite(w) & w > 0
-  X <- X[ok, , drop = FALSE]; W <- W[ok]; w <- w[ok]
-  A <- crossprod(X * sqrt(W))
-  B <- phi * crossprod(X * sqrt(w * W))
-  Ai <- tryCatch(solve(A), error = function(e) NULL)
-  if (is.null(Ai)) return(NULL)
-  Vt <- Ai %*% B %*% Ai
-  labs <- attr(stats::terms(model), "term.labels")
+  y <- as.numeric(model$y)
+  off <- model$offset
+  # lambda for the columns J of a design Xm with working weights Wm
+  lam_for <- function(Xm, Wm, J) {
+    A <- crossprod(Xm * sqrt(Wm))
+    B <- phi * crossprod(Xm * sqrt(w[ok] * Wm))
+    Ai <- tryCatch(solve(A), error = function(e) NULL)
+    if (is.null(Ai)) return(NA_real_)
+    Vt <- Ai %*% B %*% Ai
+    tryCatch(Re(eigen(solve(Ai[J, J, drop = FALSE], Vt[J, J, drop = FALSE]),
+                      only.values = TRUE)$values), error = function(e) NA_real_)
+  }
+  tt <- stats::terms(model)
+  labs <- attr(tt, "term.labels")
+  fac <- attr(tt, "factors")
+  # Under Type II a term is tested in the model without the terms that
+  # contain it (car's marginality), so its lambda comes from that fit; under
+  # Type III (sum-to-zero contrasts) from the full model's coefficients.
+  containing <- function(k) {
+    if (is.null(fac) || ncol(fac) < length(labs)) return(integer(0))
+    vars <- fac[, k] > 0
+    which(vapply(seq_along(labs), function(j)
+      j != k && all(fac[vars, j] > 0), logical(1)))
+  }
   out <- lapply(sort(unique(asg[asg > 0])), function(k) {
-    J <- which(asg == k)
-    lam <- tryCatch(Re(eigen(solve(Ai[J, J, drop = FALSE], Vt[J, J, drop = FALSE]),
-                             only.values = TRUE)$values), error = function(e) NA_real_)
+    drop <- if (identical(type, "II")) containing(k) else integer(0)
+    if (length(drop)) {
+      cols <- !asg %in% drop
+      Xr <- X[ok, cols, drop = FALSE]
+      fr <- tryCatch(suppressWarnings(stats::glm.fit(
+        Xr, y[ok], weights = w[ok],
+        offset = if (length(off) == length(y)) off[ok] else NULL,
+        family = stats::family(model))), error = function(e) NULL)
+      if (is.null(fr) || any(!is.finite(fr$weights))) return(NULL)
+      lam <- lam_for(Xr, fr$weights, which(asg[cols] == k))
+    } else {
+      lam <- lam_for(X[ok, , drop = FALSE], W[ok], which(asg == k))
+    }
     if (anyNA(lam) || any(lam <= 0)) return(NULL)
     cc <- sum(lam^2) / sum(lam)
     nu <- sum(lam)^2 / sum(lam^2)
-    data.frame(term = gsub("`", "", labs[k], fixed = TRUE), df = length(J),
+    df <- length(lam)
+    data.frame(term = gsub("`", "", labs[k], fixed = TRUE), df = df,
                factor = mean(lam),
-               size = stats::pchisq(stats::qchisq(0.95, length(J)) / cc, nu,
+               size = stats::pchisq(stats::qchisq(0.95, df) / cc, nu,
                                     lower.tail = FALSE),
                stringsAsFactors = FALSE)
   })
