@@ -162,7 +162,7 @@ test_that("robust standard errors reach the marginal means", {
     fit$emmeans$se, anova_glm(d, "value", "group", plots = FALSE)$emmeans$se)))
 })
 
-test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.2", {
+test_that("Poisson overdispersion is noted when the Pearson test rejects at the 5% level", {
   d <- fx_overdispersed()
   fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
   m <- stats::glm(y ~ g, family = stats::poisson(), data = d)

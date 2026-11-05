@@ -504,7 +504,9 @@
 .family_call <- function(family) {
   std <- c("binomial", "quasibinomial", "poisson", "quasipoisson", "gaussian",
            "Gamma", "inverse.gaussian")
-  if (family$family %in% std) {
+  # A family whose initialisation was changed (see .null_start_family()) is
+  # not the one the bare call would build.
+  if (family$family %in% std && !isTRUE(attr(family, "null_start"))) {
     return(call(family$family, link = family$link))
   }
   NULL
@@ -530,8 +532,11 @@
 #' @param family a family object, or \code{NULL} for \code{MASS::glm.nb}.
 #' @param weights name of the prior-weights column in \code{data}, or
 #'   \code{NULL}.
+#' @param control a \code{glm.control()} list, or \code{NULL} for the
+#'   default. It is kept on the model, so \pkg{car}'s and \code{profile()}'s
+#'   refits use it too.
 #' @noRd
-.fit_glm <- function(fml, data, family = NULL, weights = NULL) {
+.fit_glm <- function(fml, data, family = NULL, weights = NULL, control = NULL) {
   env <- .model_env(data)
   environment(fml) <- env
   wsym <- if (is.null(weights)) NULL else as.name(weights)
@@ -554,8 +559,71 @@
       bquote(stats::glm(formula = .(fml), family = .(fam), data = .(dref),
                         weights = .(wsym)))
     }
+    if (!is.null(control)) {
+      env$control_used <- control
+      call$control <- .env_ref(env, "control_used")
+    }
   }
   eval(call, env)
+}
+
+#' A binomial family that starts its iterations from the overall proportion
+#'
+#' \code{binomial()$initialize} starts each row at \code{(w y + 0.5) / (w + 1)}.
+#' For a 0/1 response with frequency weights that puts every row next to 0 or
+#' 1, and under a cloglog link the iterations then run off to coefficients of
+#' 1e15 and stop at a deviance many times the true minimum, sometimes
+#' reporting convergence. Starting every row at the weighted overall
+#' proportion -- the fitted value of the intercept-only model -- avoids that.
+#' The start is part of the family, so \pkg{car}'s and \code{drop1()}'s refits
+#' of reduced models, which call \code{glm.fit()} with the model's family and
+#' no starting values, start there too. Starting values given to the fit
+#' (\code{mustart}, \code{etastart}, \code{start}) still take precedence.
+#' @noRd
+.null_start_family <- function(family) {
+  init <- family$initialize
+  family$initialize <- bquote({
+    .(init)
+    .w_pos <- weights > 0
+    .m_all <- sum((weights * y)[.w_pos]) / sum(weights[.w_pos])
+    if (is.finite(.m_all) && .m_all > 0 && .m_all < 1) {
+      mustart <- rep(.m_all, length(y))
+    }
+    rm(.w_pos, .m_all)
+  })
+  attr(family, "null_start") <- TRUE
+  family
+}
+
+#' Is a GLM's response constant, or fitted exactly?
+#'
+#' A family that estimates its dispersion divides every test statistic by it;
+#' when the residual deviance is rounding error so is the dispersion, and the
+#' F statistics come out as 1e12, NaN or negative. As in \code{.exact_fit()},
+#' a fit is exact when its residual deviance is at most 1e-12 of the null
+#' deviance, or when the response takes one value in every row that carries
+#' weight (the null deviance is then itself 0 or rounding error).
+#' @return \code{NULL} when the fit leaves residual variation; otherwise the
+#'   error message.
+#' @noRd
+.glm_exact_fit_message <- function(model, response) {
+  y <- as.numeric(model$y)
+  w <- model$prior.weights
+  if (!is.null(w) && length(w) == length(y)) y <- y[w > 0]
+  if (length(y) == 0L || anyNA(y)) return(NULL)
+  if (all(abs(y - y[1L]) <= 1e-12 * max(abs(y)))) {
+    return(sprintf(
+      "Response `%s` takes the same value (%s) in every analysed row, so the model fits it exactly and leaves no residual variation: the dispersion cannot be estimated, and every test, interval and comparison would be a ratio of rounding errors. There is no difference between the groups to test.",
+      response, format(signif(y[1L], 6))))
+  }
+  dev <- model$deviance
+  dev0 <- model$null.deviance
+  if (isTRUE(is.finite(dev) && is.finite(dev0) && dev0 > 0 && dev <= 1e-12 * dev0)) {
+    return(sprintf(
+      "The model fits response `%s` exactly: its residual deviance is %s of the null deviance, which is rounding error, as when the response is constant within every group. There is no residual variation to estimate the dispersion from, so the F tests, intervals and comparisons are undefined (each F statistic would be a ratio of rounding errors).",
+      response, format(signif(dev / dev0, 3))))
+  }
+  NULL
 }
 
 #' Coefficient names that a model produces more than once
@@ -612,11 +680,15 @@
 #' @param fitted the result of \code{.collect_conditions()} on the fit.
 #' @param refit_fun function of the data that refits the model the same way,
 #'   returning a \code{.collect_conditions()} result.
+#' @param table,what where the caller reports the coefficients, and what they
+#'   are, for the note.
 #' @return list with \code{fitted} (the original or the refit), \code{data}
 #'   (with bracketed contrasts when it was refitted), \code{bracketed} and
 #'   \code{note}.
 #' @noRd
-.unclash_group_coefs <- function(fitted, refit_fun, d, groups, type) {
+.unclash_group_coefs <- function(fitted, refit_fun, d, groups, type,
+                                 table = "$effect_sizes",
+                                 what = "the effect sizes") {
   out <- list(fitted = fitted, data = d, bracketed = FALSE, note = character(0))
   if (inherits(fitted$value, "error")) return(out)
   dup <- .dup_coef_names(fitted$value)
@@ -628,16 +700,16 @@
   refit <- refit_fun(d2)
   if (inherits(refit$value, "error") ||
       length(.dup_coef_names(refit$value)) > 0L) {
-    .stopf("Column names collide with the names of the model's coefficients (%s is produced twice), so the effect sizes and marginal means would be computed from the wrong columns. Rename the column(s) involved: %s.",
-           paste(dup_lab, collapse = ", "),
+    .stopf("Column names collide with the names of the model's coefficients (%s is produced twice), so %s and marginal means would be computed from the wrong columns. Rename the column(s) involved: %s.",
+           paste(dup_lab, collapse = ", "), what,
            paste(sprintf("`%s`", involved), collapse = ", "))
   }
   relabelled <- grep("[", names(stats::coef(refit$value)), fixed = TRUE,
                      value = TRUE)
   out$note <- sprintf(
-    "The names and levels of grouping columns %s produce the same coefficient name (%s would appear twice), which would make the effect sizes and the marginal means read the wrong model column. The grouping factors' contrast labels were put in brackets in $model and $effect_sizes (%s, ...) to keep the names distinct; no estimate or test is affected.",
+    "The names and levels of grouping columns %s produce the same coefficient name (%s would appear twice), which would make %s and the marginal means read the wrong model column. The grouping factors' contrast labels were put in brackets in $model and %s (%s, ...) to keep the names distinct; no estimate or test is affected.",
     paste(sprintf("`%s`", involved), collapse = ", "),
-    paste(dup_lab, collapse = ", "),
+    paste(dup_lab, collapse = ", "), what, table,
     paste(gsub("`", "", utils::head(relabelled, 2L), fixed = TRUE),
           collapse = ", "))
   out$fitted <- refit
