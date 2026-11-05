@@ -62,7 +62,7 @@ test_that("R3-19: every additive model notes the empty cell its marginal means a
   expect_identical(sum(tab == 0), 1L)
   expect_identical(tab["c", "y"], 0L)
   for (nm in names(fits)) {
-    note <- grep("contain no observations", fits[[nm]]$notes, value = TRUE)
+    note <- grep("contain no data:", fits[[nm]]$notes, value = TRUE)
     expect_length(note, 1L)
     expect_match(note, "1 of the 6 possible", fixed = TRUE, info = nm)
     expect_match(note, "c : y", fixed = TRUE, info = nm)
@@ -76,7 +76,7 @@ test_that("R3-19: every additive model notes the empty cell its marginal means a
   # A full design gives no such note.
   full <- expand.grid(rep = 1:8, g = c("a", "b"), h = c("x", "y"))
   full$y <- withr::with_seed(4, stats::rnorm(nrow(full)))
-  expect_false(any(grepl("contain no observations",
+  expect_false(any(grepl("contain no data",
                          anova_glm(full, "y", c("g", "h"), plots = FALSE)$notes)))
 })
 
@@ -194,10 +194,10 @@ test_that("R3-39: Scheffe comparisons with an empty cell use the estimable cells
     d$cell <- interaction(d$g, d$h, drop = TRUE, sep = " ")
     d
   })
-  check <- function(fit, ref_model) {
+  check <- function(fit, ref_model, level = 0.9) {
     ref <- summary(emmeans::contrast(emmeans::emmeans(ref_model, "cell"), "pairwise",
                                      adjust = "scheffe"),
-                   infer = TRUE, level = 0.9, adjust = "scheffe")
+                   infer = TRUE, level = level, adjust = "scheffe")
     expect_identical(nrow(fit$posthoc), 10L)
     expect_equal(fit$posthoc$p_adjusted, ref$p.value, tolerance = 1e-6)
     lo <- intersect(c("lower.CL", "asymp.LCL"), names(ref))
@@ -213,9 +213,10 @@ test_that("R3-39: Scheffe comparisons with an empty cell use the estimable cells
   ph <- f$posthoc[1, ]
   expect_equal((ph$estimate - ph$conf_low) / ph$se, sqrt(4 * stats::qf(.9, 4, 25)),
                tolerance = 1e-8)
+  # The same at another confidence level.
   check(anova_glm(d, "y", c("g", "h"), interaction = TRUE, adjust = "scheffe",
-                  conf_level = 0.9, plots = FALSE),
-        stats::lm(y ~ cell, d))
+                  conf_level = 0.99, plots = FALSE),
+        stats::lm(y ~ cell, d), level = 0.99)
   cnt <- anova_count(d, "k", c("g", "h"), interaction = TRUE, model = "poisson",
                      adjust = "scheffe", conf_level = 0.9, plots = FALSE)
   expect_equal(cnt$posthoc$p_adjusted,
@@ -245,7 +246,7 @@ test_that("R3-53: additive ANCOVA and every model function name an extrapolated 
     ancova = anova_ancova(d, "y", c("a", "b"), "x", interaction = FALSE, plots = FALSE),
     manova = anova_manova(d, c("y", "x"), c("a", "b"), plots = FALSE))
   for (nm in names(fits)) {
-    expect_true(any(grepl("contain no observations: a3 : b2. The additive model",
+    expect_true(any(grepl("contain no data: a3 : b2. The additive model",
                           fits[[nm]]$notes, fixed = TRUE)), info = nm)
   }
   # Reference: a3's additive marginal mean averages over the extrapolated cell,
@@ -299,9 +300,14 @@ test_that("R3-55: aliased coefficients are attributed to the empty cell or the c
   expect_no_match(al, "A2:B2", fixed = TRUE)
   expect_no_match(al, "collinear")
 
+  # anova_count names the empty cell in the same notes as every other
+  # function: once for the aliased coefficient, once for the marginal means.
   cnt <- anova_count(e, "k", c("A", "B"), interaction = TRUE, plots = FALSE)
-  expect_true(any(grepl("1 of the 9 possible group combination(s) contain no observations; contrasts involving them are not estimable. They are: a3 : b3.",
-                        cnt$notes, fixed = TRUE)))
+  gl <- anova_glm(e, "k", c("A", "B"), interaction = TRUE, plots = FALSE,
+                  family = stats::poisson())
+  expect_identical(grep("a3 : b3", cnt$notes, value = TRUE),
+                   grep("a3 : b3", gl$notes, value = TRUE))
+  expect_length(grep("a3 : b3", cnt$notes), 2L)
 
   # A covariate constant within one group: collinearity, not an empty cell.
   d <- withr::with_seed(10, {
@@ -317,4 +323,121 @@ test_that("R3-55: aliased coefficients are attributed to the empty cell or the c
   expect_match(al, "collinear with other terms", fixed = TRUE)
   expect_match(al, "covariate(s) `x3`", fixed = TRUE)
   expect_no_match(al, "contain no data")
+})
+
+test_review3_nested <- function() {
+  d <- data.frame(g1 = factor(rep(c("A", "B", "C", "D"), each = 5)))
+  d$g2 <- factor(ifelse(d$g1 %in% c("A", "B"), "x", "y"))
+  d$y <- withr::with_seed(1, stats::rnorm(20)) + as.integer(d$g1)
+  d$y2 <- withr::with_seed(2, stats::rnorm(20))
+  d$k <- withr::with_seed(3, stats::rpois(20, 3))
+  d$b <- withr::with_seed(4, stats::rbinom(20, 1, .5))
+  d$x <- withr::with_seed(5, stats::rnorm(20))
+  d
+}
+
+test_that("output-R3: the additive empty-cell note is true when one factor is nested in another", {
+  d <- test_review3_nested()
+  m <- stats::lm(y ~ g1 + g2, d)
+  # Reference: the empty cells are not estimable (the reference grid without
+  # nesting predicts NA for them), and emmeans' g1 means are the observed cell
+  # means, not averages over extrapolated cells.
+  rg <- emmeans::ref_grid(m, nesting = NULL)
+  p <- stats::predict(rg)
+  expect_identical(sum(is.na(p)), 4L)
+  expect_true(all(rg@grid$.wgt.[is.na(p)] == 0))
+  ref <- suppressMessages(summary(emmeans::emmeans(m, ~ g1)))
+  f <- anova_glm(d, "y", c("g1", "g2"), plots = FALSE)
+  expect_equal(f$emmeans$estimate[f$emmeans$term == "g1"], ref$emmean, tolerance = 1e-8)
+  expect_equal(ref$emmean, as.numeric(tapply(d$y, d$g1, mean)), tolerance = 1e-8)
+  fits <- list(glm = f,
+               bin = anova_bin(d, "b", c("g1", "g2"), plots = FALSE),
+               count = anova_count(d, "k", c("g1", "g2"), plots = FALSE),
+               ancova = anova_ancova(d, "y", c("g1", "g2"), "x", interaction = FALSE,
+                                     plots = FALSE),
+               manova = anova_manova(d, c("y", "y2"), c("g1", "g2"), plots = FALSE))
+  for (nm in names(fits)) {
+    note <- grep("contain no data", fits[[nm]]$notes, value = TRUE)
+    expect_length(note, 1L)
+    expect_match(note, "4 of the 8 possible", fixed = TRUE, info = nm)
+    expect_match(note, "C : x, D : x, A : y, B : y", fixed = TRUE, info = nm)
+    expect_match(note, "The additive model cannot estimate them", fixed = TRUE, info = nm)
+    expect_no_match(note, "still estimates them", fixed = TRUE)
+  }
+
+  # Some empty cells estimable, some not: each is named for what it is.
+  e <- withr::with_seed(2, {
+    e <- expand.grid(a = c("a1", "a2", "a3"), b = c("b1", "b2"), r = 1:5)
+    e <- e[!(e$a == "a3" & e$b == "b2"), ]
+    e$c <- factor(ifelse(e$a == "a1", "c1", "c2")); e$y <- stats::rnorm(nrow(e))
+    e
+  })
+  m2 <- stats::lm(y ~ a + b + c, e)
+  rg2 <- emmeans::ref_grid(m2, nesting = NULL)
+  p2 <- stats::predict(rg2)
+  key <- do.call(paste, c(lapply(rg2@grid[c("a", "b", "c")], as.character), sep = " : "))
+  empty <- rg2@grid$.wgt. == 0
+  expect_identical(key[empty & !is.na(p2)], "a3 : b2 : c2")
+  f2 <- anova_glm(e, "y", c("a", "b", "c"), plots = FALSE)
+  note <- grep("contain no data", f2$notes, value = TRUE)
+  expect_length(note, 1L)
+  expect_match(note, "1 of them the additive model estimates from the main effects: a3 : b2 : c2;",
+               fixed = TRUE)
+  expect_match(note, sprintf("cannot estimate 6 of them, because coefficients of the model are aliased (as when one grouping factor is nested in another): %s.",
+                             paste(key[empty & is.na(p2)], collapse = ", ")), fixed = TRUE)
+  # a3's mean averages its observed cell with the estimable empty one.
+  expect_equal(f2$emmeans$estimate[f2$emmeans$term == "a" & f2$emmeans$a == "a3"],
+               mean(p2[rg2@grid$a == "a3" & !is.na(p2)]), tolerance = 1e-8)
+})
+
+test_that("output-R4: empty combinations are counted without building the grid", {
+  # Reference: expand.grid on a design small enough to cross in full.
+  d <- withr::with_seed(8, data.frame(
+    a = factor(sample(letters[1:6], 60, TRUE)), b = factor(sample(1:5, 60, TRUE)),
+    c = factor(sample(c("u", "v", "w"), 60, TRUE))))
+  g <- expand.grid(lapply(d, function(f) levels(droplevels(f))), KEEP.OUT.ATTRS = FALSE,
+                   stringsAsFactors = FALSE)
+  k <- do.call(paste, c(unname(as.list(g)), sep = " : "))
+  obs <- unique(do.call(paste, c(lapply(d, as.character), sep = " : ")))
+  ref <- k[!k %in% obs]
+  ec <- .empty_cells(d, c("a", "b", "c"))
+  expect_identical(ec$n_empty, as.numeric(length(ref)))
+  expect_identical(ec$n_possible, as.numeric(nrow(g)))
+  expect_identical(ec$labels, utils::head(ref, 8L))
+  expect_identical(.empty_cells(d, c("a", "b", "c"), max_labels = Inf)$labels, ref)
+  expect_identical(.empty_cells_text(ec),
+                   sprintf("%s and %d more", paste(utils::head(ref, 8L), collapse = ", "),
+                           length(ref) - 8L))
+  # A design whose full grid has 8 million cells is counted at once.
+  big <- withr::with_seed(1, data.frame(
+    a = factor(sample(200, 5000, TRUE)), b = factor(sample(200, 5000, TRUE)),
+    c = factor(sample(200, 5000, TRUE))))
+  tm <- system.time(eb <- .empty_cells(big, c("a", "b", "c")))[["elapsed"]]
+  expect_lt(tm, 2)
+  n_obs <- nrow(unique(big))
+  expect_identical(eb$n_empty, 200^3 - n_obs)
+  expect_length(eb$labels, 8L)
+})
+
+test_that("output-C1: a covariate slope aliased by an empty cell is blamed on the cell", {
+  d <- withr::with_seed(5, {
+    d <- expand.grid(g = c("a", "b", "c"), h = c("u", "v"), r = 1:6)
+    d$x <- stats::rnorm(nrow(d))
+    d$y <- stats::rnorm(nrow(d)) + as.integer(d$g) * d$x
+    d
+  })
+  full <- d
+  d <- d[!(d$g == "c" & d$h == "v"), ]
+  # Reference: base R aliases exactly the empty cell's intercept and slope, and
+  # nothing with the cell present.
+  cf <- stats::coef(stats::lm(y ~ x * g * h, d))
+  expect_identical(names(cf)[is.na(cf)], c("gc:hv", "x:gc:hv"))
+  expect_false(anyNA(stats::coef(stats::lm(y ~ x * g * h, full))))
+  fa <- anova_ancova(d, "y", c("g", "h"), "x", interaction = TRUE,
+                     force_interaction = TRUE, plots = FALSE)
+  al <- grep("could not be estimated", fa$notes, value = TRUE)
+  expect_length(al, 2L)
+  expect_match(al[2], "x:g:h term", fixed = TRUE)
+  expect_match(al[2], "the slope of `x` cannot be estimated in them: c : v", fixed = TRUE)
+  expect_false(any(grepl("collinear with other terms", fa$notes, fixed = TRUE)))
 })

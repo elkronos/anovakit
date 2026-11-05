@@ -328,7 +328,9 @@
 #' A coefficient of a term made only of grouping factors, some of whose level
 #' combinations hold no data, is aliased because of those empty cells: the
 #' note names the cells by their levels, not the coefficient, whose name under
-#' sum-to-zero contrasts points at a different cell. Any other aliased
+#' sum-to-zero contrasts points at a different cell. The same holds for a
+#' covariate-by-group term, whose slope in an empty combination of its grouping
+#' factors cannot be estimated. Any other aliased
 #' coefficient is collinear with the rest of the model, and the note names it
 #' and any covariate in its term.
 #' @param fit a fitted model.
@@ -361,13 +363,30 @@
   for (j in unique(info$asg[na])) {
     idx <- na & info$asg == j
     vars <- term_vars(j)
-    if (length(vars) >= 2L && all(vapply(vars, is_group, logical(1)))) {
-      ec <- .empty_cells(info$mf, vars)
-      if (length(ec$labels) > 0L) {
-        out <- c(out, sprintf(
-          "%d coefficient(s) of the %s term are aliased and could not be estimated because %d of its %d level combination(s) contain no data: %s; %s",
-          sum(idx), gsub("`", "", info$labs[j], fixed = TRUE), length(ec$labels),
-          ec$n_possible, .abbrev(ec$labels), tail))
+    grp <- vars[vapply(vars, is_group, logical(1))]
+    covs <- setdiff(vars, grp)
+    if (length(grp) >= 2L) {
+      ec <- .empty_cells(info$mf, grp)
+      # A covariate-by-group term has one slope per combination of its
+      # grouping factors, so an empty combination aliases at most one
+      # coefficient per covariate product; more aliased than that is
+      # collinearity as well, and is reported as such.
+      if (ec$n_empty > 0 &&
+          (length(covs) == 0L || sum(idx) <= ec$n_empty)) {
+        term <- gsub("`", "", info$labs[j], fixed = TRUE)
+        out <- c(out, if (length(covs) == 0L) {
+          sprintf(
+            "%d coefficient(s) of the %s term are aliased and could not be estimated because %s of its %s level combination(s) contain no data: %s; %s",
+            sum(idx), term, .count_text(ec$n_empty), .count_text(ec$n_possible),
+            .empty_cells_text(ec), tail)
+        } else {
+          sprintf(
+            "%d coefficient(s) of the %s term are aliased and could not be estimated because %s of the %s level combination(s) of %s contain no data, so the slope of %s cannot be estimated in them: %s; %s",
+            sum(idx), term, .count_text(ec$n_empty), .count_text(ec$n_possible),
+            paste(grp, collapse = " and "),
+            paste(sprintf("`%s`", covs), collapse = ", "),
+            .empty_cells_text(ec), tail)
+        })
         next
       }
     }
