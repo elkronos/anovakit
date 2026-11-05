@@ -338,7 +338,11 @@
 #'
 #' Cells of the grid that contain no data are either not estimable (dropped,
 #' with a note) or, under a model without the full interaction, estimated by
-#' extrapolation from the other cells (kept, with a note naming them).
+#' extrapolation from the other cells (kept, with a note naming them). A mean
+#' that is not estimable although it has data (an aliased coefficient, such as
+#' the slope of a covariate that is constant within a group under
+#' group-specific slopes) is dropped from the table, on either path, with a
+#' note naming it, and so is any comparison that is not estimable.
 #'
 #' @param model fitted model.
 #' @param groups grouping factor names.
@@ -362,14 +366,31 @@
   if (per_factor) {
     grids <- stats::setNames(vector("list", length(groups)), groups)
     tabs <- list()
+    nonest_lab <- character(0)
     for (g in groups) {
       e <- .emmeans_grid(model, g, type = type, vcov_matrix = vcov_matrix, ...)
       notes <- c(notes, e$note)
       grids[g] <- list(e$grid)
       t <- .emmeans_table(e$grid, conf_level, protect = groups)
       notes <- c(notes, t$note)
-      if (!is.null(t$table)) tabs[[g]] <- t$table
+      if (!is.null(t$table)) {
+        # A factor's marginal mean averages over the other factors' cells, so
+        # one non-estimable cell makes it non-estimable too (see the cell path
+        # below); such rows are dropped and named rather than kept as NA.
+        ec <- .emm_col(t$table, "estimate", groups)
+        na_est <- if (is.null(ec)) FALSE else is.na(t$table[[ec]])
+        if (any(na_est)) {
+          nonest_lab <- c(nonest_lab, sprintf(
+            "%s = %s", g, as.character(t$table[[g]][na_est])))
+          at <- attributes(t$table)[c("renamed")]
+          t$table <- t$table[!na_est, , drop = FALSE]
+          row.names(t$table) <- NULL
+          if (!is.null(at$renamed)) attr(t$table, "renamed") <- at$renamed
+        }
+        if (nrow(t$table) > 0L) tabs[[g]] <- t$table
+      }
     }
+    if (length(nonest_lab) > 0L) notes <- c(notes, .nonest_note(nonest_lab))
     table <- NULL
     term_col <- NULL
     if (length(tabs) > 0L) {
@@ -408,7 +429,8 @@
         pr <- .emmeans_pairs(grids[[g]], adjust = adjust, conf_level = conf_level,
                              ratios = ratios, regrid = regrid)
         notes <- c(notes, pr$note)
-        if (!is.null(pr$table)) phs[[g]] <- .cbind_label(pr$table, "term", g)
+        pt <- .drop_nonest_pairs(pr$table)
+        if (!is.null(pt)) phs[[g]] <- .cbind_label(pt, "term", g)
       }
       if (length(phs) > 0L) {
         ph <- do.call(rbind, unname(phs))
@@ -455,10 +477,23 @@
     }
   }
   if (!is.null(table) && !is.null(est_col)) {
-    # A non-estimable cell that is not empty cannot arise from data, but
-    # emmeans can still mark one (a fully aliased contrast); drop it too.
-    table <- table[!is.na(table[[est_col]]), , drop = FALSE]
-    row.names(table) <- NULL
+    # A cell that holds data can still be non-estimable: in an ANCOVA with
+    # group-specific slopes, a covariate that is constant within the cell
+    # leaves its slope, and so its mean at the covariate mean, undetermined.
+    # Such cells are dropped too, and named, as the empty ones are above.
+    na_est <- is.na(table[[est_col]])
+    if (any(na_est)) {
+      lab <- do.call(paste, c(lapply(table[na_est, groups, drop = FALSE],
+                                     as.character), sep = " : "))
+      notes <- c(notes, .nonest_note(lab))
+      if (posthoc && sum(!na_est) < 2L) {
+        notes <- c(notes, "Pairwise comparisons were not computed because fewer than two marginal means are estimable.")
+      }
+      at <- attributes(table)[c("renamed")]
+      table <- table[!na_est, , drop = FALSE]
+      row.names(table) <- NULL
+      if (!is.null(at$renamed)) attr(table, "renamed") <- at$renamed
+    }
   }
 
   n_cells <- NROW(table)
@@ -474,15 +509,32 @@
     pr <- .emmeans_pairs(e$grid, adjust = adjust, conf_level = conf_level,
                          ratios = ratios, regrid = regrid)
     notes <- c(notes, pr$note)
-    ph <- pr$table
-    if (!is.null(ph)) {
-      ec <- intersect(c("estimate", "ratio", "emm_estimate"), names(ph))[1L]
-      if (!is.na(ec)) ph <- ph[!is.na(ph[[ec]]), , drop = FALSE]
-      row.names(ph) <- NULL
-    }
+    ph <- .drop_nonest_pairs(pr$table)
   }
   list(grid = e$grid, table = table, posthoc = ph, notes = unique(notes),
        per_factor = FALSE)
+}
+
+#' Drop the comparisons emmeans marks as non-estimable
+#'
+#' A comparison between a non-estimable mean and another is usually
+#' non-estimable too, but not always (the undetermined part can cancel in the
+#' difference), so the rows are filtered on their own estimate.
+#' @return the table without those rows, or \code{NULL} when none is left.
+#' @noRd
+.drop_nonest_pairs <- function(ph) {
+  if (is.null(ph)) return(NULL)
+  ec <- intersect(c("estimate", "ratio", "emm_estimate"), names(ph))[1L]
+  if (!is.na(ec)) ph <- ph[!is.na(ph[[ec]]), , drop = FALSE]
+  row.names(ph) <- NULL
+  if (nrow(ph) == 0L) NULL else ph
+}
+
+#' The note for marginal means that hold data but are not estimable
+#' @noRd
+.nonest_note <- function(lab) {
+  sprintf("The marginal mean(s) of %s are not estimable under this model although there are data for them (a coefficient they depend on is aliased, as when a covariate whose slope differs by group is constant within a group), so they are left out of $emmeans; $posthoc keeps only the comparisons that are estimable.",
+          .abbrev(lab))
 }
 
 #' The notes for comparisons and a plot that need marginal means which could
@@ -550,9 +602,13 @@
 #' @param vcov_type \code{"model"} or an HC type such as \code{"HC0"}.
 #' @param freq_weights whether the prior weights count identical
 #'   observations; the sandwich is then that of the expanded data.
+#' @param welch_hint whether the small-sample note may point to
+#'   \code{anova_welch()}. Only where it is a like-for-like alternative: it
+#'   cannot adjust for covariates, so an ANCOVA passes \code{FALSE}.
 #' @return list with \code{matrix} (or \code{NULL}) and \code{note}.
 #' @noRd
-.robust_vcov <- function(model, vcov_type = "model", freq_weights = FALSE) {
+.robust_vcov <- function(model, vcov_type = "model", freq_weights = FALSE,
+                         welch_hint = TRUE) {
   if (identical(vcov_type, "model")) {
     return(list(matrix = NULL, note = character(0)))
   }
@@ -621,7 +677,9 @@
   }
   if (!inherits(model, "glm") ||
       identical(tryCatch(stats::family(model)$family, error = function(e) ""), "gaussian")) {
-    notes <- c(notes, "Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative, and for a one-way design anova_welch() is better calibrated.")
+    notes <- c(notes, paste0(
+      "Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative",
+      if (welch_hint) ", and for a one-way design anova_welch() is better calibrated." else "."))
   }
   list(matrix = V, note = notes)
 }
