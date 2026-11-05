@@ -392,16 +392,16 @@ test_that("F038: an empty cell of an additive model is not called inestimable", 
   ref <- stats::glm(y ~ a + b, family = stats::poisson(), data = d)
   cell <- as.data.frame(emmeans::emmeans(ref, ~ a:b, type = "response"))
   expect_true(all(is.finite(cell$rate)))          # q:z is estimable
-  note <- grep("contain no observations", fit$notes, value = TRUE)
+  note <- grep("contain no data", fit$notes, value = TRUE)
   expect_length(note, 1L)
-  expect_false(grepl("not estimable", note))
+  expect_false(grepl("not estimable|cannot estimate", note))
   expect_match(note, "additive model still estimates them")
 
   full <- anova_count(d, "y", c("a", "b"), interaction = TRUE, model = "poisson",
                       plots = FALSE)
   expect_true(is.na(stats::coef(stats::glm(y ~ a * b, stats::poisson(), d))["aq:bz"]))
-  expect_true(any(grepl("contain no observations; contrasts involving them are not estimable",
-                        full$notes)))
+  expect_true(any(grepl("contain no data and are not estimable under this model",
+                        full$notes, fixed = TRUE)))
 })
 
 test_that("F083: aggregated rate data are judged on events, not rows", {
