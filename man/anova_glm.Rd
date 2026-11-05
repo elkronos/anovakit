@@ -54,7 +54,16 @@ fitted model estimates its dispersion -- the Gaussian, Gamma, inverse
 Gaussian, quasi, quasi-Poisson and quasi-binomial families, and
 \code{MASS::negative.binomial(theta)}, whose coefficient table also uses
 t -- and a likelihood ratio test when the dispersion is fixed (binomial,
-Poisson).}
+Poisson). A quasi family has no likelihood, so \code{"LR"} becomes
+\code{"F"} there, with a note, as in \code{\link{anova_count}}. For any
+other family that estimates its dispersion, \code{"LR"} is \pkg{car}'s
+scaled-deviance chi-square, each change in deviance divided by the
+estimated dispersion as though it were known; the table heading and
+\code{$notes} say so. \code{"F"} on a binomial or Poisson fit is a
+quasi-likelihood test, since \pkg{car} estimates the dispersion from the
+Pearson statistic; the method label and \code{$notes} say so, and the
+coefficient table, \code{$emmeans} and \code{$posthoc} still assume a
+dispersion of 1.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
 Default \code{0.95}.}
@@ -65,15 +74,22 @@ coefficient table's p-values. For a family with a fixed dispersion
 (binomial, Poisson) the profile interval is \code{stats::confint()}'s,
 which cuts the signed-root deviance profile at normal quantiles. For a
 family that estimates its dispersion the same profile is cut at
-\code{qt(., df.residual)} instead, so that the interval agrees with the
-t test beside it; for the Gaussian identity model it equals
-\code{confint(lm())}. If profiling fails, Wald intervals are used, with a
-note. A bound the profile cannot reach (as under separation) is
-\code{NA}, also with a note. Profiling refits the model many times for
-every coefficient, so when \code{ci_method} is left at its default and the
-model has more than 50 coefficients, Wald intervals are used instead,
-with a note; give \code{ci_method = "profile"} explicitly to profile
-them anyway. Under separation the interval of a diverged coefficient is
+\code{qt(., df.residual)} instead, the distribution of the t test beside
+it; for the Gaussian identity model, whose profile is exactly quadratic,
+it is the Wald t interval \code{confint(lm())}, and is computed as such.
+The p-values in the coefficient table are Wald p-values, so in small or
+sparse samples a profile interval can exclude the null value while the
+p-value beside it is above \code{1 - conf_level}, or the reverse;
+\code{$notes} names such rows, and \code{ci_method = "wald"} gives
+intervals that always agree with the p-values. If profiling fails, Wald
+intervals are used, with a note. A bound the profile cannot reach (as
+under separation) is \code{NA}, also with a note. Profiling refits the
+model many times for every coefficient, so when \code{ci_method} is left
+at its default and the model has more than 50 coefficients, or the
+number of coefficients squared times the number of rows exceeds
+\code{1e7}, Wald intervals are used instead, with a note; give
+\code{ci_method = "profile"} explicitly to profile them anyway. Under
+separation the interval of a diverged coefficient is
 found by profiling the likelihood directly when \code{ci_method =
 "profile"}, and its \code{ci_method} column then says \code{"profile"};
 \code{ci_method = "wald"} keeps the Wald interval, as
@@ -131,7 +147,10 @@ Default \code{FALSE}.}
 \value{
 An \code{\link{anovakit_fit}} object, with \code{$family} (the
   family object actually used) and \code{$model_stats} (AIC, BIC, the null
-  and residual deviances, and the residual degrees of freedom).
+  and residual deviances, and the residual degrees of freedom). For a
+  binomial family with weights that are not all whole numbers, AIC and BIC
+  are \code{NA} with a note, as in \code{\link{anova_bin}}: R's binomial
+  log-likelihood rounds the weights.
   \code{$anova} has the columns \code{term}, \code{sum_sq} (F tests only),
   \code{df}, \code{statistic} and \code{p_value}, in that order whatever
   \code{test_statistic}. In an F table of a non-Gaussian family, as
@@ -145,8 +164,10 @@ An \code{\link{anovakit_fit}} object, with \code{$family} (the
     \item Gaussian: partial eta squared and partial omega squared for each
       term, from the F table's sums of squares whatever
       \code{test_statistic} is. Partial omega squared is floored at 0, with
-      a note. When the ANOVA table cannot be computed (a Type III table
-      with an empty cell, say) the table is empty and a note says why.
+      a note. When the ANOVA table cannot be computed the table is empty
+      and a note says why. (A Type III request on a model with an empty
+      cell is not such a case: Type II tests are computed instead; see
+      \code{type}.)
     \item Any other family: \code{deviance_explained},
       \code{1 - deviance / null deviance}, and \code{mcfadden_r2},
       McFadden's pseudo R squared \code{1 - logLik(model) /
@@ -191,6 +212,24 @@ and negative binomial families the fit is checked for groups whose fitted
 probability is numerically 0 or 1 (or whose fitted rate is numerically 0),
 where coefficients, Wald tests and comparisons are not identified;
 \code{$notes} says so when it happens.
+
+\strong{Exact fits.} A family that estimates its dispersion (and any
+family with \code{test_statistic = "F"}) divides every test statistic by
+the residual variation. When the response is constant, or constant within
+every group, there is none, and the function stops with an error instead
+of reporting F statistics that are ratios of rounding errors.
+
+\strong{Convergence.} \code{stats::glm()} judges convergence by a change
+in deviance relative to the deviance plus 0.1, so a fit whose deviance is
+small because of the units of the response (or the scale of the weights)
+would stop early. Such a fit is repeated with a convergence tolerance
+scaled to its deviance, so the results do not depend on the units. A
+binomial fit with prior weights is \code{glm()}'s own fit whenever that
+reaches the maximum of the likelihood. When it does not (\code{glm()}'s
+default start diverges for a frequency-weighted 0/1 response under a
+cloglog link), the model is refitted from the overall proportion, to a
+tight convergence tolerance, and \pkg{car}'s refits of reduced models start
+there too.
 
 For binary responses see \code{\link{anova_bin}}, and for counts see
 \code{\link{anova_count}}: both add family-specific diagnostics and effect

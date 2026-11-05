@@ -27,7 +27,8 @@ An object of class \code{summary.anovakit_fit}, which prints the
 Everything \code{print} shows, plus assumption checks, effect sizes,
 marginal means, post-hoc comparisons and whatever further tables the method
 produces (simple slopes, sphericity, the multivariate tests and univariate
-follow-ups, the canonical axes).
+follow-ups, the canonical axes, and the model fit statistics in
+\code{$model_stats}, including \code{anova_bin}'s model-versus-null test).
 }
 \examples{
 set.seed(1)

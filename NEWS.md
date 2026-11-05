@@ -94,6 +94,66 @@ changes a user will notice:
   `step()` and `lmtest::lrtest()` work on `fit$model` from any frame.
 * **Packaging.** `ggplot2 (>= 3.4.0)` and `testthat (>= 3.1.8)` are declared.
 
+## Changes made after two further reviews, before release
+
+Two more adversarial reviews found about 100 further problems, mostly in edge
+cases. Each is fixed and has a regression test.
+
+* **Welch and Kruskal-Wallis.** Noncentral-t intervals for g are exact for
+  very well-separated groups and faster. The Hedges correction is not applied
+  to a pair whose standardiser has fewer than 2 degrees of freedom, and a note
+  says so. When Welch's F is driven by rounding noise in near-constant groups,
+  the omnibus test is NA with a note. A group lost entirely to missing values
+  is named. Omnibus headers name their statistic.
+* **ANCOVA.** Marginal means that are not estimable are left out and named,
+  not reported as NA rows. The coefficient-count guard counts observed cells
+  only. Levene's test leaves out cells with one or two observations. A
+  covariate with a large offset is handled correctly. The covariate plot draws
+  the fitted model's lines. The docs no longer say randomised groups are
+  unaffected by the slopes pretest.
+* **Repeated measures.** Residuals under a large offset, zero error variance
+  and between-subject levels lost to incomplete subjects are handled, with
+  notes.
+* **MANOVA.** A constant or group-determined covariate is refused, as in
+  `anova_ancova()`. Exact fits are detected when a response is constant. Box's
+  M is NA with a note when a cell's covariance matrix is singular up to
+  rounding, and its sample-size note refers to cells.
+* **Binary, count and GLM models.** Grouping columns whose names and levels
+  paste to the same coefficient (`a`/`b1` and `ab`/`1`) no longer corrupt the
+  results. Frequency-weighted binomial fits start from the overall proportion,
+  so a cloglog link no longer diverges. A constant or exactly fitted response
+  with an estimated dispersion is an error instead of an absurd F.
+  `test_statistic = "LR"` on a quasi family gives F, and `$method` says
+  "quasi-likelihood F test" when F is asked of a Poisson, binomial or negative
+  binomial model.
+* **Weights.** Frequency weights apply only to the binomial, Poisson and
+  negative binomial families. With non-integer weights:
+  * AIC and BIC are NA;
+  * the count dispersion and the sparse-data check do not depend on the weights'
+    scale;
+  * a note warns that the scale matters.
+
+  A group whose weights are all zero is named and dropped.
+* **Negative binomial.** A fit that collapses to Poisson is reported as such.
+  A theta that runs away on overdispersed data is reported as not converged.
+* **Intervals.** Separated coefficients profile to an open end, or to
+  (-Inf, Inf) when the likelihood is flat. `$notes` names rows where a profile
+  interval and its Wald p-value disagree. When left at the default,
+  profiling falls back to Wald intervals for large models. This applies in
+  `anova_bin()` too. Gaussian identity profile intervals are computed in
+  closed form.
+* **Marginal means and comparisons.** Every additive model notes the empty
+  level combinations its marginal means average over. Ratio comparisons keep
+  level labels that contain " - ". Scheffe adjustments with an empty cell use
+  the rank of the estimable cells.
+* **Input.** `bit64::integer64` columns are converted to double. A matrix
+  column with more than one column is refused. The dropped-rows note names
+  only the columns that held missing or infinite values. A non-ASCII
+  character response no longer fails in binomial fits. `$call` stays compact
+  under `do.call()`.
+* **Printing.** Tables no longer pad values with false trailing zeros.
+  `summary()` shows `$model_stats`.
+
 ## The functions were renamed and now share one convention
 
 `ancova_analysis()` is `anova_ancova()` and `manova_analysis()` is

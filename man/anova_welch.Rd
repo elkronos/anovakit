@@ -142,22 +142,33 @@ sample variances are equal and the groups are the same size this is the
 familiar \eqn{n_1 + n_2 - 2}{n1 + n2 - 2}; when the variances differ it
 removes the bias that the pooled-variance correction leaves. The correction is a property of the point estimate, so
 the interval, which is for \eqn{\delta^*}{delta*} itself, is the same with or
-without it. The corrected estimate can fall outside that interval at any
-\code{conf_level} when \eqn{\nu}{nu} is near 1, which happens when a group
-of two or three holds most of the variance: \eqn{J(\nu)}{J(nu)} then
-approaches 0 and pulls the estimate towards zero. With few observations and
-a low \code{conf_level} the estimate, corrected or not, can also fall
-outside, because the interval inverts a skewed distribution. \code{$notes}
-says so when either happens.
+without it. When a group of two holds most of the variance,
+\eqn{\nu}{nu} approaches 1 and \eqn{J(\nu)}{J(nu)} approaches 0 (the mean
+of the uncorrected estimate stops existing there), so the corrected
+estimate would collapse towards zero whatever the data say. Below
+\eqn{\nu = 2}{nu = 2}, where \eqn{J(\nu)}{J(nu)} is less than 0.57, the
+correction is therefore not applied: that pair's \code{hedges_g} is the
+uncorrected estimate, and \code{$notes} names the pair. With few
+observations and a low \code{conf_level} the estimate, corrected or not,
+can fall outside its interval, because the interval inverts a skewed
+distribution and the correction shrinks only the estimate; \code{$notes}
+says so when it does.
 
 The interval is found with an exact noncentral t distribution function:
-beyond a noncentrality of 30 it is computed by numerical integration,
+beyond a noncentrality of 30 it is computed by Gauss-Hermite quadrature,
 because \code{stats::pt()} switches to a normal approximation for a large
 noncentrality that is badly wrong at small degrees of freedom.
 
 A pair whose standard error is below the floating-point resolution of its
 means, which \code{stats::t.test()} refuses as "essentially constant", is
-reported as \code{NA} with a note.
+reported as \code{NA} with a note. Welch's F is a weighted sum, over pairs
+of groups, of terms that grow with each pair's squared t statistic, so
+when the pairs at that resolution make up more than 5\% of it the omnibus
+test is rounding noise too: \code{$anova} then reports its statistic,
+denominator degrees of freedom and p-value as \code{NA}, with a note. With
+two groups that is whenever the single pair is at that resolution. Below
+5\% the test is reported and the note gives the share. Subtracting a
+constant close to the values from the response avoids both.
 
 The standardiser is recorded in the \code{standardiser} column of
 \code{$effect_sizes}. The magnitude labels use Cohen's conventional

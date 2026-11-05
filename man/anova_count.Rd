@@ -28,7 +28,9 @@ anova_count(
 \code{data.table} or a tibble.}
 
 \item{response}{Character. Name of the count column. Must be non-negative
-whole numbers, not all zero.}
+whole numbers, not all zero, and, for \code{model = "negbin"} or
+\code{"quasipoisson"}, not all equal (as a rate, with an
+\code{offset}).}
 
 \item{groups}{Character vector. One or more grouping columns.}
 
@@ -59,8 +61,9 @@ choice for a quasi-Poisson model, which has no likelihood and is given it
 in place of \code{"LR"}. For a Poisson or negative binomial model,
 \code{"F"} makes \code{car::Anova()} estimate a dispersion from the Pearson
 residuals, so the table becomes a quasi-likelihood F test while
-\code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1;
-\code{$notes} gives the dispersion the F test used. Use
+\code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1
+(unless \code{vcov_type} gives them a robust covariance, which assumes
+none); \code{$notes} gives the dispersion the F test used. Use
 \code{model = "quasipoisson"} for quasi-likelihood inference throughout.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
@@ -136,10 +139,23 @@ and a Poisson model kept below it is still affected by a dispersion
 \eqn{\phi} above 1: its likelihood-ratio and Wald statistics are inflated by
 about \eqn{\phi} and its intervals are too narrow, so at \eqn{\phi = 1.5} a
 nominal 5\% test on 1 degree of freedom rejects about 11\% of true null
-hypotheses, however large the sample. \code{$notes} then gives the
-dispersion and the size of the effect; use \code{model = "quasipoisson"} or
-\code{"negbin"} when that matters. When the Poisson model has no residual
-degrees of freedom the dispersion cannot be computed, and \code{$notes} says
+hypotheses (and one on 2 degrees of freedom about 14\%), however large the
+sample. \code{$notes} then gives the dispersion and the size of the effect
+when the Pearson test of overdispersion is significant. When it is not,
+that test may simply lack power -- at 10 per group a true dispersion of 1.4
+passes it about two times in three, while the Poisson tests reject about
+10\% of true null hypotheses -- so \code{$notes} gives the upper 95\%
+confidence bound of the dispersion and what a dispersion that large would
+cost, whenever a nominal 5\% test would then reject 7.5\% or more of true
+null hypotheses. With small samples that is most Poisson fits; with large
+ones the bound is close to the estimate and the note is rare. The
+inference itself is not corrected;
+use \code{model = "quasipoisson"} or \code{"negbin"} when that matters.
+With a robust covariance (\code{vcov_type}) the intervals and comparisons
+do not assume a dispersion of 1, and the note says that only a
+likelihood-ratio omnibus test still does. When the Poisson model has no
+residual degrees of freedom the dispersion cannot be computed, and
+\code{$notes} says
 that overdispersion was not checked. Which model was used, and why, is
 always recorded in \code{$notes} and in \code{$model_type}. Set \code{model}
 explicitly to take the decision out of the function's hands: an explicit
@@ -155,6 +171,14 @@ per group a nominal 5\% test rejects roughly 10-15\% of true null hypotheses
 and 95\% intervals cover about 90\%; the excess fades by about 30 per group.
 The note on theta states the size of the problem for the smallest group in
 the data, whether theta is well determined, and whether the fit converged.
+A very large theta means the negative binomial has collapsed to the
+Poisson model, and the note says so, but only when the likelihood really
+is highest at that Poisson limit; on sparse, overdispersed data
+\code{MASS::glm.nb()} can drive theta up although a small theta fits far
+better, and that fit is reported as not converged. Above a theta of about
+\eqn{10^6} the negative binomial deviance cannot be computed accurately, so
+the likelihood-ratio and F tests are those of the Poisson fit, the limit
+they converge to, and \code{$notes} says so.
 Convergence is read from the fitted object, so the note is the same in
 every session language.
 
