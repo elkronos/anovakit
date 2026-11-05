@@ -97,7 +97,11 @@ An \code{\link{anovakit_fit}} object, with five extra components:
   also holds \code{normality} (Shapiro-Wilk on the residuals) and
   \code{levene} (Levene's test on the residuals across the cells; cells
   with one or two observations, whose absolute deviations from their median
-  cannot vary, are left out of it, and \code{$notes} names them).
+  cannot vary, are left out of it, as are cells the model fits exactly by
+  construction or leaves only one residual degree of freedom (as under the
+  covariate-by-group interaction when a cell has no more than one
+  observation beyond the coefficients of its own; judged from the design,
+  not from the size of the residuals), and \code{$notes} names them).
   \code{$data_used} holds the analysed columns and the cell factor, with the
   covariates centred when \code{center_covariates = TRUE}. The covariate
   plot shows each covariate on its original scale, with the lines of the

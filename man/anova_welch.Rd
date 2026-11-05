@@ -148,7 +148,13 @@ of the uncorrected estimate stops existing there), so the corrected
 estimate would collapse towards zero whatever the data say. Below
 \eqn{\nu = 2}{nu = 2}, where \eqn{J(\nu)}{J(nu)} is less than 0.57, the
 correction is therefore not applied: that pair's \code{hedges_g} is the
-uncorrected estimate, and \code{$notes} names the pair. With few
+uncorrected estimate, and \code{$notes} names the pair. A pair whose
+factor is below 0.8, which is at about 4 degrees of freedom or fewer
+(two groups of three with equal variances give exactly 4, where
+\eqn{J = 0.798}{J = 0.798}), is also named in \code{$notes}, with its degrees
+of freedom and factor: there the correction pulls the estimate well
+towards zero, and the estimate is not continuous at 2 degrees of freedom.
+With few
 observations and a low \code{conf_level} the estimate, corrected or not,
 can fall outside its interval, because the interval inverts a skewed
 distribution and the correction shrinks only the estimate; \code{$notes}
@@ -169,6 +175,18 @@ denominator degrees of freedom and p-value as \code{NA}, with a note. With
 two groups that is whenever the single pair is at that resolution. Below
 5\% the test is reported and the note gives the share. Subtracting a
 constant close to the values from the response avoids both.
+
+The omnibus test is run by \code{stats::oneway.test()} on the response as
+supplied. Welch's F does not depend on the response's units, so when that
+gives a non-finite F (a response around 1e-150, whose variances are too
+small for their weights, group size over variance, to be represented), the
+test is rerun on the response multiplied by a power of two chosen so the
+group variances are centred on 1 on a log scale, and then on the response
+brought near 1; the first finite result is reported. Multiplying by a power
+of two is exact unless it pushes a value out of the range of normal
+doubles, and such a scale is not used. If no scale gives a finite F,
+\code{$anova} reports the statistic, denominator degrees of freedom and
+p-value as \code{NA}, with a note.
 
 The standardiser is recorded in the \code{standardiser} column of
 \code{$effect_sizes}. The magnitude labels use Cohen's conventional

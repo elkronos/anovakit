@@ -139,7 +139,18 @@ when that changes what \code{summary(fit$model)} would show. In any other
 family (Gaussian, a linear probability model on a 0/1 response included,
 Gamma, inverse Gaussian, \code{quasi()}) and for other weights
 (precision weights, or the trials behind a proportion) each row is one
-unit.}
+unit for the residual degrees of freedom and the robust covariance. The
+likelihood still multiplies by the weights, as in \code{stats::glm()}: a
+family that estimates its dispersion absorbs their scale (as does
+\code{MASS::negative.binomial(theta)}, whose dispersion
+\code{stats::glm()} and \code{summary.glm()} estimate), but in a
+Poisson or binomial fit the likelihood-ratio and Wald statistics and
+the Pearson dispersion (so the overdispersion check) scale with them,
+and the intervals narrow as they grow. Unlike \code{\link{anova_count}},
+the dispersion is not computed with the weights rescaled, since it
+describes the model as weighted; in a Poisson or binomial fit
+\code{$notes} says so when weights that are not whole numbers do not
+average 1.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
