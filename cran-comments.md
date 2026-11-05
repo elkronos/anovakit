@@ -54,4 +54,7 @@ Three of the methods cited in the Description are implemented directly rather
 than delegated, so their DOIs point at the papers the code follows: Dunn's test
 with the standard tie correction, Mardia's multivariate skewness and kurtosis,
 and Box's M. Welch's test comes from `stats::oneway.test()`, and the
-Greenhouse-Geisser and Huynh-Feldt corrections from {afex} and {car}.
+Greenhouse-Geisser and Huynh-Feldt corrections from {afex} and {car}, except
+when the error matrix is singular and {car} cannot give the epsilons: the
+package then computes both itself, following Greenhouse and Geisser (1959) and
+Huynh and Feldt (1976) with Lecoutre's (1991) correction.

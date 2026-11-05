@@ -36,7 +36,8 @@ changes a user will notice:
 * **Marginal means and comparisons.** For an additive multi-factor model
   (`interaction = FALSE`) they are reported per factor, with a `term` column,
   instead of for every cell of the grid. Empty cells are left out or flagged.
-  Comparisons above 5000 are skipped with a note. `$posthoc` has
+  In the six model-based functions, comparisons above 5000 are skipped with a
+  note. `$posthoc` has
   `p_value` (unadjusted), `p_adjusted` and `adjustment` in every function.
   Non-log, non-logit links compare on the response scale instead of
   mislabelled link-scale "ratios". Quasi families use t. Global
@@ -54,8 +55,8 @@ changes a user will notice:
   negative binomial families, and is invariant to aggregation.
 * **Weights.** Zero-weight rows are dropped and counted in `$n_removed`.
   `anova_bin()`'s null model, model-versus-null test and proportion table use
-  the weights. Whole-number weights above 1 on a count or 0/1 response are
-  frequency weights: the dispersion (`anova_count()`, `anova_glm()`) and the
+  the weights. Whole-number weights above 1 on a count or 0/1 response in a
+  binomial, Poisson or negative binomial model are frequency weights: the dispersion (`anova_count()`, `anova_glm()`) and the
   robust covariance (`anova_bin()`, `anova_count()`, `anova_glm()`) are those
   of the data expanded to one row per observation. Before, robust standard
   errors of a frequency table were an order of magnitude too large.

@@ -238,7 +238,8 @@ Likelihood-ratio tests rest on the model and say so. Where a sandwich
 covariance is wrong rather than merely different -- fitted values on the
 boundary (separation, an all-zero group) or a single-observation cell -- the
 model-based covariance is used, with a note. Whole-number weights on a count or
-0/1 response are frequency weights, and the sandwich is then computed per
+0/1 response in a binomial, Poisson or negative binomial model are frequency
+weights, and the sandwich is then computed per
 observation, exactly as on the data expanded to one row per observation;
 other weights keep each row as one unit, and `$notes` says which applies.
 
@@ -258,7 +259,7 @@ does, with the same name and the same meaning.
 |---|---|---|
 | `conf_level` | all eight | The level for every interval. Default `0.95`. |
 | `adjust` | all eight | Multiplicity adjustment for the comparisons. |
-| `posthoc` | all eight | Skip the pairwise comparisons (above 5000 they are skipped anyway, with a note). |
+| `posthoc` | all eight | Skip the pairwise comparisons. The six model-based functions also skip them, with a note, above 5000 comparisons; `anova_welch()` and `anova_kw()` always compute them. |
 | `plots` | all eight | Build the `ggplot2` objects. |
 | `verbose` | all eight | Progress through `message()`. |
 | `type` | ancova, manova, bin, count, glm | `"II"` or `"III"` sums of squares; `"III"` refits under sum-to-zero contrasts. |
