@@ -99,6 +99,30 @@
           vcov_type)
 }
 
+#' What overdispersion does to a fixed-dispersion fit with robust errors
+#'
+#' With a robust (sandwich) covariance the coefficient table, the marginal
+#' means and the comparisons do not assume a dispersion of 1, so they are not
+#' too narrow under overdispersion. A robust Wald omnibus test does not assume
+#' it either, and an F test estimates the dispersion; only a likelihood-ratio
+#' omnibus test still rests on it.
+#' @param size_text what the dispersion does to the size of a nominal 5\%
+#'   test, as a clause.
+#' @param remedy the argument that gives quasi-likelihood inference.
+#' @noRd
+.robust_overdispersion_text <- function(test_statistic, vcov_type, size_text,
+                                        remedy) {
+  if (test_statistic %in% c("Wald", "F")) {
+    return(sprintf(
+      "None of the results reported here rests on that assumption: the coefficient table, the marginal means and the comparisons use the robust (%s) covariance, and the omnibus %s.",
+      vcov_type, if (identical(test_statistic, "Wald"))
+        "Wald test uses it too" else "F test estimates the dispersion"))
+  }
+  sprintf(
+    "The coefficient table, the marginal means and the comparisons use the robust (%s) covariance, which does not rest on that assumption, so their standard errors and intervals are not too small. Only the omnibus likelihood-ratio test does: its statistic is inflated by about that factor, and %s. test_statistic = \"Wald\" gives an omnibus test with the robust covariance, and %s gives quasi-likelihood inference throughout.",
+    vcov_type, size_text, remedy)
+}
+
 #' The factor that brings a small-unit linear model above car's tolerance
 #' @noRd
 .lm_rescale_factor <- function(model) {
