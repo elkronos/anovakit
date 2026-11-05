@@ -261,12 +261,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   # A constant covariate, or one determined by the grouping variables, is
   # aliased: lm() drops whichever column comes last -- possibly a group
   # contrast -- and the group test silently loses degrees of freedom.
-  for (cv in covariates) {
-    if (length(unique(d[[cv]])) < 2L) {
-      .stopf("Covariate `%s` has the same value (%s) in every analysed row, so there is nothing to adjust for. Drop it from `covariates`.",
-             cv, format(d[[cv]][1L]))
-    }
-  }
+  .check_covariates_vary(d, covariates)
 
   ## Centre the covariates ----------------------------------------------------
   # Centring leaves every test and every adjusted mean unchanged (no covariate
@@ -476,15 +471,20 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
         }))
     }
     bm <- if (length(groups) == 1L) .box_m(Ycov, cellv) else {
+      # Names and levels in backticks, so that a comma inside either cannot be
+      # mistaken for the separator between the variables of a cell.
       first <- match(levels(cellv), cellv)
-      cell_lab <- stats::setNames(sprintf("cell %s", do.call(paste, c(
-        lapply(groups, function(g) paste0(g, "=", as.character(d[[g]][first]))),
+      cell_lab <- stats::setNames(sprintf("(%s)", do.call(paste, c(
+        lapply(groups, function(g)
+          sprintf("`%s` = `%s`", g, as.character(d[[g]][first]))),
         list(sep = ", ")))), levels(cellv))
+      q <- sprintf("`%s`", groups)
       .box_m(Ycov, cellv,
              unit = sprintf("cell (combination of %s)",
-                            sub(", ([^,]*)$", " and \\1",
-                                paste(sprintf("`%s`", groups), collapse = ", "))),
-             level_labels = cell_lab)
+                            paste(c(utils::head(q, -2L),
+                                    paste(utils::tail(q, 2L), collapse = " and ")),
+                                  collapse = ", ")),
+             noun = "cell", level_labels = cell_lab)
     }
     if (is.null(bm)) {
       notes <- c(notes, "Box's M could not be computed: fewer than two cells have complete data.")

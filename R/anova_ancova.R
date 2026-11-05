@@ -246,12 +246,7 @@ anova_ancova <- function(data, response, groups, covariates,
   cell <- added$cell
 
   ## Covariates ----------------------------------------------------------------
-  for (cv in covariates) {
-    if (length(unique(d[[cv]])) < 2L) {
-      .stopf("Covariate `%s` has the same value (%s) in every analysed row, so there is nothing to adjust for. Drop it from `covariates`.",
-             cv, format(d[[cv]][1L]))
-    }
-  }
+  .check_covariates_vary(d, covariates)
   covariate_means <- vapply(covariates, function(cv) mean(d[[cv]]), numeric(1))
   covariate_ranges <- vapply(covariates, function(cv) range(d[[cv]]), numeric(2))
   # The plots show the covariates in the units they were measured in; the
@@ -544,6 +539,27 @@ anova_ancova <- function(data, response, groups, covariates,
                         model_additive = m_add,
                         model_interaction = m_int)
   )
+}
+
+#' Refuse covariates that do not vary
+#'
+#' A covariate counts as constant when its range is at most \code{1e-12} times
+#' its largest absolute value: one that differs only by rounding error (0.3
+#' and 0.1 + 0.2) has two distinct values, but fitting it takes a degree of
+#' freedom from the error term for a column of noise, and its own test is
+#' meaningless.
+#' @noRd
+.check_covariates_vary <- function(d, covariates) {
+  for (cv in covariates) {
+    x <- d[[cv]]
+    spread <- diff(range(x))
+    if (spread <= 1e-12 * max(abs(x))) {
+      .stopf("Covariate `%s` has the same value (%s) in every analysed row%s, so there is nothing to adjust for. Drop it from `covariates`.",
+             cv, format(x[1L]),
+             if (spread > 0) " up to rounding error" else "")
+    }
+  }
+  invisible(NULL)
 }
 
 #' Refuse covariates whose effect cannot be separated from the groups
