@@ -905,7 +905,7 @@ anova_bin <- function(data, response, groups,
       b <- est + dir * step
       g <- gap(b)
       if (is.finite(g) && g > 0) {
-        r <- tryCatch(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8)$root,
+        r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
                       error = function(e) NA_real_)
         return(structure(r, flat = FALSE))
       }

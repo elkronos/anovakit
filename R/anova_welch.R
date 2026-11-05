@@ -364,7 +364,11 @@ anova_welch <- function(data, response, groups,
   log10_ratio <- if (!is.na(variance_ratio) && min(group_var) > 0) {
     log10(max(group_var)) - log10(min(group_var))
   } else NA_real_
-  if (!is.na(log10_ratio) && log10_ratio > log10(4)) {
+  # Above 4, as documented: compared directly while the ratio is finite (the
+  # logarithms can put a ratio of exactly 4 just above log10(4)).
+  ratio_above <- if (is.finite(variance_ratio)) variance_ratio > 4 else
+    !is.na(log10_ratio) && log10_ratio > log10(4)
+  if (isTRUE(ratio_above)) {
     ratio_text <- if (is.finite(variance_ratio)) {
       format(signif(variance_ratio, 3))
     } else {
@@ -379,8 +383,11 @@ anova_welch <- function(data, response, groups,
       sprintf("%se+%d", format(m), e)
     }
     notes <- c(notes, sprintf(
-      "Largest group variance is %s times the smallest. Welch's test handles this; the classical F test would not.",
-      ratio_text))
+      "Largest group variance is %s times the smallest.%s",
+      ratio_text,
+      if (isTRUE(is.finite(anova_tab$statistic[1L]))) {
+        " Welch's test handles this; the classical F test would not."
+      } else ""))
   }
 
   ## Pairwise comparisons ----------------------------------------------------

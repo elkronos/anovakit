@@ -322,6 +322,17 @@ anova_count <- function(data, response, groups,
   # dispersion (and so the model choice) must not depend on.
   w_mean <- if (!is.null(weights) && !freq_w) mean(d[[weights]]) else 1
   dispersion <- .count_dispersion(pois, n_obs, w_mean)
+  # How far weights used as given inflate the model-based tests, from the
+  # sandwich covariance (.weight_inflation()): it depends on where the heavy
+  # rows fall, not only on the weights, and scales with the dispersion.
+  wi_at <- if (!is.null(weights) && !freq_w) {
+    function(phi) .weight_inflation(pois, phi)
+  } else NULL
+  w_infl <- 1
+  if (!is.null(wi_at)) {
+    wi1 <- wi_at(1)
+    if (is.null(wi1)) wi_at <- NULL else w_infl <- max(wi1$factor)
+  }
   notes <- c(notes, .weight_scale_note(d, weights))
   if (!isTRUE(all.equal(w_mean, 1))) {
     notes <- c(notes, sprintf(
@@ -342,7 +353,7 @@ anova_count <- function(data, response, groups,
                                 term_df = .largest_term_df(pois),
                                 robust = if (robust_pois) vcov_type,
                                 test_statistic = test_statistic,
-                                w_mean = w_mean)
+                                w_mean = w_infl, wi_at = wi_at)
   notes <- c(notes, chosen$notes)
   if (freq_w) {
     notes <- c(notes, sprintf(
@@ -365,9 +376,13 @@ anova_count <- function(data, response, groups,
         # request, so say what failed instead.
         .stopf("The negative binomial model could not be fitted: %s%s. Use model = \"poisson\" or model = \"quasipoisson\" instead.",
                conditionMessage(nb),
-               if (!isTRUE(stats::df.residual(pois) >= 1))
-                 " (theta cannot be estimated when the model has no residual degrees of freedom)"
-               else "")
+               if (!isTRUE(stats::df.residual(pois) >= 1)) {
+                 if (freq_w) {
+                   " (glm.nb() counts residual degrees of freedom in rows, and there are none, although the frequency weights represent more observations; expanding the data to one row per observation would let theta be estimated)"
+                 } else {
+                   " (theta cannot be estimated when the model has no residual degrees of freedom)"
+                 }
+               } else "")
       }
       notes <- c(notes, sprintf(
         "The negative binomial fit failed (%s); a quasi-Poisson model was used instead.",
@@ -450,6 +465,8 @@ anova_count <- function(data, response, groups,
   av <- .car_anova(if (nb_limit) pois else row_fit, type = type,
                    test_statistic = test_statistic,
                    vcov_matrix = if (robust_wald) rv$matrix else NULL)
+  av <- .deviance_precision(av, if (nb_limit) pois else row_fit,
+                            model_type == "quasipoisson")
   if (nb_limit) {
     notes <- c(notes, sprintf(
       "Theta is so large (%.3g) that the negative binomial deviance cannot be computed accurately, so the analysis of deviance is that of the Poisson fit, which is the limit of the negative binomial as theta grows and agrees with it to within about mu / theta.",
@@ -642,7 +659,10 @@ anova_count <- function(data, response, groups,
   y <- as.numeric(d[[response]])
   r <- if (is.null(offset)) y else y / as.numeric(d[[offset]])
   if (length(r) == 0L || any(!is.finite(r))) return(invisible(TRUE))
-  if (all(abs(r - r[1L]) <= 1e-10 * max(abs(r)))) {
+  # Equal to within a few hundred units in the last place (1e-13 of their
+  # size), as .constant_within_cells() reads it: whole-number counts of 1e12
+  # that differ by 5 are not the same value.
+  if (all(abs(r - r[1L]) <= 1e-13 * max(abs(r)))) {
     .stopf("%s takes the same value (%s) in every one of its %d rows, so there is no variation to model: model = \"%s\" needs a dispersion, which cannot be estimated. model = \"poisson\" fits such data exactly (likelihood-ratio statistic 0, p = 1).",
            if (is.null(offset)) sprintf("Response `%s`", response) else
              sprintf("The rate `%s` / `%s`", response, offset),
@@ -711,37 +731,34 @@ anova_count <- function(data, response, groups,
 #' \code{phi} is the dispersion with weights that are not frequencies
 #' rescaled to average 1 (\code{.count_dispersion()}), which chooses the
 #' model. The tests, standard errors and intervals use the weights as given,
-#' so they are inflated by \code{phi * w_mean}, the dispersion of the fit as
-#' weighted (\code{.dispersion()}, which anova_glm() quotes): with weights
-#' averaging 2.5 on Poisson data a nominal 5\% test on 5 degrees of freedom
-#' rejects about half of true nulls (simulation). The note says so and gives
-#' the sizes at that factor.
+#' so they are inflated by \code{phi * w_mean}, where \code{w_mean} is
+#' sum(w^2) / sum(w) (the weight itself, when all weights are equal): with
+#' weights averaging 2.5 on Poisson data a nominal 5\% test on 5 degrees of
+#' freedom rejects about half of true nulls (simulation). The note says so and
+#' gives the sizes at that factor.
 #' @param term_df the largest number of degrees of freedom of a model term.
 #' @param df the residual degrees of freedom of the Pearson statistic.
-#' @param w_mean the mean of weights that are not frequencies (1 otherwise).
+#' @param w_mean sum(w^2) / sum(w) for weights that are not frequencies (1
+#'   otherwise): the factor by which they inflate the tests.
 #' @noRd
 .inflation_note <- function(phi, p_over = NA_real_, term_df = 1L, robust = NULL,
                             test_statistic = "LR", hedged = FALSE,
-                            df = NA_real_, w_mean = 1) {
+                            df = NA_real_, w_mean = 1, wi_at = NULL) {
   # With a robust covariance in every test there is nothing to caveat.
   if (hedged && !is.null(robust) && test_statistic %in% c("Wald", "F")) {
     return(character(0))
   }
-  scaled <- !isTRUE(all.equal(w_mean, 1))
-  phi_t <- phi * w_mean
-  if (scaled && !(phi_t > 1)) {
+  wi <- if (!is.null(wi_at)) wi_at(phi) else NULL
+  phi_t <- if (!is.null(wi)) max(wi$factor) else phi
+  if (!is.null(wi) && max(wi$size) < 0.05) {
     return(sprintf(
-      "With the weights as given (averaging %s), which the tests and standard errors use, %s times the mean weight is %.2f, at most 1, so they are not anti-conservative on that account.",
-      format(signif(w_mean, 3)),
+      "With the weights as given, which the tests and standard errors use, and %s, the tests are not anti-conservative on that account (a nominal 5%% test rejects at most %.0f%% of true null hypotheses, from the sandwich covariance; this assumes the weights are not inverse variances).",
       sprintf(if (hedged) "the upper 95%% confidence bound of the dispersion (%.2f)" else
-        "the dispersion (%.2f)", phi), phi_t))
+        "the dispersion (%.2f)", phi), 100 * max(wi$size)))
   }
-  # The factor the reported statistics are inflated by.
-  by <- if (scaled) {
-    sprintf("by about %.2f (that dispersion times %s, the mean of the weights, which the tests use as given)",
-            phi_t, format(signif(w_mean, 3)))
-  } else "by about that factor"
-  size_text <- .inflated_size_text(phi_t, term_df)
+  wt <- if (!is.null(wi)) .weight_inflation_text(wi) else NULL
+  by <- if (!is.null(wt)) wt$by else "by about that factor"
+  size_text <- if (!is.null(wt)) wt$size else .inflated_size_text(phi_t, term_df)
   ptxt <- if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else ""
   if (hedged) {
     size_text <- sub("rejects roughly", "would reject roughly", size_text, fixed = TRUE)
@@ -763,8 +780,9 @@ anova_count <- function(data, response, groups,
     return(paste0(
       lead,
       if (is.null(robust)) {
-        sprintf("the Poisson likelihood-ratio and Wald statistics would be inflated %s and the standard errors would be about %.2f times too small: %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
-                by, sqrt(phi_t), size_text)
+        sprintf("the Poisson likelihood-ratio and Wald statistics would be inflated %s and the standard errors would be %s too small: %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
+                by, if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else
+                  "correspondingly", size_text)
       } else {
         sprintf("the omnibus likelihood-ratio test would be inflated %s: %s. The robust (%s) standard errors, intervals and comparisons do not assume a dispersion of 1.",
                 by, size_text, robust)
@@ -779,8 +797,9 @@ anova_count <- function(data, response, groups,
                                                    table = "$effect_sizes"),
                        fixed = TRUE)))
   }
-  sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated %s and its standard errors are about %.2f times too small, so its intervals are too narrow and %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
-          phi, ptxt, by, sqrt(phi_t), size_text)
+  sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated %s and its standard errors are %s too small, so its intervals are too narrow and %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
+          phi, ptxt, by, if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else
+            "correspondingly", size_text)
 }
 
 #' The dispersion at which kept Poisson tests start to matter
@@ -848,7 +867,8 @@ anova_count <- function(data, response, groups,
 #' @noRd
 .choose_count_model <- function(model, dispersion, threshold, df = NA_real_,
                                 term_df = 1L, robust = NULL,
-                                test_statistic = "LR", w_mean = 1) {
+                                test_statistic = "LR", w_mean = 1,
+                                wi_at = NULL) {
   # A dispersion a little above 1 arises by chance half the time; one the
   # Pearson test cannot put down to chance gets the full note. Otherwise the
   # Pearson test, with few residual degrees of freedom, often passes a real
@@ -865,9 +885,18 @@ anova_count <- function(data, response, groups,
   phi_hi <- if (is.finite(dispersion) && is.finite(df) && df > 0)
     dispersion * df / stats::qchisq(0.05, df) else NA_real_
   k <- max(1L, as.integer(term_df))
-  size_hi <- if (is.finite(phi_hi) && phi_hi > 0)
-    stats::pchisq(stats::qchisq(0.95, k) / (phi_hi * w_mean), k,
-                  lower.tail = FALSE) else NA_real_
+  # The size of the worst-affected kept test at dispersion phi: from the
+  # sandwich covariance when weights that are not frequencies are used as
+  # given (.weight_inflation()), otherwise at phi on the largest term.
+  size_at <- function(phi) {
+    if (!is.finite(phi) || phi <= 0) return(NA_real_)
+    if (!is.null(wi_at)) {
+      wi <- wi_at(phi)
+      return(if (is.null(wi)) NA_real_ else max(wi$size))
+    }
+    stats::pchisq(stats::qchisq(0.95, k) / (phi * w_mean), k, lower.tail = FALSE)
+  }
+  size_hi <- size_at(phi_hi)
   # Weights that are not frequencies and average more than 1 inflate the
   # kept tests by dispersion * w_mean. When the weights alone do it -- a
   # nominal 5% test rejects 7.5% or more even at a dispersion of 1 (or at the
@@ -875,10 +904,8 @@ anova_count <- function(data, response, groups,
   # cannot rule out but the state of the reported tests, however many
   # residual degrees of freedom there are, and the plain note says so at the
   # estimate.
-  scaled <- !isTRUE(all.equal(w_mean, 1))
-  size_est <- if (is.finite(dispersion) && dispersion > 0)
-    stats::pchisq(stats::qchisq(0.95, k) / (min(dispersion, 1) * w_mean), k,
-                  lower.tail = FALSE) else NA_real_
+  scaled <- !is.null(wi_at) || !isTRUE(all.equal(w_mean, 1))
+  size_est <- size_at(min(dispersion, 1))
   weight_inflated <- scaled && isTRUE(size_est >= 0.075)
   mild <- is.finite(p_over) && !beyond_chance && is.finite(size_hi) &&
     size_hi >= 0.075 && !weight_inflated
@@ -886,7 +913,7 @@ anova_count <- function(data, response, groups,
     .inflation_note(if (hedged) phi_hi else dispersion, p_over,
                     term_df = term_df, robust = robust,
                     test_statistic = test_statistic, hedged = hedged, df = df,
-                    w_mean = w_mean)
+                    w_mean = w_mean, wi_at = wi_at)
   if (model == "negbin" && !requireNamespace("MASS", quietly = TRUE)) {
     .stopf("model = \"negbin\" requires the {MASS} package. Install it, or use model = \"quasipoisson\".")
   }

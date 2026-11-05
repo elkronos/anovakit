@@ -36,7 +36,14 @@
 #' includes a frequency table with one row per group, which stands for a
 #' response constant within every group. A response with a large level and
 #' small but real variation (epoch seconds varying by minutes, say) is not an
-#' exact fit and gets its F tests.
+#' exact fit: the Gaussian family resolves it. The Poisson, Gamma and
+#' negative binomial deviances, however, are computed as differences of
+#' nearly equal terms, and on such a level rounding can swamp the change in
+#' deviance a test is built on. A likelihood-ratio or F test that rounding
+#' could move by more than a fifth of its size is then NA, and one it could
+#' move by more than 2\% gets a note; \code{$notes} says which, and
+#' \code{test_statistic = "Wald"}, which does not use the deviance, can still
+#' test them.
 #'
 #' \strong{Convergence.} \code{stats::glm()} judges convergence by a change
 #' in deviance relative to the deviance plus 0.1, so a fit whose deviance is
@@ -481,6 +488,7 @@ anova_glm <- function(data, response, groups,
   ## Analysis of deviance -----------------------------------------------------
   av <- .glm_anova(row_model, type = type, test_statistic = test_statistic,
                    vcov_matrix = rv$matrix)
+  av <- .deviance_precision(av, row_model, .estimates_dispersion(row_model))
   if (!is.null(freq_n) && !(identical(test_statistic, "Wald") && !is.null(rv$matrix))) {
     av <- .freq_weight_anova(av, stats::df.residual(row_model),
                              stats::df.residual(model),
@@ -510,6 +518,22 @@ anova_glm <- function(data, response, groups,
   eff <- .glm_effect_sizes(model, av$raw, type = type,
                            test_statistic = test_statistic)
   notes <- c(notes, eff$notes)
+  # The deviance explained is a ratio of deviances; when rounding swamps the
+  # deviance (see .deviance_precision()) it is as arbitrary as the tests.
+  if (!is.null(eff$table) && "measure" %in% names(eff$table)) {
+    rnd <- .deviance_rounding(model)
+    dv <- model$deviance; dv0 <- model$null.deviance
+    if (isTRUE(is.finite(rnd) && is.finite(dv) && is.finite(dv0) &&
+               (rnd > 0.2 * abs(dv) || 2 * rnd > 0.2 * abs(dv0 - dv)))) {
+      i <- eff$table$measure == "deviance_explained"
+      if (any(i) && !is.na(eff$table$estimate[i])) {
+        eff$table$estimate[i] <- NA_real_
+        notes <- c(notes, sprintf(
+          "The deviance explained in $effect_sizes is NA: the deviances it compares are uncertain by about %s from rounding alone (the response varies too little relative to its level for this family's deviance to resolve it).",
+          format(signif(rnd, 2))))
+      }
+    }
+  }
 
   ## Dispersion ---------------------------------------------------------------
   dispersion <- .dispersion(model)
@@ -549,25 +573,48 @@ anova_glm <- function(data, response, groups,
   }
   fixed_family <- fam_name %in% c("poisson", "binomial") && !binary
   p_over <- .overdispersion_p(dispersion, stats::df.residual(model))
-  if (fixed_family && is.finite(dispersion) && dispersion > 1 &&
-      is.finite(p_over) && p_over < 0.05) {
+  # Weights that are not frequencies are used as given, so the tests are
+  # inflated by more than the Pearson dispersion when they are unequal: by
+  # how much, from the sandwich covariance (.weight_inflation()), depends on
+  # where the heavy rows fall. The Pearson dispersion of the weighted fit
+  # estimates phi0 * mean(w), phi0 being that of the response's variance.
+  wi <- NULL
+  if (fixed_family && !is.null(weights) && is.null(freq_n) &&
+      is.finite(dispersion) && dispersion > 0) {
+    wp <- d[[weights]][d[[weights]] > 0]
+    if (length(wp) && stats::var(wp) > 1e-4 * mean(wp)^2) {
+      wi <- .weight_inflation(model, dispersion / mean(wp))
+    }
+  }
+  k_big <- .largest_term_df(model)
+  phi_t <- if (!is.null(wi)) max(wi$factor) else dispersion
+  wi_min <- if (!is.null(wi)) .weight_inflation(model, min(dispersion / mean(wp), 1)) else NULL
+  weight_inflated <- !is.null(wi_min) && isTRUE(max(wi_min$size) >= 0.075)
+  if (fixed_family && is.finite(dispersion) &&
+      ((dispersion > 1 && is.finite(p_over) && p_over < 0.05) ||
+       weight_inflated)) {
     # Under a true dispersion phi a test statistic of this family is about phi
     # times its nominal chi-square; say what that does rather than only that
     # it happened.
     # The size is given for the largest term's degrees of freedom too, as
     # anova_count() gives it for the same fit.
-    size_text <- .inflated_size_text(dispersion, .largest_term_df(model))
+    wt <- if (!is.null(wi)) .weight_inflation_text(wi) else NULL
+    size_text <- if (!is.null(wt)) wt$size else .inflated_size_text(phi_t, k_big)
+    by <- if (!is.null(wt)) paste("inflated", wt$by) else "inflated by about that factor"
     # With a robust covariance the coefficient table, the marginal means and
     # the comparisons do not rest on the model variance; only an omnibus test
     # that compares deviances with the dispersion fixed at 1 still does.
     notes <- c(notes, if (!is.null(rv$matrix)) sprintf(
       "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1. %s",
       dispersion, .fmt_p(p_over), fam_name,
-      .robust_overdispersion_text(
-        test_statistic, vcov_type, size_text,
-        sprintf("family = \"quasi%s\"", fam_name))) else sprintf(
-      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are inflated by about that factor, its standard errors are about %.2f times too small, and %s. %s",
-      dispersion, .fmt_p(p_over), fam_name, sqrt(dispersion), size_text,
+      sub("inflated by about that factor", by,
+          .robust_overdispersion_text(
+            test_statistic, vcov_type, size_text,
+            sprintf("family = \"quasi%s\"", fam_name)), fixed = TRUE)) else sprintf(
+      "Pearson dispersion is %.2f (Pearson test of overdispersion: %s), where a %s model assumes 1: its test statistics are %s, its standard errors are %s too small, and %s. %s",
+      dispersion, .fmt_p(p_over), fam_name, by,
+      if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else "correspondingly",
+      size_text,
       if (identical(test_statistic, "F")) {
         sprintf("The F table already scales by the dispersion, but the coefficient table, the marginal means and the comparisons do not: use family = \"quasi%s\" to scale them too.",
                 fam_name)

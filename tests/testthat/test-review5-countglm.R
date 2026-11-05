@@ -1,6 +1,23 @@
 # Round-5 review fixes: count and GLM functions (exact-fit rule, frequency
 # weights, weight-scaled overdispersion notes, saturated Wald tests).
 
+
+# Hand reference for the inflation of a weighted Poisson fit's tests when the
+# counts' variance is phi * mu whatever the weights: the sandwich
+# A^-1 B A^-1, A = X' diag(w mu) X, B = phi X' diag(w^2 mu) X, against A^-1,
+# averaged over the eigenvalues for the term's coefficients.
+hand_inflation <- function(fit, phi) {
+  X <- stats::model.matrix(fit)[, -1, drop = FALSE]
+  X <- cbind(1, X)
+  mu <- stats::fitted(fit); w <- fit$prior.weights
+  A <- crossprod(X * sqrt(w * mu)); B <- phi * crossprod(X * sqrt(w^2 * mu))
+  Ai <- solve(A); V <- Ai %*% B %*% Ai
+  J <- 2:ncol(X)
+  lam <- eigen(solve(Ai[J, J], V[J, J]), only.values = TRUE)$values
+  c(factor = mean(Re(lam)), c = sum(Re(lam)^2) / sum(Re(lam)),
+    nu = sum(Re(lam))^2 / sum(Re(lam)^2))
+}
+
 test_that("countglm-F1: a large level with small real variation is not an exact fit", {
   d <- withr::with_seed(4, {
     d <- data.frame(g = gl(3, 10))
@@ -121,34 +138,42 @@ test_that("exactfit-dispersion-F3: anova_count's inflation note describes the te
     stats::pchisq(f0$deviance - f1$deviance, 5, lower.tail = FALSE) < 0.05
   }))
   expect_gt(mean(sim), 0.35)
-  # the note gives the factor the tests use: the weights alone inflate them
-  # (countglm-R2), so it is the estimated dispersion times the mean weight,
-  # stated plainly, with the sizes at that factor
+  # the note gives the factor the tests use, from the sandwich covariance at
+  # the dispersion of the weights rescaled to average 1 (hand computation),
+  # and the size of the test of g, which matches the simulation
   wm <- mean(d$w)
-  x2 <- sum(stats::residuals(fit, type = "pearson")^2) / wm
-  phi <- x2 / 66
-  size5 <- stats::pchisq(stats::qchisq(0.95, 5) / (phi * wm), 5, lower.tail = FALSE)
+  phi <- sum(stats::residuals(fit, type = "pearson")^2) / wm / 66
+  hi <- hand_inflation(fit, phi)
+  size5 <- stats::pchisq(stats::qchisq(0.95, 5) / hi[["c"]], hi[["nu"]], lower.tail = FALSE)
   note <- grep("Pearson dispersion is", k$notes, value = TRUE)
   expect_length(note, 1L)
   expect_false(grepl("little power", note, fixed = TRUE))
-  expect_match(note, sprintf("are inflated by about %.2f", phi * wm), fixed = TRUE)
-  expect_match(note, sprintf("one on 5 (the largest term here) roughly %.0f%%", 100 * size5),
+  expect_match(note, sprintf("are inflated by about %.2f", hi[["factor"]]), fixed = TRUE)
+  expect_match(note, sprintf("a nominal 5%% test of g rejects roughly %.0f%%", 100 * size5),
                fixed = TRUE)
   expect_gt(size5, 0.35)
-  # InsectSprays: anova_count and anova_glm quote one dispersion and one size
+  # at the true dispersion (1) the sandwich size matches the simulated one
+  h1 <- hand_inflation(fit, 1)
+  expect_lt(abs(stats::pchisq(stats::qchisq(0.95, 5) / h1[["c"]], h1[["nu"]],
+                              lower.tail = FALSE) - mean(sim)), 0.08)
+  # InsectSprays: anova_count and anova_glm quote one inflation factor and
+  # one size for the same weighted fit (hand computation)
   iw <- InsectSprays
   iw$w <- withr::with_seed(1, stats::runif(nrow(iw), 2, 3))
   mi <- stats::glm(count ~ spray, poisson, iw, weights = w)
   disp <- sum(stats::residuals(mi, type = "pearson")^2) / stats::df.residual(mi)
+  hi <- hand_inflation(mi, disp / mean(iw$w))
   kc <- anova_count(iw, "count", "spray", model = "poisson", weights = "w",
                     test_statistic = "F", plots = FALSE)
   kg <- anova_glm(iw, "count", "spray", family = poisson(), weights = "w", plots = FALSE)
-  s1 <- sprintf("roughly %.0f%%", 100 * stats::pchisq(stats::qchisq(0.95, 1) / disp, 1,
-                                                       lower.tail = FALSE))
-  expect_true(any(grepl(sprintf("inflated by about %.2f", disp), kc$notes, fixed = TRUE)))
+  s1 <- sprintf("roughly %.0f%%", 100 * stats::pchisq(stats::qchisq(0.95, 5) / hi[["c"]],
+                                                       hi[["nu"]], lower.tail = FALSE))
+  fac <- sprintf("inflated by about %.2f", hi[["factor"]])
+  expect_true(any(grepl(fac, kc$notes, fixed = TRUE)))
   expect_true(any(grepl(sprintf("Pearson residuals (%.2f)", disp), kc$notes, fixed = TRUE)))
   expect_true(any(grepl(s1, kc$notes, fixed = TRUE)))
   expect_true(any(grepl(sprintf("Pearson dispersion is %.2f", disp), kg$notes, fixed = TRUE)))
+  expect_true(any(grepl(fac, kg$notes, fixed = TRUE)))
   expect_true(any(grepl(s1, kg$notes, fixed = TRUE)))
 })
 
@@ -247,13 +272,15 @@ test_that("countglm-R2: weights averaging 2.5 inflate the kept Poisson tests pla
   expect_false(any(grepl("cannot tell the dispersion from 1", r$notes, fixed = TRUE)))
   note <- grep("A Poisson model assumes a dispersion of 1", r$notes, value = TRUE)
   expect_length(note, 1L)
-  # reference: the Pearson dispersion of the glm as weighted (base R), which
-  # is the factor the reported statistics are inflated by
+  # reference: the sandwich inflation by hand, at the dispersion of the
+  # weights rescaled to average 1; about the Pearson dispersion of the glm as
+  # weighted, since the weights vary little
   f <- stats::glm(y ~ g, stats::poisson(), d, weights = w)
-  phi_w <- sum(stats::residuals(f, "pearson")^2) / stats::df.residual(f)
-  expect_match(note, sprintf("are inflated by about %.2f", phi_w), fixed = TRUE)
-  sz3 <- stats::pchisq(stats::qchisq(0.95, 3) / phi_w, 3, lower.tail = FALSE)
-  expect_match(note, sprintf("one on 3 (the largest term here) roughly %.0f%%", 100 * sz3),
+  phi <- sum(stats::residuals(f, "pearson")^2) / mean(d$w) / stats::df.residual(f)
+  hi <- hand_inflation(f, phi)
+  expect_match(note, sprintf("are inflated by about %.2f", hi[["factor"]]), fixed = TRUE)
+  sz3 <- stats::pchisq(stats::qchisq(0.95, 3) / hi[["c"]], hi[["nu"]], lower.tail = FALSE)
+  expect_match(note, sprintf("a nominal 5%% test of g rejects roughly %.0f%%", 100 * sz3),
                fixed = TRUE)
   # simulation: true Poisson data, weights ~ U(2, 3): the LR test of g on 3
   # df rejects far more than 5% (about the quoted size)

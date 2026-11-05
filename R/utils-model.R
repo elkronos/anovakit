@@ -780,37 +780,31 @@
 #' Is a GLM's response constant, or fitted exactly?
 #'
 #' A family that estimates its dispersion divides every test statistic by it;
-#' when the residual deviance is rounding error so is the dispersion, and the
-#' F statistics come out as 1e12, NaN or negative. As in \code{.exact_fit()},
-#' a fit is exact when its residual deviance is at most 1e-12 of the null
-#' deviance, or when the response takes one value in every row that carries
-#' weight (the null deviance is then itself 0 or rounding error) and the
-#' offset is constant too: a constant count over varying exposures is a
-#' varying rate, which the model need not fit.
+#' when the fit reproduces the response to rounding error so is the
+#' dispersion, and the F statistics come out as 1e12, NaN or negative. A fit
+#' is exact when the response takes one value in every row that carries
+#' weight and the offset is constant too (a constant count over varying
+#' exposures is a varying rate, which the model need not fit), or when every
+#' fitted value equals its response to within 1e-13 of its size: the
+#' rounding error of the fit, below real variation of even 1e-12 of the
+#' response's level (counts of 1e12 differing by a few), which lm() and car
+#' resolve.
 #'
 #' A response constant within every group but 0 (or 1, for a proportion) in
 #' some group is fitted only in the limit: glm() stops with fitted values of
-#' about 1e-11 there, a residual deviance of about 1e-11 of the null deviance
-#' (the deviance of such a cell is linear, not quadratic, in its fitted
-#' value), and F statistics of 1e12 to 1e17. When some response is at such a
-#' boundary (0, or 1 for a binomial family) the fit is therefore also exact
-#' when every boundary value is fitted to within 1e-6 of the response's range
-#' and every other value to within 1e-10 of its own size. Measuring each
-#' interior residual against its own row keeps a constant group of large
-#' values (1e7, say) from hiding real variation in a group of small ones.
-#' Interior rows of such a fit are fitted to rounding error (about 1e-13 of
-#' their size), so the 1e-10 tolerance does not refuse a response with a large
-#' level and small but real variation (epoch seconds varying by minutes, say),
-#' which lm() and car resolve.
+#' about 1e-11 there and F statistics of 1e12 to 1e17. When some response is
+#' at such a boundary the fit is therefore also exact when every boundary
+#' value is fitted to within 1e-6 of the response's range and every other
+#' value to within 1e-10 of its own size. A response constant within every
+#' design cell (\code{.constant_within_cells()}) and fitted to within 1e-10
+#' of its size is exact too.
 #'
-#' With no response at a boundary the deviance rule still misses a response
-#' constant within every group on a large level (1e7 + 0, 10, 20, say): the
-#' deviance and the null deviance are then differences of nearly equal
-#' numbers, and their rounding can be 1e-6 of the null deviance or more (or
-#' negative). Such a fit is also exact when the response is constant within
-#' every design cell (\code{.constant_within_cells()}) and every fitted value
-#' equals it to within 1e-10 of its own size. Real variation within the cells,
-#' however small against the level, is left to the F test.
+#' The deviance is not used here: on a large level it can be mostly rounding
+#' error (or negative) while the fit leaves real residual variation, and a
+#' fixed fraction of the null deviance refuses real variation in a group of
+#' small values beside a group of large ones. Whether the deviance resolves
+#' the variation the fit leaves is judged test by test in
+#' \code{.deviance_precision()}.
 #' @return \code{NULL} when the fit leaves residual variation; otherwise the
 #'   error message.
 #' @noRd
@@ -834,19 +828,12 @@
       response, format(signif(y[1L], 6))))
   }
   what <- NULL
-  dev <- model$deviance
-  dev0 <- model$null.deviance
-  if (isTRUE(is.finite(dev) && is.finite(dev0) && dev0 > 0 && dev <= 1e-12 * dev0)) {
-    what <- sprintf("its residual deviance is %s of the null deviance, which is rounding error",
-                    format(signif(dev / dev0, 3)))
-  } else if (length(mu) == length(y) && all(is.finite(mu))) {
-    # Only a fit with a response at a boundary of its family (0, or 1 for a
-    # proportion), which glm() fits by about 1e-11 in the limit, needs more
-    # than the deviance rule. Those rows are measured against the response's
-    # range; every other row against its own size, so that a constant group
-    # of large values cannot hide real variation in a group of small ones,
-    # and to a tolerance (1e-10) that rounding error meets but real variation
-    # on a large level (1.7e9 +- 300, say) does not.
+  if (length(mu) == length(y) && all(is.finite(mu))) {
+    # A response at a boundary of its family (0, or 1 for a proportion) is
+    # fitted by glm() only in the limit, to about 1e-11: those rows are
+    # measured against the response's range; every other row against its own
+    # size, so that a constant group of large values cannot hide real
+    # variation in a group of small ones.
     fam <- tryCatch(stats::family(model)$family, error = function(e) "")
     binom <- fam %in% c("binomial", "quasibinomial")
     bnd <- y == 0 | (binom & y == 1)
@@ -868,12 +855,18 @@
       }
     } else if (!any(bnd) && isTRUE(rel_i <= 1e-10) &&
                .constant_within_cells(model, keep, off)) {
-      # No response at a boundary, but on a large level the rounding in the
-      # deviance and the null deviance (each a difference of nearly equal
-      # numbers) can sit far above 1e-12 of the null deviance. Such a fit is
-      # exact when the response is constant within every design cell and
-      # the model reproduces it to rounding error.
       what <- sprintf("the response is constant within every design cell and every fitted value equals it to within %s of its own size, which is rounding error",
+                      format(signif(rel_i, 3)))
+    } else if (!any(bnd) && isTRUE(rel_i <= 1e-13)) {
+      # The fit reproduces every response to the rounding error of the fit
+      # itself (an exactly additive two-factor response, say): the Pearson
+      # residuals, and so the estimated dispersion, are rounding error (a few
+      # hundred units in the last place, as .constant_within_cells() reads
+      # it). Real variation of even 1e-12 of the response's level (counts of
+      # 1e12 differing by a few) is above this;
+      # whether the deviance can resolve it is a separate question, which
+      # .deviance_precision() answers for each test.
+      what <- sprintf("every fitted value equals the response to within %s of its own size, which is the rounding error of the fit",
                       format(signif(rel_i, 3)))
     }
   }
@@ -907,6 +900,130 @@
   lo <- stats::ave(y, cell, FUN = min)
   hi <- stats::ave(y, cell, FUN = max)
   all(hi - lo <= 1e-13 * pmax(abs(lo), abs(hi)))
+}
+
+#' How precisely a GLM's deviance is computed
+#'
+#' A unit deviance is evaluated from \code{y} and the fitted mean \code{mu}.
+#' Where the family's deviance is written as a difference of nearly equal
+#' terms -- \code{y * log(y / mu) - (y - mu)} for the Poisson and negative
+#' binomial, \code{log(y / mu) - (y - mu) / mu} for the Gamma -- each term
+#' carries a rounding error of about \code{eps * y} (Poisson) or \code{eps}
+#' (Gamma), whatever the size of the true unit deviance, which is about
+#' \code{(y - mu)^2 / V(mu)}. On a large level with little variation (counts
+#' of 1e9 varying by a few units, epoch seconds varying by a minute) the
+#' deviance is then mostly rounding error, and so is every deviance
+#' difference that a likelihood-ratio or F test is built on: car returns F
+#' statistics that are arbitrary or negative. The Gaussian and inverse
+#' Gaussian deviances are computed from \code{y - mu} directly and do not
+#' cancel in this way.
+#'
+#' The fitted means are themselves rounded, to about \code{16 * eps * |mu|}
+#' (a few units in the last place, times the conditioning of the fit), which
+#' moves each unit deviance by about \code{2 w |y - mu| / V(mu)} times that.
+#' The returned bound adds the two, the first summed in quadrature (the
+#' errors of different rows are independent) and the second linearly. Each
+#' is about twice the error a careful analysis gives, so it is a bound to
+#' compare with, not an estimate.
+#' @return the bound on the absolute error of \code{deviance(model)}.
+#' @noRd
+.deviance_rounding <- function(model) {
+  y <- as.numeric(model$y)
+  mu <- as.numeric(model$fitted.values)
+  w <- model$prior.weights
+  if (is.null(w) || length(w) != length(y)) w <- rep(1, length(y))
+  ok <- w > 0 & is.finite(y) & is.finite(mu)
+  y <- y[ok]; mu <- mu[ok]; w <- w[ok]
+  if (length(y) == 0L) return(0)
+  eps <- .Machine$double.eps
+  fam <- tryCatch(stats::family(model), error = function(e) NULL)
+  fname <- if (is.null(fam)) "" else fam$family
+  vtype <- if (identical(fname, "quasi")) fam$varfun else
+    if (fname == "gaussian") "constant" else
+    if (fname %in% c("poisson", "quasipoisson")) "mu" else
+    if (fname == "Gamma") "mu^2" else
+    if (fname == "inverse.gaussian") "mu^3" else
+    if (fname %in% c("binomial", "quasibinomial")) "mu(1-mu)" else
+    if (startsWith(fname, "Negative Binomial")) "nb" else "mu"
+  big <- pmax(abs(y), abs(mu))
+  theta <- if (vtype == "nb") {
+    th <- model$theta
+    if (is.null(th)) th <- suppressWarnings(as.numeric(
+      sub("^Negative Binomial\\((.*)\\)$", "\\1", fname)))
+    if (length(th) == 1L && is.finite(th)) th else 0
+  } else 0
+  cancel <- switch(vtype,
+    "constant" = , "mu^3" = rep(0, length(y)),
+    "mu^2" = , "mu(1-mu)" = 2 * eps * w,
+    "nb" = 2 * eps * w * (2 * big + theta),
+    2 * eps * w * big)
+  V <- if (is.null(fam)) rep(NA_real_, length(mu)) else
+    tryCatch(fam$variance(mu), error = function(e) rep(NA_real_, length(mu)))
+  fit_err <- ifelse(is.finite(V) & V > 0,
+                    2 * w * abs(y - mu) / V * 16 * eps * abs(mu), 0)
+  sqrt(sum(cancel^2)) + sum(fit_err)
+}
+
+#' Make NA the deviance tests that rounding error swamps
+#'
+#' A likelihood-ratio or F test of a GLM compares two deviances; their
+#' difference is uncertain by about twice \code{.deviance_rounding()} (the
+#' reduced model's deviance carries the same rounding as the full one's). In
+#' the units of the reported statistic that is the difference itself for a
+#' fixed-dispersion likelihood-ratio test, and the difference divided by the
+#' Pearson dispersion (and, for F, the term's degrees of freedom) when car
+#' scales by one. The bound is about three times the error seen in practice.
+#' A test whose statistic is uncertain by more than 20\% of itself, or of its
+#' degrees of freedom (the statistic's size under the null hypothesis), cannot
+#' be read, and is made NA with a note; between 2\% and 20\% the test is
+#' kept and a note gives the uncertainty. A Wald test does not use the
+#' deviance and can still be computed. Applied to car's table
+#' before any frequency-weight rescaling, which scales the statistic and its
+#' error alike.
+#' @param av the result of \code{.car_anova()}.
+#' @param scaled does the table divide the deviance by an estimated
+#'   dispersion?
+#' @return \code{av}, with the affected rows NA and a note added to
+#'   \code{av$note}.
+#' @noRd
+.deviance_precision <- function(av, model, scaled) {
+  tab <- av$table
+  stat <- attr(tab, "statistic")
+  if (is.null(tab) || nrow(tab) == 0L || is.null(stat) ||
+      !(identical(stat, "F") || startsWith(stat, "likelihood-ratio") ||
+        startsWith(stat, "scaled-deviance"))) {
+    return(av)
+  }
+  err_d <- 2 * .deviance_rounding(model)
+  phi <- if (scaled || identical(stat, "F")) .dispersion(model) else 1
+  if (!is.finite(err_d) || err_d <= 0 || !isTRUE(is.finite(phi) && phi > 0)) {
+    return(av)
+  }
+  eff <- tab$term != "Residuals" & is.finite(tab$statistic)
+  dfs <- pmax(tab$df, 1)
+  err <- err_d / phi / if (identical(stat, "F")) dfs else 1
+  orig <- tab$statistic
+  scale_ <- pmax(abs(tab$statistic), dfs)
+  bad <- eff & err > 0.2 * scale_
+  shaky <- eff & !bad & err > 0.02 * scale_
+  if (any(shaky)) {
+    av$note <- c(av$note, sprintf(
+      "The response varies little relative to its level, so this family's deviance is computed with limited precision: from rounding alone, the statistic(s) of %s are uncertain by about %s (on %s). The tests are still usable; test_statistic = \"Wald\", which uses the estimates and their covariance rather than the deviance, avoids this.",
+      paste(tab$term[shaky], collapse = ", "),
+      paste(format(signif(err[shaky], 2)), collapse = ", "),
+      paste(format(signif(orig[shaky], 3)), collapse = ", ")))
+  }
+  if (!any(bad)) return(av)
+  tab$statistic[bad] <- NA_real_
+  tab$p_value[bad] <- NA_real_
+  if ("sum_sq" %in% names(tab)) tab$sum_sq[bad] <- NA_real_
+  av$table <- tab
+  av$note <- c(av$note, sprintf(
+    "The test(s) of %s are NA: the response varies too little relative to its level for this family's deviance to resolve it. Each deviance is uncertain by about %s from rounding alone, so the change in deviance behind each test is uncertain by about %s on the scale of the statistic, which swamps it (the statistic came out as %s). This is a limit of computing the deviance in double precision, not a property of the data. test_statistic = \"Wald\", which uses the estimates and their covariance rather than the deviance, can still test them.",
+    paste(tab$term[bad], collapse = ", "), format(signif(err_d / 2, 2)),
+    paste(format(signif(err[bad], 2)), collapse = ", "),
+    paste(format(signif(orig[bad], 3)), collapse = ", ")))
+  av
 }
 
 #' Coefficient names that a model produces more than once
@@ -1100,4 +1217,80 @@
     }
   }
   cl
+}
+
+#' How far weights used as given inflate a GLM's model-based tests
+#'
+#' Prior weights that are not frequencies (sampling or importance weights,
+#' say) enter a fixed-dispersion GLM's likelihood as given, and its tests
+#' assume Var(y) = V(mu) / w. When the response's variance does not depend on
+#' the weights -- Var(y) = phi V(mu) -- the estimates have the sandwich
+#' covariance A^-1 B A^-1, with A = X' diag(W) X the model's information
+#' (W the working weights) and B = phi X' diag(w W) X, against the A^-1 the
+#' tests use. For each term the Wald statistic is then a sum of
+#' lambda_j chi-square_1, where the lambda_j are the eigenvalues of the
+#' term's block of A^-1 B A^-1 relative to that of A^-1; Satterthwaite's
+#' approximation, c chi-square_nu with c = sum(lambda^2) / sum(lambda) and
+#' nu = sum(lambda)^2 / sum(lambda^2), gives the size of a nominal 5\% test.
+#' With equal weights w every lambda is phi w; with unequal ones the factor
+#' depends on where the heavy rows fall, which no single summary of the
+#' weights captures (weights of 9.1 on a tenth of the rows inflate a test by
+#' 8 if they fall in every cell, and by less if they fall in a few).
+#' Likelihood-ratio statistics behave the same way to first order. Weights
+#' that are inverse variances would not inflate the tests, so callers say
+#' which reading they assume.
+#' @param phi the dispersion of the response's variance relative to the
+#'   family's (estimated with the weights rescaled to average 1).
+#' @return a data frame with one row per term: \code{term}, \code{df},
+#'   \code{factor} (mean lambda), \code{size} (of a nominal 5\% test), or
+#'   \code{NULL} when it cannot be computed.
+#' @noRd
+.weight_inflation <- function(model, phi) {
+  X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
+  W <- model$weights
+  w <- model$prior.weights
+  if (is.null(X) || is.null(W) || is.null(w) || !is.finite(phi) || phi <= 0 ||
+      nrow(X) != length(W) || length(w) != length(W)) return(NULL)
+  keep <- !is.na(stats::coef(model))
+  asg <- attr(X, "assign")[keep]
+  X <- X[, keep, drop = FALSE]
+  ok <- is.finite(W) & W > 0 & is.finite(w) & w > 0
+  X <- X[ok, , drop = FALSE]; W <- W[ok]; w <- w[ok]
+  A <- crossprod(X * sqrt(W))
+  B <- phi * crossprod(X * sqrt(w * W))
+  Ai <- tryCatch(solve(A), error = function(e) NULL)
+  if (is.null(Ai)) return(NULL)
+  Vt <- Ai %*% B %*% Ai
+  labs <- attr(stats::terms(model), "term.labels")
+  out <- lapply(sort(unique(asg[asg > 0])), function(k) {
+    J <- which(asg == k)
+    lam <- tryCatch(Re(eigen(solve(Ai[J, J, drop = FALSE], Vt[J, J, drop = FALSE]),
+                             only.values = TRUE)$values), error = function(e) NA_real_)
+    if (anyNA(lam) || any(lam <= 0)) return(NULL)
+    cc <- sum(lam^2) / sum(lam)
+    nu <- sum(lam)^2 / sum(lam^2)
+    data.frame(term = gsub("`", "", labs[k], fixed = TRUE), df = length(J),
+               factor = mean(lam),
+               size = stats::pchisq(stats::qchisq(0.95, length(J)) / cc, nu,
+                                    lower.tail = FALSE),
+               stringsAsFactors = FALSE)
+  })
+  out <- do.call(rbind, out)
+  if (is.null(out) || nrow(out) == 0L) NULL else out
+}
+
+#' Clauses describing what weights used as given do to the tests
+#' @param wi the result of \code{.weight_inflation()}.
+#' @return list with \code{by} (\"by about ... (why)\", to follow
+#'   \"inflated\") and \code{size} (the size of the worst-affected test).
+#' @noRd
+.weight_inflation_text <- function(wi) {
+  rng <- range(wi$factor)
+  fac <- if (diff(rng) < 0.05 * rng[2L]) sprintf("about %.2f", mean(wi$factor)) else
+    sprintf("between about %.2f and %.2f, depending on the term", rng[1L], rng[2L])
+  worst <- wi[which.max(wi$size), ]
+  list(
+    by = sprintf("by %s (the weights are used as given and are not frequencies; computed from the sandwich covariance, assuming the weights are not inverse variances, which would not inflate them)", fac),
+    size = sprintf("a nominal 5%% test of %s rejects roughly %.0f%% of true null hypotheses",
+                   worst$term, 100 * worst$size))
 }
