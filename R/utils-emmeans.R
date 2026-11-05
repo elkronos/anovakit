@@ -99,10 +99,16 @@
 #' itself being renamed, the statistic gets an \code{emm_} prefix instead, and
 #' the collision is reported so nobody has to notice it from the column order.
 #'
+#' @param protect grouping columns of this table, kept as they are.
+#' @param reserve names no statistic may be renamed onto, although this table
+#'   need not hold them (the other factors' columns, when per-factor tables
+#'   are stacked). A reserved name that is not protected is not a grouping
+#'   column of this table: a column of that name is emmeans' own statistic
+#'   and is renamed like any other.
 #' @return the data frame, with a \code{"renamed"} attribute naming any column
 #'   that had to take a prefixed name.
 #' @noRd
-.normalise_emm_names <- function(df, protect = character(0)) {
+.normalise_emm_names <- function(df, protect = character(0), reserve = protect) {
   df <- as.data.frame(df)
   ren <- c(
     emmean = "estimate", response = "estimate", rate = "estimate",
@@ -130,7 +136,7 @@
   # table does not hold it: the per-factor tables of an additive model are
   # stacked with every grouping column, and a statistic called like another
   # factor would be written over by that factor's placeholder.
-  fixed <- union(nm[-idx], protect)
+  fixed <- union(nm[-idx], union(protect, reserve))
   displaced <- character(0)
   new <- nm
   for (i in idx) {
@@ -210,7 +216,8 @@
 #'   factors were averaged over, for instance) and which \code{as.data.frame()}
 #'   discards.
 #' @noRd
-.emmeans_table <- function(grid, conf_level = 0.95, protect = character(0)) {
+.emmeans_table <- function(grid, conf_level = 0.95, protect = character(0),
+                           reserve = protect) {
   if (is.null(grid)) return(list(table = NULL, note = character(0), mesg = character(0)))
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
@@ -223,7 +230,8 @@
       "Estimated marginal means could not be summarised: %s",
       conditionMessage(s))))
   }
-  tab <- .normalise_emm_names(as.data.frame(s), protect = protect)
+  tab <- .normalise_emm_names(as.data.frame(s), protect = protect,
+                              reserve = reserve)
   list(table = tab, note = .renamed_note(tab),
        mesg = as.character(attr(s, "mesg")))
 }
@@ -366,7 +374,12 @@
       e <- .emmeans_grid(model, g, type = type, vcov_matrix = vcov_matrix, ...)
       notes <- c(notes, e$note)
       grids[g] <- list(e$grid)
-      t <- .emmeans_table(e$grid, conf_level, protect = groups)
+      # Only g is a column of g's table. Protecting every grouping name would
+      # keep emmeans' own `SE`, `df` or `rate` from being renamed whenever
+      # another factor is called that, and stacking would then write that
+      # factor's NA placeholder over the statistic. The other names are still
+      # reserved, so no statistic is renamed onto one of them.
+      t <- .emmeans_table(e$grid, conf_level, protect = g, reserve = groups)
       notes <- c(notes, t$note)
       if (!is.null(t$table)) tabs[[g]] <- t$table
     }
