@@ -87,16 +87,27 @@
 #'
 #' Likelihood-ratio and F tests compare deviances or residual sums of squares
 #' and cannot use a sandwich covariance; a Wald test can. With robust standard
-#' errors requested the reader needs to know which kind the table holds.
+#' errors requested the reader needs to know which kind the table holds. An F
+#' test divides by a dispersion estimated from the Pearson residuals, so it
+#' does not fix the dispersion at 1; what it does not use is the sandwich.
+#' On a Poisson, binomial or negative binomial fit the note on the F test says
+#' that instead, and this one is not added.
+#' @param table what the function calls its table of coefficients: "the
+#'   coefficient table" in \code{anova_glm()}, "$effect_sizes" in
+#'   \code{anova_bin()} and \code{anova_count()}, which have no other.
 #' @noRd
-.omnibus_vcov_note <- function(test_statistic, vcov_type, robust_used) {
+.omnibus_vcov_note <- function(test_statistic, vcov_type, robust_used,
+                               table = "the coefficient table") {
   if (robust_used) {
-    return(sprintf("The omnibus Wald test uses the robust (%s) covariance, as the coefficient table, the marginal means and the comparisons do.",
-                   vcov_type))
+    return(sprintf("The omnibus Wald test uses the robust (%s) covariance, as %s, the marginal means and the comparisons do.",
+                   vcov_type, table))
   }
-  sprintf("The omnibus %s test compares deviances, so it rests on the model-based variance; the robust (%s) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\".",
-          if (identical(test_statistic, "F")) "F" else "likelihood-ratio",
-          vcov_type)
+  if (identical(test_statistic, "F")) {
+    return(sprintf("The omnibus F test compares deviances scaled by a dispersion estimated from the Pearson residuals, so it uses the model's variance function, not the robust (%s) covariance, which only %s, the marginal means and the comparisons use. For an omnibus test that uses it, set test_statistic = \"Wald\".",
+                   vcov_type, table))
+  }
+  sprintf("The omnibus likelihood-ratio test compares deviances, so it rests on the model-based variance; the robust (%s) covariance is used only by %s, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\".",
+          vcov_type, table)
 }
 
 #' What overdispersion does to a fixed-dispersion fit with robust errors
@@ -105,21 +116,28 @@
 #' means and the comparisons do not assume a dispersion of 1, so they are not
 #' too narrow under overdispersion. A robust Wald omnibus test does not assume
 #' it either, and an F test estimates the dispersion; only a likelihood-ratio
-#' omnibus test still rests on it.
+#' omnibus test still rests on it. Under an F test the note on that test says
+#' which covariance each result uses, so this text does not repeat it.
 #' @param size_text what the dispersion does to the size of a nominal 5\%
 #'   test, as a clause.
 #' @param remedy the argument that gives quasi-likelihood inference.
+#' @param table as in \code{.omnibus_vcov_note()}.
 #' @noRd
 .robust_overdispersion_text <- function(test_statistic, vcov_type, size_text,
-                                        remedy) {
-  if (test_statistic %in% c("Wald", "F")) {
+                                        remedy, table = "the coefficient table") {
+  if (identical(test_statistic, "Wald")) {
     return(sprintf(
-      "None of the results reported here rests on that assumption: the coefficient table, the marginal means and the comparisons use the robust (%s) covariance, and the omnibus %s.",
-      vcov_type, if (identical(test_statistic, "Wald"))
-        "Wald test uses it too" else "F test estimates the dispersion"))
+      "None of the results reported here rests on that assumption: %s, the marginal means and the comparisons use the robust (%s) covariance, and the omnibus Wald test uses it too.",
+      table, vcov_type))
+  }
+  if (identical(test_statistic, "F")) {
+    return(sprintf(
+      "None of the results reported here rests on that assumption: the robust (%s) covariance does not, and the omnibus F test estimates the dispersion instead of fixing it at 1.",
+      vcov_type))
   }
   sprintf(
-    "The coefficient table, the marginal means and the comparisons use the robust (%s) covariance, which does not rest on that assumption, so their standard errors and intervals are not too small. Only the omnibus likelihood-ratio test does: its statistic is inflated by about that factor, and %s. test_statistic = \"Wald\" gives an omnibus test with the robust covariance, and %s gives quasi-likelihood inference throughout.",
+    "%s, the marginal means and the comparisons use the robust (%s) covariance, which does not rest on that assumption, so their standard errors and intervals are not too small. Only the omnibus likelihood-ratio test does: its statistic is inflated by about that factor, and %s. test_statistic = \"Wald\" gives an omnibus test with the robust covariance, and %s gives quasi-likelihood inference throughout.",
+    if (startsWith(table, "the ")) sub("^the", "The", table) else table,
     vcov_type, size_text, remedy)
 }
 
@@ -345,6 +363,47 @@
   na <- if (is.matrix(cf)) apply(is.na(cf), 1L, any) else is.na(cf)
   if (any(na)) notes <- c(notes, .aliased_notes(fit, na))
   notes
+}
+
+#' NA inference for a saturated GLM that estimates its dispersion
+#'
+#' With no residual degrees of freedom the dispersion is 0/0. car::Anova()
+#' then reports an F statistic of 0 for some families and NaN for others,
+#' emmeans gives NaN standard errors, and base R warns "NaNs produced" -- all
+#' of it saying, less clearly, what the saturated-model note of
+#' \code{.check_model_size()} says. The tests (\code{tests = TRUE}) become
+#' NA, every NaN in the tables becomes NA, and the relayed "NaNs produced"
+#' warnings are dropped.
+#' @param out a named list of the result's tables and its notes.
+#' @noRd
+.saturated_na <- function(out, tests = TRUE) {
+  nan_to_na <- function(tab) {
+    if (!is.data.frame(tab)) return(tab)
+    for (j in seq_along(tab)) {
+      if (is.double(tab[[j]])) tab[[j]][is.nan(tab[[j]])] <- NA_real_
+    }
+    tab
+  }
+  for (nm in setdiff(names(out), "notes")) out[[nm]] <- nan_to_na(out[[nm]])
+  tab <- out$anova
+  if (tests && is.data.frame(tab) && all(c("statistic", "p_value") %in% names(tab))) {
+    eff <- tab$term != "Residuals"
+    tab$statistic[eff] <- NA_real_
+    tab$p_value[eff] <- NA_real_
+    out$anova <- tab
+  }
+  # A note from .said_note() is "<who> reported: <a> / <b>".
+  notes <- out$notes
+  said <- grepl(" reported: ", notes, fixed = TRUE)
+  for (i in which(said)) {
+    who <- sub(" reported: .*$", "", notes[i])
+    parts <- strsplit(sub("^.*? reported: ", "", notes[i], perl = TRUE), " / ", fixed = TRUE)[[1L]]
+    if (!"NaNs produced" %in% parts) next
+    parts <- parts[parts != "NaNs produced"]
+    notes[i] <- if (length(parts)) .said_note(parts, who) else NA_character_
+  }
+  out$notes <- notes[!is.na(notes)]
+  out
 }
 
 #' Say why coefficients are aliased
@@ -716,28 +775,68 @@
 #' F statistics come out as 1e12, NaN or negative. As in \code{.exact_fit()},
 #' a fit is exact when its residual deviance is at most 1e-12 of the null
 #' deviance, or when the response takes one value in every row that carries
-#' weight (the null deviance is then itself 0 or rounding error).
+#' weight (the null deviance is then itself 0 or rounding error) and the
+#' offset is constant too: a constant count over varying exposures is a
+#' varying rate, which the model need not fit.
+#'
+#' A response constant within every group but 0 (or 1, for a proportion) in
+#' some group is fitted only in the limit: glm() stops with fitted values of
+#' about 1e-11 there, a residual deviance of about 1e-11 of the null deviance
+#' (the deviance of such a cell is linear, not quadratic, in its fitted
+#' value), and F statistics of 1e12 to 1e17. The fit is therefore also exact
+#' when every fitted value equals the response to within 1e-6 of its own
+#' size, or, where the response is 0, to within 1e-6 of the response's range.
+#' Measuring each residual against its own row keeps a constant group of
+#' large values (1e7, say) from hiding real variation in a group of small
+#' ones.
 #' @return \code{NULL} when the fit leaves residual variation; otherwise the
 #'   error message.
 #' @noRd
 .glm_exact_fit_message <- function(model, response) {
   y <- as.numeric(model$y)
+  mu <- as.numeric(model$fitted.values)
+  off <- model$offset
+  keep <- rep(TRUE, length(y))
   w <- model$prior.weights
-  if (!is.null(w) && length(w) == length(y)) y <- y[w > 0]
+  if (!is.null(w) && length(w) == length(y)) keep <- w > 0
+  y <- y[keep]
+  mu <- if (length(mu) == length(keep)) mu[keep] else NULL
+  off <- if (length(off) == length(keep)) as.numeric(off[keep]) else NULL
   if (length(y) == 0L || anyNA(y)) return(NULL)
-  if (all(abs(y - y[1L]) <= 1e-12 * max(abs(y)))) {
+  const_off <- is.null(off) || anyNA(off) ||
+    all(abs(off - off[1L]) <= 1e-12 * max(1, abs(off)))
+  if (all(abs(y - y[1L]) <= 1e-12 * max(abs(y))) &&
+      (const_off || all(y == 0))) {
     return(sprintf(
       "Response `%s` takes the same value (%s) in every analysed row, so the model fits it exactly and leaves no residual variation: the dispersion cannot be estimated, and every test, interval and comparison would be a ratio of rounding errors. There is no difference between the groups to test.",
       response, format(signif(y[1L], 6))))
   }
+  what <- NULL
   dev <- model$deviance
   dev0 <- model$null.deviance
   if (isTRUE(is.finite(dev) && is.finite(dev0) && dev0 > 0 && dev <= 1e-12 * dev0)) {
-    return(sprintf(
-      "The model fits response `%s` exactly: its residual deviance is %s of the null deviance, which is rounding error, as when the response is constant within every group. There is no residual variation to estimate the dispersion from, so the F tests, intervals and comparisons are undefined (each F statistic would be a ratio of rounding errors).",
-      response, format(signif(dev / dev0, 3))))
+    what <- sprintf("its residual deviance is %s of the null deviance, which is rounding error",
+                    format(signif(dev / dev0, 3)))
+  } else if (length(mu) == length(y) && all(is.finite(mu))) {
+    # Each residual is measured against its own row's size, so that a
+    # constant group of large values cannot hide real variation in a group of
+    # small ones. Only a response of exactly 0, which glm() fits by about
+    # 1e-11 in the limit, is measured against the response's range instead.
+    spread <- diff(range(y))
+    if (spread == 0) spread <- max(abs(y))
+    scale <- ifelse(y == 0, spread, pmax(abs(y), abs(mu)))
+    if (spread > 0 && all(scale > 0)) {
+      rel <- max(abs(y - mu) / scale)
+      if (rel <= 1e-6) {
+        what <- sprintf("every fitted value equals the response to within %s of its own size (of the response's range where the response is 0), which is rounding error",
+                        format(signif(rel, 3)))
+      }
+    }
   }
-  NULL
+  if (is.null(what)) return(NULL)
+  sprintf(
+    "The model fits response `%s` exactly: %s, as when the response is constant within every group. There is no residual variation to estimate the dispersion from, so the F tests, intervals and comparisons are undefined (each F statistic would be a ratio of rounding errors).",
+    response, what)
 }
 
 #' Coefficient names that a model produces more than once
