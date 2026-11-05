@@ -166,10 +166,17 @@
 #'   \code{levene} (Levene's test on the residuals across the cells; cells
 #'   with one or two observations, whose absolute deviations from their median
 #'   cannot vary, are left out of it, as are cells the model fits exactly by
-#'   construction or leaves only one residual degree of freedom (as under the
-#'   covariate-by-group interaction when a cell has no more than one
-#'   observation beyond the coefficients of its own; judged from the design,
-#'   not from the size of the residuals), and \code{$notes} names them).
+#'   construction or leaves with fewer than 2.5 residual degrees of freedom
+#'   (the cell's observations minus the sum of their leverages, judged from
+#'   the design, not from the size of the residuals): so, when every cell has
+#'   a mean of its own (as with the default \code{interaction = TRUE}), every
+#'   cell of three observations, and under the covariate-by-group interaction
+#'   every cell with no more than two observations beyond the coefficients of
+#'   its own.
+#'   Left in, such cells make the test reject homoscedastic data about twice
+#'   as often as its nominal level (two residual degrees of freedom and a
+#'   slope of their own) or almost never (three observations). \code{$notes}
+#'   names them, with their residual degrees of freedom).
 #'   \code{$data_used} holds the analysed columns and the cell factor, with the
 #'   covariates centred when \code{center_covariates = TRUE}. The covariate
 #'   plot shows each covariate on its original scale, with the lines of the
@@ -1047,15 +1054,20 @@ anova_ancova <- function(data, response, groups, covariates,
 #' variation to that ANOVA and no within-cell variation, so with some of them
 #' in the test it rejects homoscedastic data far too often, and with only
 #' them its F is a ratio of rounding errors. A cell the model fits exactly by
-#' construction (with a slope for each cell, one with no more observations
-#' than coefficients of its own) is the same, and so, nearly, is a cell left
-#' with one residual degree of freedom, whose residuals are confined to a
-#' single direction. A cell's residual degrees of freedom are its number of
-#' observations minus the sum of its leverages, which depends on the design
-#' only: a cell whose residuals happen to be zero because its response is
-#' constant stays in the test, where it is evidence of unequal spread. The
+#' construction (residual degrees of freedom zero up to rounding, as with a
+#' slope for each cell and no more observations than coefficients of its own)
+#' is the same. A cell left with fewer than 2.5 residual degrees of freedom
+#' is little better: its residuals are shaped by the design more than by the
+#' spread, and in simulations under homoscedastic data cells with two
+#' residual degrees of freedom and a slope of their own make the test reject
+#' about twice as often as its nominal level, while cells of three
+#' observations (never more than two residual degrees of freedom when each
+#' cell has a mean of its own) make it all but unable to reject. A cell's residual degrees of freedom are its number
+#' of observations minus the sum of its leverages, which depends on the
+#' design only: a cell whose residuals happen to be zero because its response
+#' is constant stays in the test, where it is evidence of unequal spread. The
 #' test is therefore run on the cells with at least three observations and
-#' more than one residual degree of freedom, and skipped when fewer than two
+#' at least 2.5 residual degrees of freedom, and skipped when fewer than two
 #' such cells remain.
 #' @param vcov_type the covariance the caller requested.
 #' @param robust whether that covariance was actually used for the other
@@ -1088,32 +1100,39 @@ anova_ancova <- function(data, response, groups, covariates,
   small <- names(n_g)[n_g < 3L]
   # A larger cell the model fits exactly by construction (as with a slope for
   # each cell when the cell has no more observations than coefficients of its
-  # own), or leaves with a single residual degree of freedom, is no more
-  # informative than a small one. This is judged from the design (the cell's
-  # observations minus the sum of its leverages), never from the size of the
-  # residuals: a cell whose response is constant has zero residuals too, and
-  # is strong evidence of unequal variances.
+  # own), or leaves with fewer than 2.5 residual degrees of freedom, is no
+  # more informative than a small one: in simulations under homoscedastic
+  # data, cells with two residual df and a slope of their own make the test
+  # reject about twice as often as its nominal level, and cells of three
+  # observations (never more than two residual df when each cell has a mean
+  # of its own) make it all but unable to reject. This is judged from the
+  # design (the cell's observations minus the sum of its leverages), never
+  # from the size of the residuals: a cell whose response is constant has
+  # zero residuals too, and is strong evidence of unequal variances. "Exact"
+  # means a residual df of zero up to rounding, so that the residuals really
+  # are zero whatever the response; a fractional one below 2.5 is "thin".
   h <- tryCatch(as.numeric(stats::hatvalues(model)), error = function(e) NULL)
   rdf <- if (!is.null(h) && length(h) == length(r) && all(is.finite(h)))
     tapply(1 - h, g, sum) else NULL
   big <- setdiff(names(n_g), small)
   exact <- if (is.null(rdf)) character(0) else
-    big[rdf[big] < 0.5]
+    big[rdf[big] < 1e-6]
   thin <- if (is.null(rdf)) character(0) else
-    setdiff(big[rdf[big] < 1.5], exact)
+    setdiff(big[rdf[big] < 2.5], exact)
   n_left <- length(n_g) - length(small) - length(exact) - length(thin)
   keep <- !(as.character(g) %in% c(small, exact, thin))
   cond <- if (length(exact) + length(thin) == 0L) "" else
     if (length(exact) > 0L && length(thin) > 0L)
-    " that the model neither fits exactly nor leaves with one residual degree of freedom" else if (length(exact) > 0L)
+    " that the model neither fits exactly nor leaves with fewer than 2.5 residual degrees of freedom" else if (length(exact) > 0L)
     " that the model does not fit exactly" else
-    " that the model leaves with more than one residual degree of freedom"
+    " that the model leaves with at least 2.5 residual degrees of freedom"
   exact_note <- if (length(exact) > 0L) sprintf(
     "Levene's test leaves out %d group(s) that the fitted model fits exactly by construction (%s), as when a group has no more observations than the model has coefficients for it (such as a slope for each group): their residuals are zero whatever the response and, like a group of one or two, carry no information about the spread; they would make the test reject far too often.",
     length(exact), .abbrev(exact))
   thin_note <- if (length(thin) > 0L) sprintf(
-    "Levene's test leaves out %d group(s) that the fitted model leaves with about one residual degree of freedom (%s), as when a group has one observation more than the model has coefficients for it (such as a slope for each group): their residuals then lie along one direction fixed by the design, so their absolute deviations from their median carry almost no information about the spread and would make the test reject homoscedastic data far too often.",
-    length(thin), .abbrev(thin))
+    "Levene's test leaves out %d group(s) that the fitted model leaves with fewer than 2.5 residual degrees of freedom (%s; a group's residual degrees of freedom are its observations minus the sum of their leverages, so they depend on the design, not on the response), as with a group of three observations, or one with at most two observations more than the model has coefficients for it (such as a slope for each group): the design then shapes their residuals so strongly that their absolute deviations from their median carry little information about the spread; left in, groups with two residual degrees of freedom and a slope of their own make the test reject homoscedastic data about twice as often as its nominal level, and groups of three make it all but unable to reject.",
+    length(thin), .abbrev(sprintf("%s with %s", thin,
+                                  as.character(signif(rdf[thin], 2)))))
   if (n_left < 2L) {
     return(list(table = NULL, note = c(sprintf(
       "Levene's test was skipped: it needs at least two groups with three or more observations%s, and %s. A group with one or two observations has absolute deviations from its median that cannot vary, so it carries no information about the spread for this test.",
