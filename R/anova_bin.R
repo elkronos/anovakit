@@ -235,6 +235,7 @@ anova_bin <- function(data, response, groups,
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the weights` = weights))
   data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups,
                                        `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")

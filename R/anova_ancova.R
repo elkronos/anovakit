@@ -243,6 +243,7 @@ anova_ancova <- function(data, response, groups, covariates,
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `a covariate` = covariates))
   data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups,
                                        Covariate = covariates))
   .check_numeric_col(data, response)
   for (cv in covariates) .check_numeric_col(data, cv, role = "Covariate")

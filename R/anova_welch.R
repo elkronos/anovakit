@@ -59,7 +59,13 @@
 #' estimate would collapse towards zero whatever the data say. Below
 #' \eqn{\nu = 2}{nu = 2}, where \eqn{J(\nu)}{J(nu)} is less than 0.57, the
 #' correction is therefore not applied: that pair's \code{hedges_g} is the
-#' uncorrected estimate, and \code{$notes} names the pair. With few
+#' uncorrected estimate, and \code{$notes} names the pair. A pair whose
+#' factor is below 0.8, which is at about 4 degrees of freedom or fewer
+#' (two groups of three with equal variances give exactly 4, where
+#' \eqn{J = 0.798}{J = 0.798}), is also named in \code{$notes}, with its degrees
+#' of freedom and factor: there the correction pulls the estimate well
+#' towards zero, and the estimate is not continuous at 2 degrees of freedom.
+#' With few
 #' observations and a low \code{conf_level} the estimate, corrected or not,
 #' can fall outside its interval, because the interval inverts a skewed
 #' distribution and the correction shrinks only the estimate; \code{$notes}
@@ -80,6 +86,18 @@
 #' two groups that is whenever the single pair is at that resolution. Below
 #' 5\% the test is reported and the note gives the share. Subtracting a
 #' constant close to the values from the response avoids both.
+#'
+#' The omnibus test is run by \code{stats::oneway.test()} on the response as
+#' supplied. Welch's F does not depend on the response's units, so when that
+#' gives a non-finite F (a response around 1e-150, whose variances are too
+#' small for their weights, group size over variance, to be represented), the
+#' test is rerun on the response multiplied by a power of two chosen so the
+#' group variances are centred on 1 on a log scale, and then on the response
+#' brought near 1; the first finite result is reported. Multiplying by a power
+#' of two is exact unless it pushes a value out of the range of normal
+#' doubles, and such a scale is not used. If no scale gives a finite F,
+#' \code{$anova} reports the statistic, denominator degrees of freedom and
+#' p-value as \code{NA}, with a note.
 #'
 #' The standardiser is recorded in the \code{standardiser} column of
 #' \code{$effect_sizes}. The magnitude labels use Cohen's conventional
@@ -206,7 +224,8 @@ anova_welch <- function(data, response, groups,
   .check_names(groups, "groups")
   .check_columns(data, response, "Response column")
   .check_columns(data, groups, "Grouping column(s)")
-  data <- .as_plain_columns(data, list(Response = response))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups))
   .check_numeric_col(data, response)
   .check_roles(list(`the response` = response, `a grouping variable` = groups))
   .check_conf_level(conf_level)
@@ -260,7 +279,14 @@ anova_welch <- function(data, response, groups,
   ## Omnibus test ------------------------------------------------------------
   .say(verbose, "Running Welch's ANOVA on %d groups.", n_groups)
   fml <- .formula(response, cell)
-  welch <- stats::oneway.test(fml, data = d, var.equal = FALSE)
+  # Welch's F does not depend on the response's units, but oneway.test()
+  # forms the weights n / s^2, which overflow when a variance is tiny (a
+  # response around 1e-150) and give NaN. The test is run at the response's
+  # own scale first; only when that is not finite is it rerun on the response
+  # multiplied by a power of two (exact) chosen to centre the group variances
+  # on 1, and then on the response brought near 1.
+  om <- .welch_oneway_scaled(fml, d, response, cell, group_var)
+  welch <- om$test
   # oneway.test names the internal cell column; name what the user supplied.
   welch$data.name <- sprintf("%s and %s", response, term_label)
   noise <- .welch_noise_share(d[[response]], d[[cell]])
@@ -272,6 +298,11 @@ anova_welch <- function(data, response, groups,
       "The omnibus test is left as NA: for %s, the spread within the groups is at the floating-point resolution of their means, and %s make%s up %s of Welch's F, which would therefore be rounding noise. Subtracting a constant close to the values from the response before the analysis avoids this.",
       noise$pairs, if (noise$n == 1L) "that pair" else "those pairs",
       if (noise$n == 1L) "s" else "", .share_pct(noise$share)))
+  } else if (!is.finite(welch$statistic)) {
+    notes <- c(notes, "The omnibus Welch F could not be computed in double precision, so $anova reports it as NA: neither at the response's own scale nor after multiplying the response by a power of two that centres the group variances on 1 (or brings its values near 1) could the weights (group size over variance) and the weighted squared differences between the group means be represented together.")
+    welch$statistic[] <- NA_real_
+    welch$parameter[2L] <- NA_real_
+    welch$p.value <- NA_real_
   } else if (noise$share > 0) {
     notes <- c(notes, sprintf(
       "For %s, the spread within the groups is at the floating-point resolution of their means; %s only %s of Welch's F, so the omnibus test is reported.",
@@ -296,13 +327,24 @@ anova_welch <- function(data, response, groups,
                                    unit = "observation")
   notes <- c(notes, .normality_skip_notes(normality))
   group_var <- as.numeric(group_var)
+  # A subnormal variance has lost precision; recompute the ratio from the
+  # response rescaled (exactly, by a power of two) so the variances are
+  # centred on 1, when there every variance is a normal double.
+  if (any(group_var < .Machine$double.xmin)) {
+    k <- .welch_centre_exponent(group_var)
+    y_k <- d[[response]] * 2^k
+    if (all(is.finite(y_k))) {
+      v_k <- as.numeric(tapply(y_k, d[[cell]], stats::var))
+      if (all(is.finite(v_k) & v_k >= .Machine$double.xmin)) group_var <- v_k
+    }
+  }
   variance_ratio <- if (length(group_var) >= 2L && all(is.finite(group_var))) {
     if (min(group_var) > 0) max(group_var) / min(group_var) else Inf
   } else NA_real_
   if (is.finite(variance_ratio) && variance_ratio > 4) {
     notes <- c(notes, sprintf(
-      "Largest group variance is %.1f times the smallest. Welch's test handles this; the classical F test would not.",
-      variance_ratio))
+      "Largest group variance is %s times the smallest. Welch's test handles this; the classical F test would not.",
+      format(signif(variance_ratio, 3))))
   }
 
   ## Pairwise comparisons ----------------------------------------------------
@@ -554,16 +596,17 @@ anova_welch <- function(data, response, groups,
       .abbrev(sprintf("%s vs %s", tab$group1[uncorrected],
                       tab$group2[uncorrected]), 5L)))
   }
-  # Just above 2 df J is still far below 1 (0.56 at 2, 0.80 at 4), and the
+  # Just above 2 df J is still far below 1 (0.56 at 2, 0.798 at 4), and the
   # switch to the uncorrected estimate below 2 df makes the estimate jump
-  # between nearly identical data sets, so such pairs are named.
+  # between nearly identical data sets, so such pairs are named. J(4) is just
+  # below 0.8, so two equal-variance groups of three are included.
   strong <- which(!is.na(J) & J < 0.8)
   if (length(strong) > 0L) {
     notes <- c(notes, sprintf(
-      "For %s, the standardiser has fewer than 4 degrees of freedom, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
+      "For %s, the standardiser has about 4 degrees of freedom or fewer, so the bias correction multiplied the estimate by less than 0.8, pulling it well towards zero. Below 2 degrees of freedom the correction is not applied at all, so the estimate is not continuous there: just above 2 degrees of freedom it is about 0.56 times what nearly identical data just below 2 would give. Cohen's d (hedges_correction = FALSE) is the uncorrected estimate.",
       .abbrev(sprintf("%s vs %s (%s df, factor %s)", tab$group1[strong],
                       tab$group2[strong], format(signif(nu[strong], 3)),
-                      format(signif(J[strong], 2))), 5L)))
+                      format(pmin(signif(J[strong], 3), 0.799))), 5L)))
   }
   # A pair left uncorrected holds Cohen's d, so its note is the one for d.
   outside_d <- outside[!hedges_correction | uncorrected[outside]]
@@ -764,4 +807,46 @@ anova_welch <- function(data, response, groups,
              ifelse(a < 0.5, "small",
              ifelse(a < 0.8, "medium", "large")))
   out
+}
+
+#' Power-of-two exponent that centres group variances on 1
+#'
+#' Multiplying the response by \code{2^k} multiplies each variance by
+#' \code{2^(2k)}; \code{k} puts the geometric middle of the positive
+#' variances' range at 1.
+#' @noRd
+.welch_centre_exponent <- function(v) {
+  v <- v[is.finite(v) & v > 0]
+  if (length(v) == 0L) return(0)
+  -round((log2(min(v)) + log2(max(v))) / 4)
+}
+
+#' Welch's oneway.test(), rescaled exactly only when needed
+#'
+#' Runs \code{stats::oneway.test()} on \code{d} as supplied; if its F is not
+#' finite, reruns it on the response multiplied by a power of two that
+#' centres the group variances on 1, then by one that brings the largest
+#' absolute value near 1, skipping a scale that would overflow or push a
+#' nonzero value below the normal range. Returns the first finite result
+#' (or the unscaled one) and the data it was run on.
+#' @noRd
+.welch_oneway_scaled <- function(fml, d, response, cell, group_var) {
+  test <- stats::oneway.test(fml, data = d, var.equal = FALSE)
+  if (is.finite(test$statistic)) return(list(test = test, data = d))
+  y <- d[[response]]
+  y_max <- max(abs(y))
+  ks <- c(.welch_centre_exponent(as.numeric(group_var)),
+          if (y_max > 0) -floor(log2(y_max)))
+  for (k in unique(ks)) {
+    if (k == 0) next
+    y_k <- y * 2^k
+    nz <- y != 0
+    if (!all(is.finite(y_k)) ||
+        any(abs(y_k[nz]) < .Machine$double.xmin & abs(y[nz]) >= .Machine$double.xmin)) next
+    d_k <- d
+    d_k[[response]] <- y_k
+    t_k <- stats::oneway.test(fml, data = d_k, var.equal = FALSE)
+    if (is.finite(t_k$statistic)) return(list(test = t_k, data = d_k))
+  }
+  list(test = test, data = d)
 }
