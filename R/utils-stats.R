@@ -281,17 +281,20 @@
 #'
 #' @param Y numeric matrix of responses.
 #' @param group factor of group memberships.
-#' @param unit what a level of \code{group} is, for the notes: \code{"group"},
-#'   or e.g. \code{"cell (combination of `A` and `B`)"}.
+#' @param unit what every level of \code{group} is, for the notes:
+#'   \code{"group"}, or e.g. \code{"cell (combination of `A` and `B`)"}.
+#' @param noun the short name of one level (\code{"group"} or \code{"cell"}).
 #' @param level_labels optional character vector naming each level of
-#'   \code{group} in the notes, e.g. \code{"cell A=1, B=3"} (names are the
-#'   levels); defaults to \code{unit} and the level in backticks.
+#'   \code{group} in the notes, e.g. \code{"(`A` = `1`, `B` = `3`)"} (names
+#'   are the levels); defaults to the level in backticks. Labels must not
+#'   contain \code{"; "} outside backticks, since it separates them.
 #' @return list with \code{statistic}, \code{df}, \code{p_value} and
 #'   \code{note}, or \code{NULL} when it cannot be computed.
 #' @references Box, G. E. P. (1949). A general distribution theory for a class
 #'   of likelihood criteria. \emph{Biometrika}, 36(3/4), 317-346.
 #' @noRd
-.box_m <- function(Y, group, unit = "group", level_labels = NULL) {
+.box_m <- function(Y, group, unit = "group", noun = "group",
+                   level_labels = NULL) {
   Y <- as.matrix(Y)
   group <- droplevels(as.factor(group))
   ok <- stats::complete.cases(Y) & !is.na(group)
@@ -301,16 +304,24 @@
   ns <- as.integer(table(group))
   if (any(ns <= p)) {
     lv <- levels(group)
-    lab <- if (is.null(level_labels)) sprintf("%s `%s`", unit, lv) else
+    lab <- if (is.null(level_labels)) sprintf("`%s`", lv) else
       unname(level_labels[lv])
     small <- which(ns == min(ns))
+    # Every cell sharing the minimum is counted; at most three are named, and
+    # "; " separates them, since ", " can occur inside a label.
+    which_small <- if (length(small) == 1L) {
+      sprintf("%s %s has %d", noun, lab[small], min(ns))
+    } else {
+      shown <- utils::head(small, 3L)
+      sprintf("%d %ss have %d: %s%s", length(small), noun, min(ns),
+              paste(lab[shown], collapse = "; "),
+              if (length(small) > 3L)
+                sprintf("; and %d more", length(small) - 3L) else "")
+    }
     return(list(statistic = NA_real_, df = NA_real_, p_value = NA_real_,
                 note = sprintf(
-                  "Box's M not computed: every %s needs more than %d observations, and %s %s %d.",
-                  unit, p,
-                  paste(utils::head(lab[small], 3L), collapse = ", "),
-                  if (length(small) == 1L) "has" else "have",
-                  min(ns))))
+                  "Box's M not computed: every %s needs more than %d observations, and %s.",
+                  unit, p, which_small)))
   }
   covs <- lapply(levels(group), function(g) stats::cov(Y[group == g, , drop = FALSE]))
   pooled <- Reduce(`+`, Map(function(S, n) (n - 1) * S, covs, ns)) / (N - k)
