@@ -232,6 +232,7 @@ anova_kw <- function(data, response, groups,
     p_value   = unname(kw$p.value),
     stringsAsFactors = FALSE
   )
+  attr(anova_tab, "statistic") <- "Kruskal-Wallis chi-square"
 
   ## Effect sizes ------------------------------------------------------------
   n <- length(y)

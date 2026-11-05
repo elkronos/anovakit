@@ -364,6 +364,27 @@
   cell
 }
 
+#' The level combinations of some factors that hold no rows
+#'
+#' Only levels that occur in \code{data} are crossed, so an unused factor
+#' level does not count as an empty combination.
+#' @return list with \code{labels} (each empty combination, its levels joined
+#'   with " : ") and \code{n_possible}, the number of combinations.
+#' @noRd
+.empty_cells <- function(data, groups) {
+  levs <- lapply(groups, function(g) levels(droplevels(as.factor(data[[g]]))))
+  n_possible <- prod(lengths(levs))
+  if (length(groups) < 2L) return(list(labels = character(0), n_possible = n_possible))
+  grid <- expand.grid(levs, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
+  key_g <- do.call(paste, c(unname(as.list(grid)), sep = "\r"))
+  key_d <- unique(do.call(paste, c(lapply(groups, function(g) as.character(data[[g]])),
+                                   sep = "\r")))
+  empty <- !key_g %in% key_d
+  list(labels = do.call(paste, c(unname(as.list(grid[empty, , drop = FALSE])),
+                                 sep = " : ")),
+       n_possible = n_possible)
+}
+
 #' Attach the combined cell factor under a non-colliding name
 #'
 #' @return list with \code{data} (with the new column) and \code{cell} (its name).

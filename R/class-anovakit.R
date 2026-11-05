@@ -207,7 +207,8 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
 #' Everything \code{print} shows, plus assumption checks, effect sizes,
 #' marginal means, post-hoc comparisons and whatever further tables the method
 #' produces (simple slopes, sphericity, the multivariate tests and univariate
-#' follow-ups, the canonical axes).
+#' follow-ups, the canonical axes, and the model fit statistics in
+#' \code{$model_stats}, including \code{anova_bin}'s model-versus-null test).
 #'
 #' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
@@ -284,6 +285,21 @@ print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
       .print_df(el$table, digits, row.names = FALSE)
     }
   }
+  # anova_bin and anova_glm: the information criteria, deviances and (in
+  # anova_bin) the model-versus-null likelihood-ratio test.
+  ms <- object$model_stats
+  if (is.list(ms) && length(ms) > 0L) {
+    scalar <- vapply(ms, function(el) is.atomic(el) && length(el) == 1L, logical(1))
+    if (any(scalar)) {
+      cat("\nModel fit\n")
+      .print_df(as.data.frame(ms[scalar], stringsAsFactors = FALSE), digits,
+                row.names = FALSE)
+    }
+    if (is.data.frame(ms$lr_vs_null) && NROW(ms$lr_vs_null) > 0L) {
+      cat("\nModel versus the null model (likelihood-ratio chi-square)\n")
+      .print_df(ms$lr_vs_null, digits, row.names = FALSE)
+    }
+  }
   if (is.list(object$univariate) && length(object$univariate) > 0L) {
     for (r in names(object$univariate)) {
       tab <- object$univariate[[r]]$anova
@@ -355,7 +371,9 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
 #'
 #' Counts and degrees of freedom are whole numbers; rounding them to
 #' significant digits would print n = 12345 as 12340, so whole-number columns
-#' are left alone. p-value columns are formatted with \code{format.pval()},
+#' are left alone. Other numeric columns become character, each value rounded
+#' to \code{digits} significant digits on its own, so that printing cannot pad
+#' them with places they do not have. p-value columns are formatted with \code{format.pval()},
 #' which prints a p-value below machine precision as "< 2.2e-16" rather than as
 #' zero.
 #' @noRd
@@ -385,7 +403,12 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
       next
     }
     if (is.integer(v) || all(is.na(v) | !is.finite(v) | v == round(v))) next
-    df[[nm]] <- signif(v, digits)
+    # Each value is formatted on its own. Left numeric, the column would be
+    # formatted jointly by print.data.frame, which gives its smallest value
+    # `digits` significant digits and pads the larger, already rounded ones
+    # with zeros that are not in the data (122.408 printed as 122.40000).
+    df[[nm]] <- vapply(unname(v), function(z) format(signif(z, digits), digits = digits),
+                       character(1))
   }
   df
 }

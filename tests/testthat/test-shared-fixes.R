@@ -343,7 +343,7 @@ test_that("printing keeps counts whole and formats tiny p-values", {
   r <- anovakit:::.round_df(df, 4)
   expect_identical(r$df, 12345)
   expect_match(r$p_value, "<")
-  expect_equal(r$statistic, 1.235)
+  expect_identical(r$statistic, "1.235")
 })
 
 test_that("digits is validated", {

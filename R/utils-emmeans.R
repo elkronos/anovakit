@@ -301,6 +301,9 @@
   }
   out <- .normalise_emm_names(as.data.frame(s))
   note <- .renamed_note(out)
+  if ("contrast" %in% names(out)) {
+    out$contrast <- .ratio_labels(out$contrast, ct@grid$contrast)
+  }
   if (ratios && "estimate" %in% names(out) && !"ratio" %in% names(out)) {
     names(out)[names(out) == "estimate"] <- "ratio"
   }
@@ -331,6 +334,38 @@
   list(table = out, note = note)
 }
 
+#' Ratio labels that keep the level labels intact
+#'
+#' For a log or logit link emmeans labels a back-transformed contrast by
+#' replacing every " - " in its link-scale label with " / ", including those
+#' inside a level label: "(a - b) - c" becomes "(a / b) / c", and a level
+#' "a - b" can no longer be told from a level "a / b". Only the separator
+#' between the two sides is replaced here, the one outside every pair of
+#' parentheses. A label is left as emmeans gave it unless it is exactly the
+#' blanket rewrite of the link-scale label and that has one such separator.
+#' @param shown the contrast labels of the summary.
+#' @param link the link-scale labels, in the same order.
+#' @noRd
+.ratio_labels <- function(shown, link) {
+  was_factor <- is.factor(shown)
+  shown_chr <- as.character(shown)
+  link <- as.character(link)
+  if (length(link) != length(shown_chr) || identical(shown_chr, link)) return(shown)
+  fixed <- vapply(seq_along(link), function(i) {
+    l <- link[i]
+    if (is.na(l) || !identical(gsub(" - ", " / ", l, fixed = TRUE), shown_chr[i])) {
+      return(shown_chr[i])
+    }
+    ch <- strsplit(l, "", fixed = TRUE)[[1L]]
+    depth <- cumsum((ch == "(") - (ch == ")"))
+    at <- gregexpr(" - ", l, fixed = TRUE)[[1L]]
+    top <- at[at > 0L & depth[pmax(at, 1L)] == 0L]
+    if (length(top) != 1L) return(shown_chr[i])
+    paste0(substr(l, 1L, top - 1L), " / ", substr(l, top + 3L, nchar(l)))
+  }, character(1))
+  if (was_factor) factor(fixed, levels = unique(fixed)) else fixed
+}
+
 #' Marginal means and pairwise comparisons for the grouping factors of a model
 #'
 #' When the grouping factors enter a model additively, a comparison between
@@ -346,11 +381,14 @@
 #'
 #' Cells of the grid that contain no data are either not estimable (dropped,
 #' with a note) or, under a model without the full interaction, estimated by
-#' extrapolation from the other cells (kept, with a note naming them). A mean
-#' that is not estimable although it has data (an aliased coefficient, such as
-#' the slope of a covariate that is constant within a group under
-#' group-specific slopes) is dropped from the table, on either path, with a
-#' note naming it, and so is any comparison that is not estimable.
+#' extrapolation from the other cells (kept, with a note naming them). In an
+#' additive model the per-factor means average over such cells, and a note
+#' names them too. A mean that is not estimable although it has data (an
+#' aliased coefficient, such as the slope of a covariate that is constant within
+#' a group under group-specific slopes) is dropped from the table, on either
+#' path, with a note naming it, and so is any comparison that is not estimable.
+#' Comparisons are computed among the estimable cells only, so that a
+#' family-wide adjustment (Scheffe's rank, for one) counts only them.
 #'
 #' @param model fitted model.
 #' @param groups grouping factor names.
@@ -372,6 +410,16 @@
   regrid <- type == "response" && !link %in% c("identity", "log", "logit")
 
   if (per_factor) {
+    # A level combination with no data is still in the grid each factor's
+    # means average over: the additive model extrapolates it.
+    if (!is.null(data) && all(groups %in% names(data))) {
+      ec <- .empty_cells(data, groups)
+      if (length(ec$labels) > 0L) {
+        notes <- c(notes, sprintf(
+          "%d of the %d possible group combination(s) contain no observations: %s. The additive model still estimates them from the main effects, so the marginal means in $emmeans, which average over them, rely on there being no interaction.",
+          length(ec$labels), ec$n_possible, .abbrev(ec$labels)))
+      }
+    }
     grids <- stats::setNames(vector("list", length(groups)), groups)
     tabs <- list()
     nonest_lab <- character(0)
@@ -519,7 +567,17 @@
   } else if (n_cells >= 2L && n_comp * n_each > max_comparisons) {
     notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons, n_each))
   } else if (n_cells >= 2L) {
-    pr <- .emmeans_pairs(e$grid, adjust = adjust, conf_level = conf_level,
+    # Contrast only the estimable cells. A non-estimable cell left in the grid
+    # gives NA comparisons that are dropped below, but it still counts in the
+    # family emmeans adjusts over: Scheffe's rank would be that of the full
+    # grid, and every adjusted p-value and interval too conservative.
+    pgrid <- e$grid
+    est <- tryCatch(suppressWarnings(suppressMessages(stats::predict(pgrid))),
+                    error = function(err) NULL)
+    if (!is.null(est) && length(est) == nrow(pgrid@grid) && any(is.na(est))) {
+      pgrid <- pgrid[which(!is.na(est))]
+    }
+    pr <- .emmeans_pairs(pgrid, adjust = adjust, conf_level = conf_level,
                          ratios = ratios, regrid = regrid)
     notes <- c(notes, pr$note)
     ph <- .drop_nonest_pairs(pr$table)
