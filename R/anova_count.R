@@ -53,9 +53,21 @@
 #' Pearson dispersion (the one the model choice is made on, reported in
 #' \code{$dispersion}) divides by the number of observations they represent
 #' minus the number of parameters rather than by the number of rows, which
-#' would inflate it by up to the ratio of the two. A quasi-Poisson fit and an
-#' F test estimate their dispersion from the rows all the same, so for those
-#' expand a frequency table to one row per observation; \code{$notes} says so.
+#' would inflate it by up to the ratio of the two. The model's residual
+#' degrees of freedom are counted in observations too, so a quasi-Poisson fit
+#' or an F test on a frequency table gives the same dispersion, tests and
+#' intervals as the data expanded to one row per observation; there is no need
+#' to expand it, and \code{$notes} says so.
+#'
+#' Weights that are not whole numbers are used as given in the fit, the tests
+#' and the intervals, as \code{glm()} uses prior weights: their scale matters
+#' (multiplying every weight by 10 multiplies each likelihood-ratio and Wald
+#' statistic by about 10), and \code{$notes} says so when they do not average
+#' 1. Sampling weights should therefore be rescaled to average 1, or analysed
+#' with a design-based method such as \code{survey::svyglm()}. The Pearson
+#' dispersion the model choice is made on is computed with such weights
+#' rescaled to average 1, so the choice between Poisson and negative binomial
+#' does not depend on their arbitrary scale.
 #'
 #' \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 #' treatment-coded parameterisation of the fitted model, whatever \code{type}
@@ -138,7 +150,8 @@
 #'   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
 #'   of the \emph{Poisson} fit (the statistic the model choice was made on) and
 #'   \code{$model_dispersion} that of the model actually returned (both with
-#'   the frequency-weight denominator when the weights are frequencies).
+#'   the frequency-weight denominator when the weights are frequencies, and
+#'   with weights that are not whole numbers rescaled to average 1).
 #'   \code{$effect_sizes} holds incidence rate ratios against the reference
 #'   level, with columns \code{term} (the treatment-coded coefficient),
 #'   \code{factor} and \code{comparison} (what it compares), \code{IRR},
@@ -148,10 +161,10 @@
 #'   \code{model_dispersion} (as above) and \code{cell_counts}, the number of
 #'   observations in each cell (with frequency weights, \code{n} counts the
 #'   observations and \code{rows} the rows of the table). \code{$plots} holds
-#'   \code{emmeans}, the marginal rates with their intervals, and
-#'   \code{observed}, box plots of the observed counts by cell -- of the
-#'   observed rates, count divided by exposure, when there is an
-#'   \code{offset}.
+#'   \code{emmeans}, the marginal rates with their intervals (when the
+#'   marginal means could be computed), and \code{observed}, box plots of the
+#'   observed counts by cell -- of the observed rates, count divided by
+#'   exposure, when there is an \code{offset}.
 #'
 #' @seealso \code{\link{anova_bin}} for binary responses.
 #'
@@ -256,9 +269,17 @@ anova_count <- function(data, response, groups,
   ## Poisson first, to measure dispersion -------------------------------------
   # Wrapped like every other fitting call: glm() warns about numerically zero
   # fitted rates, and that belongs in $notes rather than on the console.
-  got <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, stats::poisson(link = "log"), weights),
+  fit_pois <- function(dd) .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, dd, stats::poisson(link = "log"), weights),
     type = type))
+  got <- fit_pois(d)
+  # Grouping columns whose names and levels paste to the same coefficient
+  # name would make the rate ratios and marginal means read the wrong column.
+  # The bracketed contrasts stay on `d`, so every later fit inherits them.
+  uc <- .unclash_group_coefs(got, fit_pois, d, groups, type)
+  got <- uc$fitted
+  d <- uc$data
+  notes <- c(notes, uc$note)
   pois <- got$value
   if (inherits(pois, "error")) {
     .stopf("The Poisson model could not be fitted: %s", conditionMessage(pois))
@@ -267,7 +288,16 @@ anova_count <- function(data, response, groups,
   # With frequency weights the residual degrees of freedom are counted in
   # observations, not rows (see .count_dispersion()).
   n_obs <- if (freq_w) sum(d[[weights]]) else NULL
-  dispersion <- .count_dispersion(pois, n_obs)
+  # Weights that are not frequencies have an arbitrary scale, which the
+  # dispersion (and so the model choice) must not depend on.
+  w_mean <- if (!is.null(weights) && !freq_w) mean(d[[weights]]) else 1
+  dispersion <- .count_dispersion(pois, n_obs, w_mean)
+  notes <- c(notes, .weight_scale_note(d, weights))
+  if (!isTRUE(all.equal(w_mean, 1))) {
+    notes <- c(notes, sprintf(
+      "The Pearson dispersion in $dispersion and $model_dispersion is computed with the weights in `%s` rescaled to average 1, so the choice of model does not depend on their scale.",
+      weights))
+  }
 
   chosen <- .choose_count_model(model, dispersion, overdispersion_threshold,
                                 df = if (freq_w) n_obs - pois$rank else
@@ -399,16 +429,23 @@ anova_count <- function(data, response, groups,
   irr <- .irr_table(fit, groups, rv$matrix, conf_level,
                     separated = length(sep_note) > 0L)
   notes <- c(notes, irr$note)
+  if (isTRUE(irr$bracketed) && !uc$bracketed) {
+    notes <- c(notes, .bracketed_terms_note(irr$table$term))
+  }
 
   ## Plots --------------------------------------------------------------------
+  # The observed counts need no marginal means, so only the emmeans plot
+  # depends on them, as in the other anova_* functions.
   plot_list <- list()
-  if (plots && !is.null(emm$table)) {
+  if (plots) {
     .say(verbose, "Building plots.")
-    plot_list$emmeans <- .plot_emmeans(
-      emm$table, groups, estimate = "estimate",
-      lower = "conf_low", upper = "conf_high", conf_level = conf_level,
-      title = sprintf("Estimated %s rate by group", response),
-      ylab = sprintf("Estimated %s", response))
+    if (!is.null(emm$table)) {
+      plot_list$emmeans <- .plot_emmeans(
+        emm$table, groups, estimate = "estimate",
+        lower = "conf_low", upper = "conf_high", conf_level = conf_level,
+        title = sprintf("Estimated %s rate by group", response),
+        ylab = sprintf("Estimated %s", response))
+    }
     added <- .add_cell(d, groups)
     obs <- added$data
     # With an exposure the comparable quantity is the rate, not the count: a
@@ -434,14 +471,14 @@ anova_count <- function(data, response, groups,
       p_obs <- p_obs + ggplot2::labs(y = sprintf("%s / %s", response, offset))
     }
     plot_list$observed <- p_obs
-  } else if (plots) {
-    notes <- c(notes, "Plots were skipped because the estimated marginal means could not be computed.")
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
-  model_dispersion <- .count_dispersion(fit, n_obs)
+  model_dispersion <- .count_dispersion(fit, n_obs, w_mean)
   .new_fit(
-    method       = sprintf("Analysis of deviance for a count response (%s regression)",
-                           model_type),
+    method       = sprintf(
+      "Analysis of deviance for a count response (%s regression, Type %s)",
+      model_type, type),
     call         = cl,
     model        = fit,
     anova        = av$table,
@@ -516,12 +553,20 @@ anova_count <- function(data, response, groups,
 #' the expanded data, but \code{df.residual()} counts rows. Dividing by rows
 #' inflates the statistic by (observations - p) / (rows - p), which can switch
 #' Poisson data to a negative binomial model.
+#'
+#' Weights that are not frequencies have an arbitrary scale, and the Pearson
+#' sum of squares is proportional to it while the residual degrees of freedom
+#' are not: weights averaging 100 would make Poisson data look a hundred times
+#' overdispersed. Dividing by their mean puts the statistic on weights that
+#' average 1, which is (to within the number of parameters) what the
+#' frequency-weight denominator, the sum of the weights minus p, gives.
 #' @param fit a fitted count GLM.
 #' @param n_obs the number of observations the weights represent, or
 #'   \code{NULL} when the weights are not frequencies.
+#' @param w_mean the mean of weights that are not frequencies (1 otherwise).
 #' @noRd
-.count_dispersion <- function(fit, n_obs = NULL) {
-  if (is.null(n_obs)) return(.dispersion(fit))
+.count_dispersion <- function(fit, n_obs = NULL, w_mean = 1) {
+  if (is.null(n_obs)) return(.dispersion(fit) / w_mean)
   dfr <- n_obs - fit$rank
   if (!is.finite(dfr) || dfr <= 0) return(NA_real_)
   sum(stats::residuals(fit, type = "pearson")^2, na.rm = TRUE) / dfr
@@ -673,7 +718,12 @@ anova_count <- function(data, response, groups,
 #'
 #' A theta in the hundreds or thousands is not an estimate of overdispersion, it
 #' is the fit telling you there is none: the negative binomial has collapsed
-#' towards the Poisson it generalises. A small theta is strong overdispersion
+#' towards the Poisson it generalises. That is checked before non-convergence:
+#' on data that are not overdispersed glm.nb() usually gets there by stopping
+#' theta at its iteration limit (setting \code{th.warn}) with the regression
+#' converged, and its coefficients are then those of the Poisson fit, which is
+#' the maximum likelihood at the theta = Inf boundary; calling that fit
+#' unreliable would be false. A small theta is strong overdispersion
 #' (variance mu + mu^2 / theta) and is imprecise in small samples for that very
 #' reason, so an imprecise theta is not evidence of weak overdispersion.
 #'
@@ -687,6 +737,18 @@ anova_count <- function(data, response, groups,
 #' @noRd
 .theta_note <- function(nb, n_min = NA_real_) {
   th <- nb$theta; se <- nb$SE.theta
+  # On data that are not overdispersed the likelihood rises all the way to the
+  # Poisson boundary (theta = Inf), so glm.nb() usually stops theta at its
+  # iteration limit (and sets th.warn) while the regression itself has
+  # converged: the fit is then the Poisson fit, not an unreliable one.
+  collapsed <- isTRUE(nb$converged) && (!is.finite(th) || th > 1000)
+  if (collapsed) {
+    return(sprintf(
+      "The negative binomial dispersion parameter is very large (theta = %.3g%s), which means the data are not meaningfully overdispersed relative to Poisson and the negative binomial has collapsed towards it. model = \"poisson\" would give essentially the same answer more simply.",
+      th, if (!is.null(nb$th.warn)) {
+        sprintf("; MASS::glm.nb() stopped with \"%s\" as theta grew without bound, which is what it does when the likelihood is highest at the Poisson limit", nb$th.warn[1L])
+      } else ""))
+  }
   if (!is.null(nb$th.warn) || !isTRUE(nb$converged)) {
     why <- if (!is.null(nb$th.warn)) {
       sprintf("MASS::glm.nb() stopped with \"%s\"", nb$th.warn[1L])
@@ -696,11 +758,6 @@ anova_count <- function(data, response, groups,
     return(sprintf(
       "The negative binomial fit did not converge (%s; theta reached %.3g). Treat the model as unreliable and compare it with model = \"poisson\" or model = \"quasipoisson\".",
       why, th))
-  }
-  if (!is.finite(th) || th > 1000) {
-    return(sprintf(
-      "The negative binomial dispersion parameter is very large (theta = %.3g), which means the data are not meaningfully overdispersed relative to Poisson and the negative binomial has collapsed towards it. model = \"poisson\" would give essentially the same answer more simply.",
-      th))
   }
   out <- sprintf(
     "Negative binomial dispersion parameter theta = %.3f (SE %.3f), so the variance is about mu + mu^2/%.3g.",
@@ -787,8 +844,10 @@ anova_count <- function(data, response, groups,
       hi[k] <- ends[2L]
     }
     note <- sprintf(
-      "The rate ratio(s) for %s involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf%s.",
+      "The rate ratio(s) for %s involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf%s%s.",
       paste(got$term[diverged], collapse = ", "),
+      .unidentified_clause(got$term[diverged], lo[diverged], hi[diverged],
+                           "rate ratio"),
       if (anyNA(c(lo[diverged], hi[diverged]))) "; it is NA where that search failed" else "")
   }
   tab <- data.frame(
@@ -799,7 +858,7 @@ anova_count <- function(data, response, groups,
     p_value = p, stringsAsFactors = FALSE)
   tab <- tab[tab$term != "(Intercept)", , drop = FALSE]
   row.names(tab) <- NULL
-  list(table = tab, note = note)
+  list(table = tab, note = note, bracketed = isTRUE(got$bracketed))
 }
 
 #' Map a fitted model's coefficients onto treatment coding
@@ -819,6 +878,18 @@ anova_count <- function(data, response, groups,
   mf[facs] <- lapply(mf[facs], function(x) factor(x, levels = levels(x), ordered = FALSE))
   ca <- stats::setNames(rep(list("contr.treatment"), length(facs)), facs)
   Xt <- stats::model.matrix(tt, mf, contrasts.arg = ca)
+  # Grouping columns whose names and levels paste to the same column name
+  # (see .unclash_group_coefs()) get bracketed treatment labels, as the fit did.
+  bracketed <- anyDuplicated(colnames(Xt)) > 0L
+  if (bracketed) {
+    ca <- lapply(facs, function(f) {
+      M <- stats::contr.treatment(levels(mf[[f]]))
+      colnames(M) <- paste0("[", colnames(M), "]")
+      M
+    })
+    names(ca) <- facs
+    Xt <- stats::model.matrix(tt, mf, contrasts.arg = ca)
+  }
 
   # The treatment-coded columns that are estimable, in the order glm() would
   # keep them when some are aliased (empty cells of a factorial).
@@ -839,7 +910,7 @@ anova_count <- function(data, response, groups,
   lab <- .treatment_labels(Xt, tt, mf, facs)
   list(term = gsub("`", "", colnames(Xt), fixed = TRUE),
        factor = lab$factor, comparison = lab$comparison,
-       estimate = estimate, se = se, X = Xt)
+       estimate = estimate, se = se, X = Xt, bracketed = bracketed)
 }
 
 #' Say what each treatment-coded coefficient compares

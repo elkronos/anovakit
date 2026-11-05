@@ -378,7 +378,9 @@
 #'
 #' @param freq name of a frequency-weight column, or \code{NULL}. With one,
 #'   \code{n} counts the observations the rows stand for and \code{rows} the
-#'   rows themselves, as in \code{anova_bin()}'s proportion table.
+#'   rows themselves, as in \code{anova_bin()}'s proportion table. The sums
+#'   are matched to the cells by position, never by name: an empty-string
+#'   level is a valid name for a group but not for indexing.
 #' @noRd
 .cell_counts <- function(data, groups, sep = " : ", freq = NULL) {
   cell <- .cell_vector(data, groups, sep = sep)
@@ -387,8 +389,10 @@
     return(data.frame(cell = names(tab), n = as.integer(tab),
                       stringsAsFactors = FALSE, row.names = NULL))
   }
-  n <- tapply(data[[freq]], cell, sum)
-  data.frame(cell = names(tab), n = as.numeric(n[names(tab)]),
+  w <- as.numeric(data[[freq]])
+  ci <- as.integer(cell)
+  n <- vapply(seq_len(nlevels(cell)), function(m) sum(w[ci == m]), numeric(1))
+  data.frame(cell = names(tab), n = n,
              rows = as.integer(tab), stringsAsFactors = FALSE,
              row.names = NULL)
 }

@@ -334,13 +334,15 @@ test_that("F151: a frequency table and its expanded data make the same model cho
                car::Anova(qref, test.statistic = "F")[["F value"]][1],
                tolerance = 1e-8)
 
-  # non-integer weights are not frequencies
+  # non-integer weights are not frequencies; their dispersion is taken with
+  # the weights rescaled to average 1 (R2-BINCOUNT-02), so it does not grow
+  # with their arbitrary scale
   w <- fr$agg; w$freq <- w$freq + 0.5
   nw <- anova_count(w, "cnt", "g", weights = "freq", model = "poisson",
                     plots = FALSE)
   expect_equal(nw$dispersion,
                pearson_dispersion(stats::glm(cnt ~ g, stats::poisson(), w,
-                                             weights = freq)))
+                                             weights = freq)) / mean(w$freq))
   expect_false(any(grepl("frequency weights", nw$notes)))
 })
 
