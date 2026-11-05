@@ -271,14 +271,27 @@
 
 #' Box's M test for homogeneity of covariance matrices
 #'
+#' A covariance matrix counts as singular when, after scaling its responses to
+#' unit variance, its smallest eigenvalue is at most \code{1e-12} times its
+#' largest (the tolerance \code{.mardia_test()} uses). An exactly singular
+#' matrix rarely has a determinant of exactly zero in floating point: a
+#' response that is a linear combination of the others within one group gives
+#' a log-determinant of about -37 from rounding alone, and Box's M computed
+#' from it is an arbitrary, huge number.
+#'
 #' @param Y numeric matrix of responses.
 #' @param group factor of group memberships.
+#' @param unit what a level of \code{group} is, for the notes: \code{"group"},
+#'   or e.g. \code{"cell (combination of `A` and `B`)"}.
+#' @param level_labels optional character vector naming each level of
+#'   \code{group} in the notes, e.g. \code{"cell A=1, B=3"} (names are the
+#'   levels); defaults to \code{unit} and the level in backticks.
 #' @return list with \code{statistic}, \code{df}, \code{p_value} and
 #'   \code{note}, or \code{NULL} when it cannot be computed.
 #' @references Box, G. E. P. (1949). A general distribution theory for a class
 #'   of likelihood criteria. \emph{Biometrika}, 36(3/4), 317-346.
 #' @noRd
-.box_m <- function(Y, group) {
+.box_m <- function(Y, group, unit = "group", level_labels = NULL) {
   Y <- as.matrix(Y)
   group <- droplevels(as.factor(group))
   ok <- stats::complete.cases(Y) & !is.na(group)
@@ -287,16 +300,33 @@
   if (k < 2L) return(NULL)
   ns <- as.integer(table(group))
   if (any(ns <= p)) {
+    lv <- levels(group)
+    lab <- if (is.null(level_labels)) sprintf("%s `%s`", unit, lv) else
+      unname(level_labels[lv])
+    small <- which(ns == min(ns))
     return(list(statistic = NA_real_, df = NA_real_, p_value = NA_real_,
                 note = sprintf(
-                  "Box's M not computed: every group needs more than %d observations (smallest group has %d).",
-                  p, min(ns))))
+                  "Box's M not computed: every %s needs more than %d observations, and %s %s %d.",
+                  unit, p,
+                  paste(utils::head(lab[small], 3L), collapse = ", "),
+                  if (length(small) == 1L) "has" else "have",
+                  min(ns))))
   }
   covs <- lapply(levels(group), function(g) stats::cov(Y[group == g, , drop = FALSE]))
   pooled <- Reduce(`+`, Map(function(S, n) (n - 1) * S, covs, ns)) / (N - k)
+  # Singular up to rounding, judged on the correlation scale so that responses
+  # on very different scales do not look singular.
+  near_singular <- function(S) {
+    v <- diag(S)
+    if (any(!is.finite(v) | v <= 0)) return(TRUE)
+    R <- S / sqrt(outer(v, v))
+    ev <- eigen((R + t(R)) / 2, symmetric = TRUE, only.values = TRUE)$values
+    min(ev) <= max(ev) * 1e-12
+  }
   dets <- vapply(covs, function(S) determinant(S, logarithm = TRUE)$modulus, numeric(1))
   det_pooled <- determinant(pooled, logarithm = TRUE)$modulus
-  if (!all(is.finite(c(dets, det_pooled)))) {
+  if (!all(is.finite(c(dets, det_pooled))) ||
+      any(vapply(c(covs, list(pooled)), near_singular, logical(1)))) {
     return(list(statistic = NA_real_, df = NA_real_, p_value = NA_real_,
                 note = "Box's M not computed: at least one covariance matrix is singular."))
   }
