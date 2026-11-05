@@ -597,7 +597,7 @@
   if (fam %in% c("binomial", "quasibinomial")) {
     ok <- is.numeric(y) || is.logical(y) || is.factor(y) || is.character(y)
     if (!ok) {
-      .stopf("Response `%s` must be numeric, logical, character or a factor for a %s family; it is %s.",
+      .stopf("Response `%s` must be numeric, logical, character or a factor for the %s family; it is %s.",
              response, fam, paste(class(y), collapse = "/"))
     }
     if (values && (is.factor(y) || is.character(y))) {
@@ -613,7 +613,7 @@
     return(invisible(TRUE))
   }
   if (!is.numeric(y) && !is.logical(y)) {
-    .stopf("Response `%s` must be numeric for a %s family; it is %s. For a two-level factor use family = \"binomial\", or see anova_bin().",
+    .stopf("Response `%s` must be numeric for the %s family; it is %s. For a two-level factor use family = \"binomial\", or see anova_bin().",
            response, fam, paste(class(y), collapse = "/"))
   }
   if (values && fam == "poisson" && is.numeric(y) &&

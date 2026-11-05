@@ -495,7 +495,7 @@ anova_glm <- function(data, response, groups,
     attr(av$table, "statistic") <-
       "scaled-deviance chi-square, estimated dispersion treated as known"
     notes <- c(notes, sprintf(
-      "test_statistic = \"LR\" was requested for a %s family, which estimates its dispersion: car::Anova() divides each change in deviance by the estimated dispersion (%.3g) and refers it to a chi-square distribution as though that dispersion were known. That is a scaled-deviance chi-square rather than a likelihood-ratio test, and it is anti-conservative in small samples; the default F test allows for the estimated dispersion.",
+      "test_statistic = \"LR\" was requested for the %s family, which estimates its dispersion: car::Anova() divides each change in deviance by the estimated dispersion (%.3g) and refers it to a chi-square distribution as though that dispersion were known. That is a scaled-deviance chi-square rather than a likelihood-ratio test, and it is anti-conservative in small samples; the default F test allows for the estimated dispersion.",
       fam_name, .dispersion(model)))
   }
   # An F test on a Poisson or binomial fit gets its own note below, which

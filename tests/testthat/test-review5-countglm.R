@@ -121,15 +121,17 @@ test_that("exactfit-dispersion-F3: anova_count's inflation note describes the te
     stats::pchisq(f0$deviance - f1$deviance, 5, lower.tail = FALSE) < 0.05
   }))
   expect_gt(mean(sim), 0.35)
-  # the note gives the factor the tests use: the dispersion bound times the
-  # mean weight, and the sizes at that factor
+  # the note gives the factor the tests use: the weights alone inflate them
+  # (countglm-R2), so it is the estimated dispersion times the mean weight,
+  # stated plainly, with the sizes at that factor
   wm <- mean(d$w)
   x2 <- sum(stats::residuals(fit, type = "pearson")^2) / wm
-  phi_hi <- x2 / stats::qchisq(0.05, 66)
-  size5 <- stats::pchisq(stats::qchisq(0.95, 5) / (phi_hi * wm), 5, lower.tail = FALSE)
+  phi <- x2 / 66
+  size5 <- stats::pchisq(stats::qchisq(0.95, 5) / (phi * wm), 5, lower.tail = FALSE)
   note <- grep("Pearson dispersion is", k$notes, value = TRUE)
   expect_length(note, 1L)
-  expect_match(note, sprintf("inflated by about %.2f", phi_hi * wm), fixed = TRUE)
+  expect_false(grepl("little power", note, fixed = TRUE))
+  expect_match(note, sprintf("are inflated by about %.2f", phi * wm), fixed = TRUE)
   expect_match(note, sprintf("one on 5 (the largest term here) roughly %.0f%%", 100 * size5),
                fixed = TRUE)
   expect_gt(size5, 0.35)
@@ -171,4 +173,113 @@ test_that("exactfit-dispersion-F4: a saturated Poisson fit keeps its Wald test",
   q <- anova_glm(d, "y", "g", family = quasipoisson(), test_statistic = "Wald",
                  plots = FALSE)
   expect_true(all(is.na(q$anova$p_value[q$anova$term == "g"])) || is.null(q$anova))
+})
+
+test_that("countglm-R1/C1: a nonzero response constant within groups on a large level is an exact fit", {
+  # reference: the response is constant within every group (base R tapply),
+  # so the residuals glm() leaves are rounding error (~1e-14 of the level)
+  # however the deviance ratio comes out
+  chk <- function(d, ...) {
+    expect_true(all(tapply(d$y, d$g, function(v) diff(range(v))) == 0))
+    expect_error(anova_glm(d, "y", "g", plots = FALSE, ...),
+                 "fits response `y` exactly: the response is constant within every design cell")
+  }
+  d <- data.frame(g = gl(3, 5), y = 1e7 + rep(c(0, 10, 20), each = 5))
+  # the deviance rule alone misses it: glm's deviance is not ~0 of the null
+  gq <- suppressWarnings(stats::glm(y ~ g, stats::quasipoisson(), d))
+  expect_gt(abs(gq$deviance / gq$null.deviance), 1e-12)
+  chk(d, family = stats::quasipoisson())
+  expect_error(anova_count(d, "y", "g", model = "quasipoisson", plots = FALSE),
+               "fits response `y` exactly")
+  chk(transform(d, y = 1.7e9 + rep(c(0, 10, 20), each = 5)), family = stats::quasipoisson())
+  chk(transform(d, y = 1e8 + rep(c(0, 10, 20), each = 5)), family = stats::Gamma("log"))
+  chk(data.frame(g = gl(3, 5), y = 1e10 + rep(c(0, 1, 2), each = 5)))
+  chk(data.frame(g = gl(3, 4), y = rep(1.7e9 + c(0, .1, .2), each = 4)))
+  chk(data.frame(g = gl(3, 4), y = rep(1.7e9 + c(0, .01, .02), each = 4)))
+  chk(data.frame(g = gl(2, 5), y = rep(c(1e7, 1e7 + 1e-3), each = 5)))
+  chk(data.frame(g = gl(2, 5), y = rep(c(1e7, 1e7 + 1), each = 5)), family = stats::quasipoisson())
+  chk(data.frame(g = gl(2, 5), y = rep(c(1e7, 1e7 + 1e-2), each = 5)), family = stats::Gamma("log"))
+  # real variation on the same level, however small against it, is tested:
+  # 1e-3 noise on 1e10 (1e-13 of the level) matches lm()'s F to its rounding
+  d6 <- withr::with_seed(1, data.frame(g = gl(3, 10),
+    y = 1e10 + rep(c(0, 1, 2), each = 10) + stats::rnorm(30, 0, 1e-3)))
+  ref <- suppressWarnings(stats::anova(stats::lm(y ~ g, d6)))
+  f6 <- anova_glm(d6, "y", "g", plots = FALSE)
+  expect_equal(f6$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-2)
+  # an additive two-way model whose cells are constant but not additive
+  # leaves real residual variation, which is tested (lm reference)
+  d2 <- expand.grid(a = gl(2, 1), b = gl(2, 1), r = 1:3)
+  d2$y <- 1e7 + c(0, 1, 2, 7)[as.integer(d2$a) + 2L * (as.integer(d2$b) - 1L)]
+  r2 <- suppressWarnings(stats::anova(stats::lm(y ~ a + b, d2)))
+  f2 <- anova_glm(d2, "y", c("a", "b"), interaction = FALSE, type = "II", plots = FALSE)
+  expect_equal(f2$anova$statistic[1:2], r2[["F value"]][1:2], tolerance = 1e-6)
+})
+
+test_that("countglm-C2: an all-boundary exact fit has no 'elsewhere' clause", {
+  db <- data.frame(g = factor(c("a", "b", "c")), y = c(0, 1, 1), w = c(4, 5, 6))
+  e <- tryCatch(anova_glm(db, "y", "g", family = stats::quasibinomial(),
+                          weights = "w", plots = FALSE),
+                error = conditionMessage)
+  expect_match(e, "every response is 0 or 1, and every fitted value equals it", fixed = TRUE)
+  expect_false(grepl("elsewhere", e, fixed = TRUE))
+})
+
+test_that("countglm-C3: messages name 'the inverse.gaussian family'", {
+  dd <- data.frame(y = c(1, 2, 4, 3, 5, 6, 2, 3, 5), g = rep(c("a", "b", "c"), 3))
+  n <- anova_glm(dd, "y", "g", family = "inverse.gaussian", test_statistic = "LR",
+                 plots = FALSE)$notes
+  expect_true(any(grepl("requested for the inverse.gaussian family", n, fixed = TRUE)))
+  expect_false(any(grepl("a inverse", n, fixed = TRUE)))
+  dd$c <- as.character(dd$y)
+  expect_error(anova_glm(dd, "c", "g", family = "inverse.gaussian", plots = FALSE),
+               "must be numeric for the inverse.gaussian family", fixed = TRUE)
+})
+
+test_that("countglm-R2: weights averaging 2.5 inflate the kept Poisson tests plainly, not hedged", {
+  d <- withr::with_seed(2, {
+    d <- data.frame(g = gl(4, 1000))
+    d$y <- stats::rpois(4000, 6)
+    d$w <- stats::runif(4000, 2, 3)
+    d
+  })
+  r <- anova_count(d, "y", "g", plots = FALSE, weights = "w")
+  expect_false(any(grepl("little power", r$notes, fixed = TRUE)))
+  expect_false(any(grepl("cannot tell the dispersion from 1", r$notes, fixed = TRUE)))
+  note <- grep("A Poisson model assumes a dispersion of 1", r$notes, value = TRUE)
+  expect_length(note, 1L)
+  # reference: the Pearson dispersion of the glm as weighted (base R), which
+  # is the factor the reported statistics are inflated by
+  f <- stats::glm(y ~ g, stats::poisson(), d, weights = w)
+  phi_w <- sum(stats::residuals(f, "pearson")^2) / stats::df.residual(f)
+  expect_match(note, sprintf("are inflated by about %.2f", phi_w), fixed = TRUE)
+  sz3 <- stats::pchisq(stats::qchisq(0.95, 3) / phi_w, 3, lower.tail = FALSE)
+  expect_match(note, sprintf("one on 3 (the largest term here) roughly %.0f%%", 100 * sz3),
+               fixed = TRUE)
+  # simulation: true Poisson data, weights ~ U(2, 3): the LR test of g on 3
+  # df rejects far more than 5% (about the quoted size)
+  rej <- withr::with_seed(11, mean(replicate(300, {
+    ds <- data.frame(g = gl(4, 50), w = stats::runif(200, 2, 3))
+    ds$y <- stats::rpois(200, 6)
+    m1 <- stats::glm(y ~ g, stats::poisson(), ds, weights = w)
+    m0 <- stats::glm(y ~ 1, stats::poisson(), ds, weights = w)
+    stats::pchisq(m0$deviance - m1$deviance, 3, lower.tail = FALSE) < 0.05
+  })))
+  expect_gt(rej, 0.25)
+  expect_lt(abs(rej - sz3), 0.1)
+  # weights barely above 1 on 27 df stay hedged: the inflation is then the
+  # uncertain dispersion's, and the Pearson test has little power against
+  # the dispersion at which the tests would reject 7.5% (hand computation)
+  ds <- withr::with_seed(1, {
+    ds <- data.frame(g = gl(3, 10))
+    ds$y <- stats::rpois(30, 5)
+    ds$w <- stats::runif(30, 1, 1.2)
+    ds
+  })
+  rs <- anova_count(ds, "y", "g", plots = FALSE, weights = "w")
+  expect_true(any(grepl("27 residual degrees of freedom it has little power", rs$notes,
+                        fixed = TRUE)))
+  phi_c <- .count_phi_mattering(2L, mean(ds$w))
+  expect_equal(stats::pchisq(stats::qchisq(0.95, 2) / (phi_c * mean(ds$w)), 2,
+                             lower.tail = FALSE), 0.075, tolerance = 1e-10)
+  expect_lt(stats::pchisq(stats::qchisq(0.95, 27) / phi_c, 27, lower.tail = FALSE), 0.5)
 })
