@@ -785,10 +785,12 @@
 #' is exact when the response takes one value in every row that carries
 #' weight and the offset is constant too (a constant count over varying
 #' exposures is a varying rate, which the model need not fit), or when every
-#' fitted value equals its response to within 1e-13 of its size: the
-#' rounding error of the fit, below real variation of even 1e-12 of the
-#' response's level (counts of 1e12 differing by a few), which lm() and car
-#' resolve.
+#' fitted value equals its response to the rounding error of the fit: for a
+#' fit linear in the response (identity link, constant variance), within
+#' 8 sqrt(n) units in the last place of the response's level, the rounding of
+#' the QR solve; otherwise within 1e-13 of each row's size, after the fit is
+#' pushed to full convergence. Real variation of a few units on a level of
+#' 1e14, or of 1e-12 of the level of a count, is above this and is analysed.
 #'
 #' A response constant within every group but 0 (or 1, for a proportion) in
 #' some group is fitted only in the limit: glm() stops with fitted values of
@@ -851,16 +853,21 @@
     spread <- diff(range(y))
     # Each residual is measured against its own row's size, so that a
     # constant group of large values cannot hide real variation in a group of
-    # small ones; but a residual within a few dozen units in the last place
-    # of the response's overall level is rounding error whatever its row
-    # (a Gaussian group at 0 beside groups at 1e9 is fitted to about 1e-7).
+    # small ones; but in a fit linear in the response a residual within the
+    # rounding of the overall level is rounding error whatever its row (a
+    # Gaussian group at 0 beside groups at 1e9 is fitted to about 1e-7), and
+    # such a fit is exact when every residual is within it.
     # (Only where the fit is linear in the response -- identity link,
     # constant variance -- is its rounding set by the overall level; a log
     # link fits each group on its own scale.)
     gauss_like <- identical(famobj$link, "identity") &&
       (identical(fam, "gaussian") ||
          (identical(fam, "quasi") && identical(famobj$varfun, "constant")))
-    floor_ <- if (gauss_like) 32 * .Machine$double.eps * max(abs(y)) else 0
+    # The QR rounding of a linear fit grows with the number of rows (about
+    # sqrt(n) units in the last place of the level: 45 to 190 at 7000 rows),
+    # so the floor does too; real integer variation of a few units at 1e14 on
+    # a handful of rows stays above it.
+    floor_ <- if (gauss_like) 8 * .Machine$double.eps * max(abs(y)) * sqrt(length(y)) else 0
     rel_of <- function(mu) {
       res <- abs(y - mu)
       scl <- pmax(abs(y), abs(mu))
@@ -1437,16 +1444,23 @@
   out <- list(note = character(0), applies = FALSE)
   wp <- wnum[wnum > 0]
   if (length(wp) < 2L || stats::var(wp) <= 1e-4 * mean(wp)^2) return(out)
+  # Weights whose unevenness alone moves no test (equal weights inflate
+  # every test by the same factor, the weight itself, which the dispersion
+  # carries) leave the caller's overdispersion note in place.
+  shape <- .weight_inflation(model, 1 / mean(wp), type)
+  if (is.null(shape) || max(shape$factor) < 1.1) return(out)
   out$applies <- TRUE
   if (!is.null(robust) && identical(test_statistic, "Wald")) return(out)
   fam <- tryCatch(stats::family(model)$family, error = function(e) "")
   disp_w <- .dispersion(model)
-  phi0 <- if (binary || startsWith(fam, "Negative Binomial")) 1 else
-    if (isTRUE(is.finite(disp_w) && disp_w > 0)) disp_w / mean(wp) else NA_real_
   f_kind <- identical(test_statistic, "F") || .estimates_dispersion(model)
-  phi_t <- if (f_kind) {
-    if (isTRUE(is.finite(disp_w) && disp_w > 0)) phi0 / disp_w else NA_real_
-  } else phi0
+  # A test divided by an estimated dispersion absorbs both the weights'
+  # scale and the response's own dispersion, so only the unevenness is
+  # left: phi = 1 / mean(w). Otherwise phi0 is 1 for a 0/1 response and a
+  # negative binomial, and the Pearson dispersion over the mean weight else.
+  phi_t <- if (f_kind) 1 / mean(wp) else
+    if (binary || startsWith(fam, "Negative Binomial")) 1 else
+    if (isTRUE(is.finite(disp_w) && disp_w > 0)) disp_w / mean(wp) else NA_real_
   if (!is.finite(phi_t)) return(out)
   wi <- .weight_inflation(model, phi_t, type)
   if (is.null(wi) || !isTRUE(max(wi$size) >= 0.075)) return(out)
@@ -1454,7 +1468,9 @@
   out$note <- sprintf(
     "The weights in `%s` are unequal and not frequencies, so the %s in $anova %s inflated %s: %s.%s",
     weights,
-    if (f_kind) "F tests" else "likelihood-ratio and Wald tests",
+    if (identical(test_statistic, "F")) "F tests" else
+      if (identical(test_statistic, "Wald")) "Wald tests" else
+      if (f_kind) "scaled-deviance tests" else "likelihood-ratio tests",
     "are", wt$by, wt$size,
     if (is.null(robust)) {
       if (f_kind && !identical(test_statistic, "F")) {
