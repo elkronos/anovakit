@@ -46,7 +46,11 @@
 #' With \code{center_covariates = FALSE}, a covariate whose spread is below
 #' about 1e-7 of its level (a Unix timestamp spanning a minute, say) is also
 #' refused, since \code{lm()} cannot tell it apart from the intercept
-#' uncentred; the error says so, and the default centring fits it.
+#' uncentred; the error says so, and the default centring fits it. A
+#' somewhat larger spread can still be too small for the covariate-by-group
+#' columns, which \code{lm()} then drops in part; an uncentred fit whose
+#' models lose coefficients that the centred fit keeps is refused in the same
+#' way, since the slopes test and \code{$simple_slopes} would be wrong.
 #'
 #' \strong{Homogeneity of slopes.} The two candidate models are the grouping
 #' structure with the covariates entered additively, and the same model plus
@@ -337,6 +341,10 @@ anova_ancova <- function(data, response, groups, covariates,
   m_add <- fits$additive
   m_int <- fits$interaction
   notes <- c(notes, fits$notes)
+  if (!center_covariates) {
+    .check_uncentred_rank(m_add, m_int, d, fml_add, fml_int, covariates,
+                          covariate_means, type)
+  }
 
   slopes <- .slopes_comparison(m_add, m_int)
   notes <- c(notes, slopes$note)
@@ -749,6 +757,55 @@ anova_ancova <- function(data, response, groups, covariates,
   }
   list(additive = fits$additive, interaction = fits$interaction, data = d,
        notes = c(.said_note(unique(fits$said), "stats::lm()"), notes))
+}
+
+#' Refuse an uncentred fit that loses coefficients only because it is uncentred
+#'
+#' Centring a covariate changes no rank in exact arithmetic, in either model:
+#' the covariate-by-group columns of the centred model are those of the
+#' uncentred one minus a multiple of the group indicators. Numerically it can:
+#' a covariate whose spread is small beside its level (a Unix timestamp
+#' spanning minutes) makes its products with the group indicators nearly
+#' multiples of the indicators themselves, and \code{lm()} drops some of them
+#' as aliased. \code{.check_covariates_identified()} asks this of the additive
+#' design only; the covariate-by-group design is wider and fails first. The
+#' homogeneity-of-slopes test, \code{$simple_slopes} and the interaction
+#' model's table would then all be computed from the wrong model, so the
+#' models are refitted on centred copies of the covariates and the call is
+#' refused when either loses rank uncentred.
+#' @param d the frame the models were fitted on (covariates not centred).
+#' @noRd
+.check_uncentred_rank <- function(m_add, m_int, d, fml_add, fml_int,
+                                  covariates, covariate_means, type) {
+  dc <- d
+  for (cv in covariates) dc[[cv]] <- dc[[cv]] - covariate_means[[cv]]
+  centred_rank <- function(fml) {
+    got <- .collect_conditions(.fit_with_contrasts(
+      function() .fit_lm(fml, dc), type = type))
+    if (inherits(got$value, "error")) NA_integer_ else got$value$rank
+  }
+  lost <- character(0)
+  for (m in list(list(m_add, fml_add), list(m_int, fml_int))) {
+    rc <- centred_rank(m[[2L]])
+    if (!is.na(rc) && m[[1L]]$rank < rc) {
+      cf <- stats::coef(m[[1L]])
+      lost <- c(lost, names(cf)[is.na(cf)])
+    }
+  }
+  if (length(lost) == 0L) return(invisible(TRUE))
+  lost <- unique(gsub("`", "", lost, fixed = TRUE))
+  parts <- strsplit(lost, ":", fixed = TRUE)
+  involved <- covariates[vapply(covariates, function(cv)
+    any(vapply(parts, function(p) cv %in% p, logical(1))), logical(1))]
+  if (length(involved) == 0L) involved <- covariates
+  .stopf("Covariate(s) %s vary too little relative to their distance from zero to be fitted uncentred: their spread is small beside their level (%s), so lm() drops coefficient(s) it can estimate once the covariate is centred (%s), and the homogeneity-of-slopes test, $simple_slopes and the covariate-by-group model's ANOVA table would be computed from the wrong model. Use center_covariates = TRUE (the default; it changes neither $emmeans, $posthoc nor the additive model's tests), or subtract a reference value from the column yourself.",
+         paste(sprintf("`%s`", involved), collapse = ", "),
+         paste(vapply(involved, function(cv) {
+           x <- d[[cv]]
+           sprintf("%s: range %s", cv, paste(.fmt_cov(range(x), x),
+                                             collapse = " to "))
+         }, character(1)), collapse = "; "),
+         .abbrev(lost))
 }
 
 #' The homogeneity-of-slopes F test, guarded against an exact fit
