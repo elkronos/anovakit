@@ -172,11 +172,13 @@ test_that("exactfit-dispersion-F3: anova_count's inflation note describes the te
   expect_true(any(grepl(fac, kc$notes, fixed = TRUE)))
   expect_true(any(grepl(sprintf("Pearson residuals (%.2f)", disp), kc$notes, fixed = TRUE)))
   expect_true(any(grepl(s1, kc$notes, fixed = TRUE)))
-  # anova_glm gives the weight note in place of its overdispersion note,
-  # whose Pearson dispersion mixes the weights with the response's own
-  expect_false(any(grepl(sprintf("Pearson dispersion is %.2f", disp), kg$notes, fixed = TRUE)))
-  expect_true(any(grepl(fac, kg$notes, fixed = TRUE)))
-  expect_true(any(grepl(s1, kg$notes, fixed = TRUE)))
+  # these weights are nearly equal (mean(w^2) / mean(w)^2 = 1.01), so their
+  # unevenness moves no test and anova_glm keeps its overdispersion note: the
+  # Pearson dispersion of the weighted fit is then the inflation of its tests
+  expect_lt(mean(iw$w^2) / mean(iw$w)^2, 1.1)
+  expect_true(any(grepl(sprintf("Pearson dispersion is %.2f", disp), kg$notes, fixed = TRUE)))
+  expect_false(any(grepl("are unequal and not frequencies", kg$notes, fixed = TRUE)))
+  expect_equal(hi[["factor"]], disp, tolerance = 0.05)
 })
 
 test_that("exactfit-dispersion-F4: a saturated Poisson fit keeps its Wald test", {

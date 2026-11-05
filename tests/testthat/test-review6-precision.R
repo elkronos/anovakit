@@ -327,3 +327,27 @@ test_that("weight notes describe the reported test: none beside a robust Wald te
                   weights = "wn", plots = FALSE, posthoc = FALSE)
   expect_false(any(grepl("sandwich", fe$notes, fixed = TRUE)))
 })
+
+test_that("an exactly additive Gaussian response with thousands of rows is still an exact fit", {
+  d <- expand.grid(a = gl(5, 1), b = gl(7, 1), rep = 1:200)
+  d$y <- withr::with_seed(3, 1 + round(stats::runif(5), 3)[d$a] / 7 +
+                            round(stats::runif(7), 3)[d$b] * 0.37)
+  expect_error(anova_glm(d, "y", c("a", "b"), plots = FALSE, posthoc = FALSE),
+               "fits response `y` exactly")
+})
+
+test_that("barely unequal weights keep the overdispersion note; the weight note names the reported test", {
+  skip_if_not_installed("MASS")
+  d <- data.frame(g = gl(3, 50))
+  d$y <- withr::with_seed(1, MASS::rnegbin(150, 5, 1.5))
+  d$w <- withr::with_seed(2, 1 + stats::runif(150, 0, 0.05))
+  f <- anova_glm(d, "y", "g", family = poisson(), weights = "w", plots = FALSE)
+  expect_true(any(grepl("Pearson dispersion is", f$notes, fixed = TRUE)))
+  expect_false(any(grepl("are unequal and not frequencies", f$notes, fixed = TRUE)))
+  d2 <- data.frame(g = factor(rep(c("a", "b", "c"), each = 200)))
+  d2$w <- withr::with_seed(11, stats::rexp(600) + 0.2)
+  d2$c <- withr::with_seed(12, stats::rpois(600, 4))
+  q <- anova_glm(d2, "c", "g", family = quasipoisson(), weights = "w",
+                 test_statistic = "Wald", plots = FALSE)
+  expect_true(any(grepl("so the Wald tests in $anova are inflated", q$notes, fixed = TRUE)))
+})
