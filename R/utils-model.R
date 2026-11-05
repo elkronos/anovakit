@@ -633,3 +633,32 @@
   av$table <- tab
   av
 }
+
+#' A call fit to keep and print
+#'
+#' \code{match.call()} records the arguments as they were written. Through
+#' \code{do.call(anova_glm, list(data = d, ...))} they were written as values:
+#' the function itself instead of its name, and the whole data frame instead
+#' of the name of one. Kept as they are, the fit would carry the raw input
+#' (every column, analysed or not) and \code{print()} would deparse all of it
+#' into its \code{Call:} line. The function is put back as its name, and a
+#' data frame, a family object or a function given as a value is replaced by
+#' a placeholder naming what it was.
+#' @param cl the result of \code{match.call()}.
+#' @param name the name of the function called.
+#' @noRd
+.compact_call <- function(cl, name) {
+  if (!is.call(cl)) return(cl)
+  if (!is.name(cl[[1L]]) && !is.call(cl[[1L]])) cl[[1L]] <- as.name(name)
+  for (i in seq_along(cl)[-1L]) {
+    a <- cl[[i]]
+    if (is.data.frame(a)) {
+      cl[[i]] <- as.name(sprintf("<data frame: %d rows>", nrow(a)))
+    } else if (inherits(a, "family")) {
+      cl[[i]] <- as.name(sprintf("<family: %s(link = %s)>", a$family, a$link))
+    } else if (is.function(a)) {
+      cl[[i]] <- as.name("<function>")
+    }
+  }
+  cl
+}

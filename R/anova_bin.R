@@ -665,7 +665,11 @@ anova_bin <- function(data, response, groups,
 #' @param design optional list with \code{X} and \code{coef}: the same fit on
 #'   another coding (see the code).
 #' @return the two ends on the linear-predictor scale: +/-Inf for an open end,
-#'   NA for a finite end that cannot be found.
+#'   NA for a finite end that cannot be found. Its \code{"flat"} attribute
+#'   (lower end, upper end) is \code{TRUE} for an NA end whose search stayed
+#'   below the cutoff at every step it could evaluate, out to the search limit:
+#'   the likelihood rules out no value there either, rather than the search
+#'   having failed.
 #' @noRd
 .separated_profile <- function(model, term, conf_level,
                                cutoff = stats::qchisq(conf_level, 1),
@@ -703,24 +707,33 @@ anova_bin <- function(data, response, groups,
   find_end <- function(dir) {
     prev <- est
     step <- 0.5
+    flat <- TRUE
     while (step <= 128) {
       b <- est + dir * step
       g <- gap(b)
       if (is.finite(g) && g > 0) {
         r <- tryCatch(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8)$root,
                       error = function(e) NA_real_)
-        return(r)
+        return(structure(r, flat = FALSE))
       }
+      if (!is.finite(g)) flat <- FALSE
       prev <- b
       step <- step * 2
     }
-    NA_real_
+    structure(NA_real_, flat = flat)
   }
   up <- if (est >= 0) 1 else -1           # the direction it diverged in
   open_end <- find_end(up)
   far_end <- find_end(-up)
+  far_flat <- isTRUE(attr(far_end, "flat"))
+  open_end <- as.numeric(open_end)
+  far_end <- as.numeric(far_end)
   if (is.na(open_end)) open_end <- up * Inf
-  if (up > 0) c(far_end, open_end) else c(open_end, far_end)
+  if (up > 0) {
+    structure(c(far_end, open_end), flat = c(far_flat, FALSE))
+  } else {
+    structure(c(open_end, far_end), flat = c(FALSE, far_flat))
+  }
 }
 
 #' Deviance of a logistic model for a 0/1 response, from its linear predictor
