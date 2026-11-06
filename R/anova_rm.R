@@ -859,12 +859,21 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                     term_int = rownames(tab),
                     stringsAsFactors = FALSE, row.names = NULL)
   # Zero error variance computed in floating point is rounding error, not
-  # exactly 0 (about 1e-31 against effects of order 1 where long double is
-  # no wider than double, as on ARM macOS), and the F statistic is then of
-  # order 1e30. No F test of real data reaches 1e24 (that needs residuals
-  # within 1e-12 of the effects), so such an F is read as zero error
-  # variance, the case .rm_degenerate_notes() reports.
-  rz <- is.finite(out$statistic) & out$statistic > 1e24
+  # exactly 0, and is read as zero error variance, the case
+  # .rm_degenerate_notes() reports.
+  # The error sum of squares is computed as a difference of sums of squares
+  # of the data, so its rounding error is of order eps * sum(y^2), not 0: on
+  # ARM macOS a design with no error variance gives an MSE of 4.4e-16 and F of
+  # 1e16 for data of order 5. An error sum of squares within 8 eps sum(y^2)
+  # is that rounding; real variation of even 1e-7 of the data's level is
+  # above it.
+  Y <- tryCatch(as.matrix(fit$lm$fitted.values + fit$lm$residuals),
+                error = function(e) NULL)
+  ss_scale <- if (is.null(Y)) NA_real_ else sum(Y^2)
+  err_ss <- out$mse * out$den_df
+  rz <- is.finite(out$statistic) & is.finite(err_ss) &
+    ((is.finite(ss_scale) & err_ss <= 8 * .Machine$double.eps * ss_scale) |
+       out$statistic > 1e24)
   if (any(rz)) {
     out$mse[rz] <- 0
     out$statistic[rz] <- Inf
