@@ -31,10 +31,10 @@ comparing results.
 
 ### Changes made after an adversarial review, before release
 
-An adversarial review reproduced 167 problems; all were
-fixed, each with a regression test against an independent reference, and
-a second, independent pass re-verified every fix and closed the gaps it
-found. The changes a user will notice:
+An adversarial review reproduced 167 problems; all were fixed, each with
+a regression test against an independent reference, and a second,
+independent pass re-verified every fix and closed the gaps it found. The
+changes a user will notice:
 
 - **MANOVA** reports genuine Type II / Type III multivariate tests from
   [`car::Manova()`](https://rdrr.io/pkg/car/man/Anova.html); it
