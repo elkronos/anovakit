@@ -311,6 +311,7 @@ test_that("equal group means keep a deviance explained of 0", {
 })
 
 test_that("weight notes describe the reported test: none beside a robust Wald test", {
+  skip_if_not_installed("sandwich")
   aq <- stats::na.omit(airquality)
   aq$Month <- factor(aq$Month); aq$hot <- as.integer(aq$Temp > 80)
   aq$w <- withr::with_seed(5, stats::runif(nrow(aq), 0.5, 2))

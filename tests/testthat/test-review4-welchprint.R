@@ -232,6 +232,8 @@ test_that("welchprint-C1: every function refuses a multi-column matrix grouping 
   r <- data.frame(y = stats::rnorm(24), s = factor(rep(1:8, 3)),
                   w = factor(rep(1:3, each = 8)))
   r$wm <- cbind(as.character(r$w), "z")
-  expect_error(anova_rm(r, "y", "s", "wm", plots = FALSE),
-               "Within-subject factor `wm` is a 2-column matrix", fixed = TRUE)
+  if (requireNamespace("afex", quietly = TRUE)) {
+    expect_error(anova_rm(r, "y", "s", "wm", plots = FALSE),
+                 "Within-subject factor `wm` is a 2-column matrix", fixed = TRUE)
+  }
 })
