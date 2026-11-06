@@ -494,7 +494,8 @@ anova_rm <- function(data, response, subject, within, between = NULL,
         emm_out, specs, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = "Estimated marginal means",
-        ylab = sprintf("Estimated %s", response))
+        ylab = sprintf("Estimated %s", response),
+        ordered = is.ordered(data[[specs[1L]]]))
     }
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }

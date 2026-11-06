@@ -155,7 +155,7 @@ test_that("bin-merge-F2: anova_bin's profile intervals do not fall back on the n
   skip_if_not(file.exists(rmd))
   txt <- paste(readLines(rmd, warn = FALSE), collapse = " ")
   expect_false(grepl("200,000", txt, fixed = TRUE))
-  expect_true(grepl("number of rows does not add to the cost", txt, fixed = TRUE))
+  expect_true(grepl("number of rows (therefore )?does not add to the cost", txt))
 })
 
 test_that("docs-consistency-F1: under separation the default still falls back to Wald, except for the diverged odds ratio", {

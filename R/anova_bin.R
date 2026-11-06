@@ -405,7 +405,8 @@ anova_bin <- function(data, response, groups,
         emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = sprintf("Estimated probability of %s = %s", response, success),
-        ylab = "Probability")
+        ylab = "Probability",
+        ordered = is.ordered(data[[groups[1L]]]))
     }
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
