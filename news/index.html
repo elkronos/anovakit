@@ -16,27 +16,30 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs"><li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs"><li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
   </ul></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-guides"><li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-guides"><li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul></li>
@@ -60,7 +63,7 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.0" id="anovakit-010">anovakit 0.1.0<a class="anchor" aria-label="anchor" href="#anovakit-010"></a></h2>
 <p>First release. The package was previously distributed as loose scripts under the name ANOVAtoolbox; it is now an installable package called anovakit, and the repository has been renamed to match.</p>
-<p>Eight analysis-of-variance workflows behind one argument convention and one return class: <code><a href="../reference/anova_welch.html">anova_welch()</a></code>, <code><a href="../reference/anova_kw.html">anova_kw()</a></code>, <code><a href="../reference/anova_ancova.html">anova_ancova()</a></code>, <code><a href="../reference/anova_rm.html">anova_rm()</a></code>, <code><a href="../reference/anova_manova.html">anova_manova()</a></code>, <code><a href="../reference/anova_bin.html">anova_bin()</a></code>, <code><a href="../reference/anova_count.html">anova_count()</a></code> and <code><a href="../reference/anova_glm.html">anova_glm()</a></code>. Each validates its input, checks the assumptions that matter for its method, reports effect sizes, computes estimated marginal means and pairwise comparisons, and returns <code>ggplot2</code> objects rather than drawing them. See <code><a href="../articles/anovakit.html">vignette("anovakit")</a></code> for a tour and the README for the design decisions behind it.</p>
+<p>Eight analysis-of-variance workflows behind one argument convention and one return class: <code><a href="../reference/anova_welch.html">anova_welch()</a></code>, <code><a href="../reference/anova_kw.html">anova_kw()</a></code>, <code><a href="../reference/anova_ancova.html">anova_ancova()</a></code>, <code><a href="../reference/anova_rm.html">anova_rm()</a></code>, <code><a href="../reference/anova_manova.html">anova_manova()</a></code>, <code><a href="../reference/anova_bin.html">anova_bin()</a></code>, <code><a href="../reference/anova_count.html">anova_count()</a></code> and <code><a href="../reference/anova_glm.html">anova_glm()</a></code>. Each validates its input, checks the assumptions that matter for its method, reports effect sizes, computes estimated marginal means and pairwise comparisons, and returns <code>ggplot2</code> objects rather than drawing them. See <code><a href="../articles/anovakit.html">vignette("anovakit")</a></code> for a tour and the “Design choices” article on the website for the decisions behind the defaults.</p>
 <p>The package supersedes a collection of loose scripts distributed from the same repository. If you used those, note the following before comparing results.</p>
 <div class="section level3">
 <h3 id="changes-made-after-an-adversarial-review-before-release-0-1-0">Changes made after an adversarial review, before release<a class="anchor" aria-label="anchor" href="#changes-made-after-an-adversarial-review-before-release-0-1-0"></a></h3>
@@ -97,10 +100,16 @@
 <strong>Packaging.</strong> <code>ggplot2 (&gt;= 3.4.0)</code> and <code>testthat (&gt;= 3.1.8)</code> are declared.</li>
 </ul></div>
 <div class="section level3">
-<h3 id="plot-theme-option-0-1-0">Plot theme option<a class="anchor" aria-label="anchor" href="#plot-theme-option-0-1-0"></a></h3>
+<h3 id="plots-a-theme-option-and-two-fixes-0-1-0">Plots: a theme option and two fixes<a class="anchor" aria-label="anchor" href="#plots-a-theme-option-and-two-fixes-0-1-0"></a></h3>
 <ul><li>
 <code>options(anovakit.theme = ...)</code> sets the base theme of every plot the package draws: a complete ggplot2 theme, or a function returning one (<code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">ggplot2::theme_get</a></code> follows <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">theme_set()</a></code>). Unset, it is <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal()</a></code>, as before. The package’s adjustments (bold title, legend at the bottom, rotated long labels) are added on top, and no result changes. See <code><a href="../reference/anovakit-package.html">?anovakit</a></code> and the plots article.</li>
+<li>The marginal-means plot joins the means of an ordered first factor with a line, as the plots article describes. The check looked at the marginal-means table, whose factors are never ordered, so the line was never drawn.</li>
+<li>The ANCOVA covariate plot puts each clause of its subtitle on its own line; as one line it ran off the right edge of the figure.</li>
 </ul></div>
+<div class="section level3">
+<h3 id="documentation-0-1-0">Documentation<a class="anchor" aria-label="anchor" href="#documentation-0-1-0"></a></h3>
+<p>The website is reorganised: Get started, Choose an analysis, eight walkthroughs that follow the same section order, and guides to results, diagnostics, plots and themes, weights and robust standard errors (new), and the design choices behind the defaults (new). The README is now a short landing page.</p>
+</div>
 <div class="section level3">
 <h3 id="changes-made-after-two-further-reviews-before-release-0-1-0">Changes made after two further reviews, before release<a class="anchor" aria-label="anchor" href="#changes-made-after-two-further-reviews-before-release-0-1-0"></a></h3>
 <p>Two more adversarial reviews found about 100 further problems, mostly in edge cases. Each is fixed and has a regression test.</p>

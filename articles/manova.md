@@ -6,23 +6,24 @@ library(anovakit)
 ```
 
 [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
-compares two or more numeric responses *jointly* across groups. It
-reports a multivariate test of each term, follows it up with one ANOVA
-per response, and describes how the groups separate with a canonical
-discriminant analysis; with covariates it becomes a MANCOVA. Use it when
-you have several related measurements on each unit and want one test of
-“do the groups differ on these measurements taken together”, or want to
-know which combination of them separates the groups. For a single
-response use
-[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md),
-[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+compares two or more numeric responses jointly across groups. It reports
+a multivariate test of each term, follows it up with one ANOVA per
+response, and describes how the groups separate with a canonical
+discriminant analysis. With covariates it becomes a MANCOVA. Use it when
+each unit has several related measurements and you want one test of
+whether the groups differ on them taken together, or want to know which
+combination of them separates the groups.
+
+For a single response use
+[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md),
+[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
 or, with a covariate,
-[`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md);
-for the same response measured repeatedly on each subject,
+[`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md).
+For the same response measured repeatedly on each subject use
 [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md).
-The [decision
-guide](https://elkronos.github.io/anovakit/articles/choosing.md) has
-more.
+[Choose an
+analysis](https://elkronos.github.io/anovakit/articles/choosing.md) sets
+out the choice.
 
 ## The data
 
@@ -52,15 +53,14 @@ aggregate(. ~ Species, data = iris, FUN = mean)
 #> 3  virginica        6.588       2.974        5.552       2.026
 ```
 
-The four measurements are strongly correlated with each other (bigger
-flowers are bigger in every direction), so four separate ANOVAs would
-test largely the same thing four times. A MANOVA tests them together,
-taking the correlations into account.
+The four measurements are strongly correlated (bigger flowers are bigger
+in every direction), so four separate ANOVAs would test largely the same
+thing four times. A MANOVA tests them together and takes the
+correlations into account.
 
 ## Fitting the model
 
-Responses are named as a character vector, then the grouping
-variable(s).
+Name the responses as a character vector, then the grouping variable(s).
 
 ``` r
 
@@ -91,7 +91,7 @@ Reading the printout:
 - The table is the multivariate test, one row per term.
 - The notes say that Mardia’s tests reject multivariate normality and
   that Box’s M rejects equal covariance matrices. Both are discussed
-  [below](#checking-assumptions).
+  under [Checking assumptions](#checking-assumptions).
 - There are two plots per response (residuals and Q-Q), a marginal-means
   plot and a canonical plot.
 
@@ -99,7 +99,7 @@ Reading the printout:
 means and comparisons for every response, the canonical axes and each
 response’s univariate ANOVA table.
 
-## The multivariate test
+## The omnibus test
 
 ``` r
 
@@ -119,24 +119,24 @@ attr(fit$multivariate, "statistic")
 - `approx_f`, `num_df` and `den_df` are its F approximation, and
   `p_value` the p-value from it.
 
-The tests are computed by
-[`car::Manova()`](https://rdrr.io/pkg/car/man/Anova.html) on the
-multivariate linear model `lm(cbind(<responses>) ~ <groups>)`, kept in
-`$model`. They are Type II by default: each term is adjusted for every
-other term that does not contain it, so the result does not depend on
-the order of `groups`. `type = "III"` fits under sum-to-zero contrasts
-and adjusts each term for all others. With one grouping variable the two
-agree, and both agree with `summary(stats::manova())`, which is
-sequential and so order-dependent once there are several terms.
+[`car::Manova()`](https://rdrr.io/pkg/car/man/Anova.html) computes the
+tests on the multivariate linear model
+`lm(cbind(<responses>) ~ <groups>)`, kept in `$model`. They are Type II
+by default: each term is adjusted for every other term that does not
+contain it, so the result does not depend on the order of `groups`.
+`type = "III"` fits under sum-to-zero contrasts and adjusts each term
+for all others. With one grouping variable the two agree, and both agree
+with `summary(stats::manova())`, which is sequential and so depends on
+the order of the terms once there are several.
 
-Here the species differ overwhelmingly on the four measurements taken
-together (Pillai’s trace = 1.192, p far below any threshold).
+The species differ on the four measurements taken together (Pillai’s
+trace = 1.192, p far below any threshold).
 
-### Which statistic: `test`
+### Choosing the statistic: `test`
 
-There are four standard multivariate statistics, and `test` chooses one:
+`test` chooses one of the four standard multivariate statistics:
 `"Pillai"` (the default), `"Wilks"`, `"Hotelling-Lawley"` or `"Roy"`.
-They are all functions of the same eigenvalues and usually agree, as
+All four are functions of the same eigenvalues and usually agree, as
 here:
 
 ``` r
@@ -154,11 +154,11 @@ do.call(rbind, lapply(tests, function(t) {
 #> 4              Roy 32.19192920 1166.95743      4    145 3.787298e-109
 ```
 
-They differ in how they behave when the assumptions fail and in which
-alternatives they detect best. Pillai’s trace is the most robust to
-unequal covariance matrices and non-normality, which is why it is the
-default. Roy’s largest root uses only the first eigenvalue: it is the
-most powerful when the groups differ along a single direction, but with
+They differ in which alternatives they detect best and in how they
+behave when the assumptions fail. Pillai’s trace is the least affected
+by unequal covariance matrices and non-normality, which is why it is the
+default. Roy’s largest root uses only the first eigenvalue. It has the
+most power when the groups differ along a single direction, but with
 more than one hypothesis degree of freedom its F statistic is only an
 upper bound, so its p-value is a lower bound, and a note says so:
 
@@ -173,11 +173,11 @@ roy$test
 #> [1] "Roy"
 ```
 
-## Univariate follow-ups
+### Univariate follow-ups
 
-A significant multivariate test says the groups differ *somewhere* in
-the four measurements. The follow-ups say where. One ANOVA (of the same
-type as the multivariate test) is fitted per response and kept under
+A significant multivariate test says the groups differ somewhere in the
+four measurements; the follow-ups say where. One ANOVA, of the same type
+as the multivariate test, is fitted per response and kept in
 `$univariate`, each with its own model, table, effect sizes, marginal
 means, emmeans grid and comparisons:
 
@@ -194,8 +194,8 @@ fit$univariate$Sepal.Width$anova
 #> 2 Residuals 16.96200 147        NA           NA
 ```
 
-The univariate p-values are *not* adjusted across responses, and they
-are reported whether or not the multivariate test is significant. When a
+The univariate p-values are not adjusted across responses, and they are
+reported whether or not the multivariate test is significant. When a
 term’s multivariate test is not significant at the 0.05 level, a note
 says that its follow-ups are not protected by it. Treat a small
 univariate p-value there as a lead, not a finding.
@@ -217,7 +217,7 @@ fit$effect_sizes
 
 Species accounts for 94% of the variation in petal length but only 40%
 of the variation in sepal width. No multivariate effect size is
-reported; a common one is Pillai’s trace divided by the smaller of the
+reported. A common one is Pillai’s trace divided by the smaller of the
 number of responses and `df`, here 1.192 / 2 = 0.60.
 
 ## Marginal means and comparisons
@@ -275,18 +275,18 @@ print(fit$posthoc[, c("response", "contrast", "estimate", "conf_low",
 #> 12   3.00e-15
 ```
 
-`p_value` is unadjusted and `p_adjusted` is adjusted by the method in
-the `adjustment` column (Tukey by default). The `adjust` argument
-controls the adjustment *within* each response only: here each
-response’s three comparisons are one family, and nothing is adjusted
-across the four responses. If you report comparisons for all responses,
-say so, or adjust the `p_value` column across the whole table yourself
-with [`p.adjust()`](https://rdrr.io/r/stats/p.adjust.html). The many
-identical `p_adjusted` values of about 3e-15 are not a coincidence:
-Tukey p-values come from
-[`ptukey()`](https://rdrr.io/r/stats/Tukey.html), whose upper tail has
-an absolute error of about 1e-14, so digits below about 1e-10 are noise,
-and `summary(fit)` prints such values as `< 1e-10`.
+`p_value` is unadjusted, and `p_adjusted` is adjusted by the method in
+the `adjustment` column (Tukey by default). `adjust` sets the adjustment
+within each response only: here each response’s three comparisons are
+one family, and nothing is adjusted across the four responses. If you
+report comparisons for all responses, say so, or adjust the `p_value`
+column across the whole table yourself with
+[`p.adjust()`](https://rdrr.io/r/stats/p.adjust.html).
+
+Many `p_adjusted` values are identical, at about 3e-15. Tukey p-values
+come from [`ptukey()`](https://rdrr.io/r/stats/Tukey.html), whose upper
+tail has an absolute error of about 1e-14, so digits below about 1e-10
+are noise; `summary(fit)` prints such values as `< 1e-10`.
 
 Without covariates the marginal means are the raw group means, since
 there is nothing to adjust for. `$emmeans_object` is `NULL` because
@@ -306,8 +306,8 @@ class(fit$univariate$Petal.Width$emmeans_object)
 ## Canonical discriminant analysis
 
 The multivariate test says the species differ; the canonical
-discriminant analysis says *how*. It finds the weighted combinations of
-the responses (the canonical axes) that separate the groups best
+discriminant analysis says how. It finds the weighted combinations of
+the responses (the canonical axes) that best separate the groups
 relative to the variation within groups:
 
 ``` r
@@ -322,16 +322,16 @@ fit$canonical_term
 
 - `eigenvalue` is the ratio of between-group to within-group variation
   along the axis.
-- `canonical_r` is the correlation between the axis and the group
+- `canonical_r` is the correlation between the axis and group
   membership.
 - `prop_variance` is the axis’s share of the term’s between-group
   variation.
 
 There are at most min(number of responses, `df`) axes, here two. The
-first carries 99.1% of the separation: the three species lie almost
-along a single line. To see what the axes mean, read the structure
-coefficients, the pooled within-group correlations between each response
-and each axis:
+first carries 99.1% of the separation, so the three species lie almost
+along a single line. The structure coefficients, the pooled within-group
+correlations between each response and each axis, show what the axes
+mean:
 
 ``` r
 
@@ -344,20 +344,20 @@ fit$assumptions$structure_coefficients
 ```
 
 `Can1` is mainly petal length and petal width; `Can2` is mainly sepal
-width, with petal width. The sign of an axis is arbitrary; the function
-makes each axis’s largest structure coefficient positive so the
-orientation is reproducible.
+width, with petal width. The sign of an axis is arbitrary, so the
+function makes each axis’s largest structure coefficient positive to
+keep the orientation reproducible.
 
 `$canonical_term` names the term the analysis describes, spelled as in
 `$multivariate$term`. With one grouping variable that is the grouping
 term. With several, it is their full interaction when the model contains
-it, and otherwise the first grouping variable; see
-[below](#several-grouping-variables).
+it, and otherwise the first grouping variable (see [Several grouping
+variables](#several-grouping-variables)).
 
 ## Checking assumptions
 
 MANOVA assumes that the residuals are multivariate normal and that every
-group has the same covariance matrix. Iris is the textbook example where
+group has the same covariance matrix. Iris is the textbook case where
 the second assumption fails.
 
 ``` r
@@ -379,13 +379,13 @@ fit$assumptions$cell_counts
 #> 3  virginica 50
 ```
 
-- `mardia` holds Mardia’s tests of multivariate skewness and kurtosis,
-  on the residuals of the multivariate model. Both reject here (skewness
-  p = 0.045, kurtosis p = 0.001). They are asymptotic, and the kurtosis
+- `mardia` holds Mardia’s tests of multivariate skewness and kurtosis on
+  the residuals of the multivariate model. Both reject here (skewness p
+  = 0.045, kurtosis p = 0.001). They are asymptotic, and the kurtosis
   test rejects too often when the sample is small relative to the square
-  of the number of responses. The tests are skipped, with a note, unless
-  the residual degrees of freedom exceed the number of responses by at
-  least 10.
+  of the number of responses. Both are skipped, with a note, unless the
+  residual degrees of freedom exceed the number of responses by at least
+  10.
 - `box_m` is Box’s M test of equal covariance matrices across the cells
   of the grouping variables. It rejects decisively (statistic 140.9 on
   20 df).
@@ -406,27 +406,26 @@ round(vars, 3)
 #> Petal.Width   0.011      0.039     0.075
 ```
 
-Setosa’s petals vary far less than the other two species’: the variance
-of its petal length is 0.030 cm², against 0.221 and 0.305. So what
-should you do? Box’s M is notoriously sensitive to non-normality, and it
-will reject for differences that do not matter in large samples, so
-treat it as a prompt to look at the group covariances, as above, rather
-than as a verdict. What matters for the multivariate test is how the
-covariance difference combines with the group sizes. With equal group
-sizes, as here, Pillai’s trace is robust to unequal covariance matrices;
-with unequal sizes and unequal covariances, the test is liberal when the
-smaller groups have the larger covariances, and Pillai’s trace is still
-the safest choice. The Box’s M note makes the same distinction: it
-checks whether the group sizes are equal and says whether Pillai’s trace
-is the statistic in use (see [What the notes say](#what-the-notes-say)).
-With a separation this strong, no reasonable violation would change the
-conclusion.
+Setosa’s petals vary far less than those of the other two species: the
+variance of its petal length is 0.030 cm², against 0.221 and 0.305.
 
-The [diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-covers the checks across the package. The checks cost time on a large
-data set; `assumptions = FALSE` skips Mardia’s tests and Box’s M,
-leaving only the cell counts and the structure coefficients:
+Box’s M is very sensitive to non-normality and rejects for unimportant
+differences in large samples, so treat it as a prompt to look at the
+group covariances, as above, rather than as a verdict. For the
+multivariate test what matters is how the covariance difference combines
+with the group sizes. With equal group sizes, as here, Pillai’s trace
+holds its error rate under unequal covariance matrices. With unequal
+sizes and unequal covariances the test is liberal when the smaller
+groups have the larger covariances, and Pillai’s trace is still the
+safest choice. The Box’s M note checks whether the group sizes are equal
+and says whether Pillai’s trace is the statistic in use (see [What the
+notes say](#what-the-notes-say)). Here Pillai’s trace is 1.19 out of a
+possible 2, with p far below any threshold, so a somewhat liberal test
+would not change the conclusion.
+
+On a large data set the checks take time. `assumptions = FALSE` skips
+Mardia’s tests and Box’s M, leaving only the cell counts and the
+structure coefficients:
 
 ``` r
 
@@ -438,11 +437,15 @@ quick$notes
 #> character(0)
 ```
 
+The [diagnostics
+guide](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+covers these checks alongside the rest of the package’s.
+
 ## Plots
 
 Each plot is a ggplot2 object in `$plots`, returned by
-`plot(fit, "name")` and modifiable with `+` (see [Plots and visual
-customisation](https://elkronos.github.io/anovakit/articles/visuals.md)).
+`plot(fit, "name")` and modifiable with `+` (see [Plots and
+themes](https://elkronos.github.io/anovakit/articles/visuals.md)).
 
 ``` r
 
@@ -467,10 +470,9 @@ plot(fit, "residuals_Petal.Length")
 ![](manova_files/figure-html/plot-residuals-1.png)
 
 The fitted values of a one-way model are the group means, so the points
-fall in three vertical strips, one per species. What to look for:
-similar spread in each strip. Here the setosa strip (fitted value near
-1.5 cm) is far narrower than the other two, the unequal variances seen
-above.
+fall in three vertical strips, one per species. Look for similar spread
+in each strip. Here the setosa strip (fitted value near 1.5 cm) is far
+narrower than the other two, the unequal variances seen above.
 
 ``` r
 
@@ -479,10 +481,10 @@ plot(fit, "qq_Petal.Length")
 
 ![](manova_files/figure-html/plot-qq-1.png)
 
-What to look for: points along the dashed line. These residuals follow
-it closely in the middle, and both tails are a little longer than a
-normal distribution’s (points above the line at the top, below it at the
-bottom). The `residuals_Sepal.Length`, `qq_Sepal.Length` and so on are
+Look for points along the dashed line. These residuals follow it closely
+in the middle, and both tails are a little longer than a normal
+distribution’s (points above the line at the top, below it at the
+bottom). `residuals_Sepal.Length`, `qq_Sepal.Length` and the rest are
 read the same way.
 
 ### Marginal means
@@ -494,10 +496,9 @@ plot(fit, "emmeans")
 
 ![](manova_files/figure-html/plot-emmeans-1.png)
 
-One panel per response, each on its own scale, with the marginal means
-and their confidence intervals. The panels show at a glance that setosa
-is the odd one out, and that sepal width is the only measurement on
-which it is the largest.
+One panel per response, each on its own scale, shows the marginal means
+and their confidence intervals. Setosa is the odd one out, and sepal
+width is the only measurement on which it is the largest.
 
 ### Canonical plot
 
@@ -508,24 +509,24 @@ plot(fit, "canonical")
 
 ![](manova_files/figure-html/plot-canonical-1.png)
 
-Every flower’s scores on the first two canonical axes, with crosses at
+Each flower’s scores on the first two canonical axes, with crosses at
 the species centroids. The axes are scaled to unit pooled within-group
 variance, so the distance between centroids is in within-group standard
-deviations. What to look for: how far apart the groups are along each
-axis. Here the species are spread along `Can1` with setosa well clear of
-the other two, while `Can2` separates them far less, as its eigenvalue
-says. With only one estimable axis the plot becomes a box plot of `Can1`
-by group, subtitled “Only one discriminant axis is estimable”, as in the
-examples below.
+deviations. Look at how far apart the groups are along each axis. Here
+the species are spread along `Can1`, with setosa well clear of the other
+two, while `Can2` separates them far less, as its eigenvalue says. With
+only one estimable axis the plot becomes a box plot of `Can1` by group,
+subtitled “Only one discriminant axis is estimable”, as in the examples
+below.
 
-## MANCOVA: adding covariates
+## Covariates: MANCOVA
 
 `covariates` turns the analysis into a MANCOVA.
 [`MASS::survey`](https://rdrr.io/pkg/MASS/man/survey.html) records the
-span of the writing hand (`Wr.Hnd`) and the other hand (`NW.Hnd`), in
+span of the writing hand (`Wr.Hnd`) and of the other hand (`NW.Hnd`), in
 centimetres, and the height of 237 students. Men have larger hands, but
-they are also taller; adjusting for height asks whether the hands differ
-between men and women *of the same height*.
+they are also taller. Adjusting for height asks whether the hands of men
+and women of the same height differ.
 
 ``` r
 
@@ -543,12 +544,12 @@ mc$n_removed
 (the notes say which columns). The multivariate table now has a row for
 the covariate as well as for `Sex`.
 
-### Centring and adjusted means
+### Centring and marginal means
 
 Covariates are mean-centred before fitting. Centring changes no test
-here; it keeps a covariate with a large offset and a small spread from
-being mistaken for a constant, and it means the adjusted means are read
-at the covariate means, which are kept in `$covariate_means`:
+here. It keeps a covariate with a large offset and a small spread from
+being mistaken for a constant, and it puts the marginal means at the
+covariate means, which are kept in `$covariate_means`:
 
 ``` r
 
@@ -567,10 +568,9 @@ aggregate(cbind(Wr.Hnd, NW.Hnd) ~ Sex, data = mc$data_used, FUN = mean)
 #> 2   Male 19.89048 19.89333
 ```
 
-The raw difference in writing-hand span between the sexes, on these same
-rows, is 2.33 cm; at the mean height of 172.4 cm it is 1.45 cm. About
-38% of the raw difference goes with height, and a clear difference
-remains.
+On these rows the raw difference in writing-hand span between the sexes
+is 2.33 cm; at the mean height of 172.4 cm it is 1.45 cm. About 38% of
+the raw difference goes with height, and a clear difference remains.
 
 ### Homogeneity of regression slopes
 
@@ -589,15 +589,17 @@ mc$slopes_test
 ```
 
 The slopes are consistent with being equal here (p = 0.63). When the
-test rejects at the 0.05 level a note says so: the common-slope adjusted
-means then describe the groups at the covariate mean only, and the
-advice is to model the interaction yourself or analyse each response
-with
+test rejects at the 0.05 level, a note says so. The common-slope
+marginal means then describe the groups at the covariate mean only, and
+the note advises modelling the interaction yourself or analysing each
+response with
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md),
 which chooses between the two models and reports per-group slopes.
 
+### Assumption checks and the canonical analysis with covariates
+
 With covariates, the assumption checks and the canonical analysis work
-in the space the multivariate test operates in: Mardia’s tests use the
+in the space the multivariate test operates in. Mardia’s tests use the
 residuals of the multivariate model, Box’s M compares the covariance
 matrices of the responses with the covariate effects removed, and the
 canonical scores have the covariate effects removed. A note records
@@ -614,10 +616,9 @@ mc$notes
 ```
 
 `Sex` has one degree of freedom, so there is one canonical axis, and the
-canonical plot shows it as a box plot by group, subtitled “Only one
-discriminant axis is estimable”. Because the model has two terms, the
-subtitle also names the term the axis describes and says that the other
-terms’ effects (here, height’s) were removed:
+canonical plot shows it as a box plot by group. Because the model has
+two terms, the subtitle also names the term the axis describes and says
+that the other terms’ effects (here, height’s) were removed:
 
 ``` r
 
@@ -655,8 +656,8 @@ cr$assumptions$cell_counts
 
 `interaction` is `FALSE` by default in
 [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md),
-so the grouping variables enter additively unless you ask; `TRUE` fits
-the full factorial and a whole number keeps interactions up to that
+so the grouping variables enter additively unless you ask. `TRUE` fits
+the full factorial, and a whole number keeps interactions up to that
 order. Here the colour-by-sex interaction is clear: the difference
 between the sexes in these measurements is not the same in the two
 colour forms.
@@ -672,10 +673,10 @@ plot(cr, "emmeans")
 
 ![](manova_files/figure-html/crabs-emmeans-1.png)
 
-The canonical analysis describes a single term, which `$canonical_term`
-names. With the full interaction in the model it is that interaction,
-and the scores have the fitted effects of the main effects removed, so
-the plot shows the interaction alone:
+The canonical analysis describes a single term, named in
+`$canonical_term`. With the full interaction in the model it is that
+interaction, and the scores have the fitted main effects removed, so the
+plot shows the interaction alone:
 
 ``` r
 
@@ -690,13 +691,15 @@ plot(cr, "canonical")
 ![](manova_files/figure-html/crabs-canonical-1.png)
 
 `sp:sex` has one degree of freedom, so there is one axis, and the
-subtitle says so. With the main effects removed, the scores show the
-interaction contrast itself: blue females and orange males on one side,
-orange females and blue males on the other. Without the interaction, the
-analysis describes the main effect of the first grouping variable; list
-another variable first in `groups` to describe it instead. In an
-additive model, `$emmeans` and `$posthoc` are reported for each factor
-separately, averaged over the others, with a `term` column:
+subtitle says so. The scores show the interaction contrast itself: blue
+females and orange males on one side, orange females and blue males on
+the other.
+
+Without the interaction, the analysis describes the main effect of the
+first grouping variable; list another variable first in `groups` to
+describe that one instead. In an additive model, `$emmeans` and
+`$posthoc` are reported for each factor separately, averaged over the
+others, with a `term` column:
 
 ``` r
 
@@ -711,29 +714,33 @@ head(cr_add$emmeans[, c("response", "term", "sex", "sp", "estimate")], 4)
 #> 4       FL   sp <NA>    O   17.110
 ```
 
-## Options worth knowing
+## Options
 
-- `test` chooses the multivariate statistic
-  ([above](#which-statistic-test)).
+- `test` chooses the multivariate statistic (see [Choosing the
+  statistic](#choosing-the-statistic-test)).
 - `type = "III"` gives Type III tests, for the multivariate table and
-  the univariate follow-ups alike. If the model has aliased coefficients
-  (an empty cell), Type III is not defined, and Type II is used with a
-  note. Covariates that are constant, determined by the grouping
-  variables or collinear with each other are refused with an error
-  before any model is fitted.
-- `interaction` chooses how several grouping variables combine
-  ([above](#several-grouping-variables)).
+  the univariate follow-ups alike. Type III is not defined when the
+  model has aliased coefficients (an empty cell), and Type II is then
+  used, with a note.
+- `interaction` sets how several grouping variables combine (see
+  [Several grouping variables](#several-grouping-variables)).
+- `covariates` adds covariates (see [Covariates:
+  MANCOVA](#covariates-mancova)). Covariates that are constant,
+  determined by the grouping variables or collinear with each other are
+  refused with an error before any model is fitted.
 - `adjust` sets the adjustment of the comparisons within each response
   (default `"tukey"`); `posthoc = FALSE` skips them.
 - `conf_level` sets the level of every interval.
-- `assumptions = FALSE` skips Mardia’s tests and Box’s M
-  ([above](#checking-assumptions)); the slopes test is always computed
-  when there are covariates.
+- `assumptions = FALSE` skips Mardia’s tests and Box’s M (see [Checking
+  assumptions](#checking-assumptions)). The slopes test is always
+  computed when there are covariates.
 - `plots = FALSE` skips building the plots, which saves time: there are
   two per response.
-- A single response is accepted, and falls back to a univariate analysis
-  with a note; there is then no multivariate test and no canonical
-  analysis.
+
+A single response is accepted and gives a univariate analysis, with a
+note; there is then no multivariate test and no canonical analysis. A
+response that the model fits exactly, such as a constant one, leaves no
+residual variation and stops the function with an error.
 
 ## What the notes say
 
@@ -744,38 +751,51 @@ fit$notes
 #> [2] "Box's M rejects equality of the group covariance matrices. The test is very sensitive to non-normality, so inspect the group covariances before acting on it. With equal group sizes the multivariate tests are fairly robust to unequal covariances, Pillai's trace most of all (it is the statistic used here)."
 ```
 
-1.  Mardia’s tests reject multivariate normality, and the note says that
-    the table already uses Pillai’s trace, the most robust of the four
-    statistics to this.
-2.  Box’s M rejects equal covariance matrices. The note reminds you that
-    the test is very sensitive to non-normality and asks you to inspect
-    the group covariances. Because the group sizes are equal, it adds
-    that the multivariate tests are then fairly robust to unequal
-    covariances, Pillai’s trace most of all, and that Pillai’s trace is
-    the statistic used here.
+1.  Mardia’s tests reject multivariate normality. The note says that the
+    table already uses Pillai’s trace, the statistic least affected by
+    this.
+2.  Box’s M rejects equal covariance matrices. The note says the test is
+    very sensitive to non-normality and asks you to inspect the group
+    covariances. Because the group sizes are equal, it adds that the
+    multivariate tests then tolerate unequal covariances fairly well,
+    Pillai’s trace most of all, and that Pillai’s trace is the statistic
+    used here.
 
 With another `test`, both notes recommend `test = "Pillai"` instead, as
-the `roy` fit [above](#which-statistic-test) shows.
+the `roy` fit in [Choosing the statistic](#choosing-the-statistic-test)
+shows.
 
 Other notes you may see: dropped rows, centred covariates, a rejected
 slopes test, the Roy bound, which term the canonical analysis describes,
 a term whose multivariate test is not significant (so its follow-ups are
 unprotected), aliased coefficients, skipped checks, and anything car or
-emmeans said while the models were being fitted.
+emmeans reported while the models were being fitted.
 
 ## Reporting the result
 
 > A one-way MANOVA compared the three iris species on sepal length,
 > sepal width, petal length and petal width. Box’s M test rejected
 > equality of the covariance matrices (χ²(20) = 140.9, p \< 0.001), so
-> Pillai’s trace, which is robust to this with equal group sizes, was
-> used. The species differed on the measurements jointly, Pillai’s trace
-> = 1.19, F(8, 290) = 53.5, p \< 0.001. The first canonical axis
-> accounted for 99.1% of the separation (canonical r = 0.98) and was
-> defined mainly by the petal measurements. Univariate follow-up ANOVAs
-> showed species differences on every measurement, from F(2, 147) = 49.2
-> for sepal width (partial η² = 0.40) to F(2, 147) = 1180 for petal
-> length (partial η² = 0.94), all p \< 0.001.
+> Pillai’s trace, which tolerates this with equal group sizes, was used.
+> The species differed on the measurements jointly, Pillai’s trace =
+> 1.19, F(8, 290) = 53.5, p \< 0.001. The first canonical axis accounted
+> for 99.1% of the separation (canonical r = 0.98) and was defined
+> mainly by the petal measurements. Univariate follow-up ANOVAs showed
+> species differences on every measurement, from F(2, 147) = 49.2 for
+> sepal width (partial η² = 0.40) to F(2, 147) = 1180 for petal length
+> (partial η² = 0.94), all p \< 0.001.
+
+Report the statistic you used, the F approximation and its degrees of
+freedom, and say that the univariate follow-ups and their comparisons
+were not adjusted across responses.
+
+## References
+
+Box, G. E. P. (1949). A general distribution theory for a class of
+likelihood criteria. *Biometrika*, 36(3/4), 317-346.
+
+Mardia, K. V. (1970). Measures of multivariate skewness and kurtosis
+with applications. *Biometrika*, 57(3), 519-530.
 
 ## See also
 
@@ -784,22 +804,16 @@ emmeans said while the models were being fitted.
 - [Working with
   results](https://elkronos.github.io/anovakit/articles/results.md) for
   the `anovakit_fit` object and the emmeans grids.
-- [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
-  ([article](https://elkronos.github.io/anovakit/articles/ancova.md))
+- [ANCOVA:
+  `anova_ancova()`](https://elkronos.github.io/anovakit/articles/ancova.md)
   for one response with covariates, including the choice between common
   and separate slopes.
-- [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-  ([article](https://elkronos.github.io/anovakit/articles/glm.md)) for
-  one response in any family.
-- [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
-  ([article](https://elkronos.github.io/anovakit/articles/repeated-measures.md))
+- [Any GLM family:
+  `anova_glm()`](https://elkronos.github.io/anovakit/articles/glm.md)
+  for one response in any family.
+- [Repeated measures:
+  `anova_rm()`](https://elkronos.github.io/anovakit/articles/repeated-measures.md)
   when the “responses” are the same measurement taken repeatedly.
 - [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-  and [Plots and visual
-  customisation](https://elkronos.github.io/anovakit/articles/visuals.md).
-
-Box, G. E. P. (1949). A general distribution theory for a class of
-likelihood criteria. *Biometrika*, 36(3/4), 317-346.
-
-Mardia, K. V. (1970). Measures of multivariate skewness and kurtosis
-with applications. *Biometrika*, 57(3), 519-530.
+  and [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md).

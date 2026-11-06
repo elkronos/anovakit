@@ -7,21 +7,25 @@ library(anovakit)
 
 [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
 fits a repeated measures ANOVA, in which every subject is measured in
-every cell of one or more *within-subject* factors, optionally with
-*between-subject* factors that split the subjects into groups. It takes
-data in long format (one row per subject per cell), fits the model with
-[`afex::aov_ez()`](https://rdrr.io/pkg/afex/man/aov_car.html) and so
-needs the afex package. If each subject contributes a single
-observation, the groups are independent and
+every cell of one or more within-subject factors, optionally with
+between-subject factors that split the subjects into groups. It takes
+data in long format (one row per subject per cell) and fits the model
+with [`afex::aov_ez()`](https://rdrr.io/pkg/afex/man/aov_car.html), so
+it needs the afex package.
+
+If each subject contributes a single observation, the groups are
+independent: use
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+([walkthrough](https://elkronos.github.io/anovakit/articles/welch.md))
 or
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-is the right tool; for a before-and-after design where the question is
-about the “after”,
+([walkthrough](https://elkronos.github.io/anovakit/articles/glm.md)).
+For a before-and-after design where the question is about the “after”,
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
-with the baseline as a covariate is often better. The [decision
-guide](https://elkronos.github.io/anovakit/articles/choosing.md) has
-more.
+([walkthrough](https://elkronos.github.io/anovakit/articles/ancova.md))
+with the baseline as a covariate is often better. [Choose an
+analysis](https://elkronos.github.io/anovakit/articles/choosing.md) sets
+out the choice.
 
 ## The data
 
@@ -29,7 +33,7 @@ more.
 long form of a contrived data set from O’Brien and Kaiser (1985): 16
 subjects in three treatments (`control`, `A`, `B`), of both genders,
 each measured at a pre-test, a post-test and a follow-up (`phase`), five
-times an hour apart within each session (`hour`). So there are two
+times an hour apart within each session (`hour`). That gives two
 between-subject factors and two within-subject factors, 3 x 5 = 15 cells
 per subject and 16 x 15 = 240 rows. The phases are stored in
 alphabetical order; putting them in time order makes every table easier
@@ -72,7 +76,7 @@ round(with(obk, tapply(value, list(treatment, phase), mean)), 2)
 
 The control group barely changes across the phases, while both
 treatments rise after the pre-test. A repeated measures ANOVA tests
-effects like that against the variation *within* subjects, which is
+effects like that against the variation within subjects, which is
 usually much smaller than the variation between them.
 
 ## Fitting the model
@@ -141,7 +145,7 @@ Reading the printout:
   corrected (the default `correction = "GG"`).
 - `Observations used: 240`: every subject has every cell, so nothing was
   removed. An incomplete subject would be dropped and named in the notes
-  ([below](#incomplete-designs)).
+  ([Incomplete subjects](#incomplete-subjects)).
 - The table has a row for every term of the full factorial model, 15 in
   all.
 - Two notes: which terms failed Mauchly’s test, and a warning that the
@@ -217,12 +221,11 @@ attr(fit$anova, "correction")
 
 ## Sphericity
 
-A within-subject F test assumes *sphericity*: that the differences
-between every pair of levels of a within-subject factor have the same
-variance. When the assumption fails the F test rejects too often. The
-usual remedy is to shrink both degrees of freedom by an estimate of
-epsilon, which is 1 under sphericity and as low as 1/(k - 1) for a
-factor with k levels.
+A within-subject F test assumes sphericity: that the differences between
+every pair of levels of a within-subject factor have the same variance.
+When the assumption fails the F test rejects too often. The usual remedy
+is to shrink both degrees of freedom by an estimate of epsilon, which is
+1 under sphericity and as low as 1/(k - 1) for a factor with k levels.
 
 ``` r
 
@@ -256,8 +259,8 @@ print(fit$sphericity, digits = 3)
 ```
 
 There is one row per within-subject term with more than one degree of
-freedom (a two-level factor has nothing to test; see
-[below](#a-within-only-design)). Terms that share the same
+freedom (a two-level factor has nothing to test; see [A within-only
+design](#a-within-only-design)). Terms that share the same
 within-subject factors share the same error matrix, so `treatment:hour`,
 `gender:hour` and `hour` have the same Mauchly’s test and the same
 epsilons.
@@ -268,8 +271,16 @@ epsilons.
   `hf_epsilon` the Huynh-Feldt estimate with Lecoutre’s correction
   (0.559), capped at 1. `hf_epsilon_raw` is the uncapped value; the two
   differ only when the estimate exceeds 1, and a note then says so.
-- `p_gg` and `p_hf` are each term’s p-value under each correction, so
-  you can see both whichever one `$anova` uses.
+- `p_gg` and `p_hf` are each term’s p-value under each correction,
+  whichever one `$anova` uses.
+
+The same table is in `fit$assumptions$sphericity`. When there are fewer
+subjects than a term has contrasts, Mauchly’s test is undefined; the
+epsilons are then computed directly and a note says so. [When sphericity
+fails badly](#when-sphericity-fails-badly) shows a factor with an
+epsilon close to its minimum.
+
+### Choosing the correction
 
 The `correction` argument chooses what `$anova` reports: `"GG"` (the
 default), `"HF"` or `"none"`.
@@ -295,18 +306,13 @@ none$notes[1]
 ```
 
 Greenhouse-Geisser is the conservative choice and Huynh-Feldt the less
-conservative one; with no correction the p-values for `hour` are the
+conservative one. With no correction the p-values for `hour` are the
 smallest of the three, and the note warns that they may be too small. A
 common rule is to use Huynh-Feldt when the Greenhouse-Geisser epsilon is
-above about 0.75 and Greenhouse-Geisser otherwise, but deciding in
-advance, rather than after seeing the p-values, matters more than which
-you pick. Mauchly’s test has little power in small samples, so a
-non-significant result is weak reassurance; correcting by default costs
-little.
-
-The same table is in `fit$assumptions$sphericity`. When there are fewer
-subjects than a term has contrasts, Mauchly’s test is undefined; the
-epsilons are then computed directly and a note says so.
+above about 0.75 and Greenhouse-Geisser otherwise. Whichever you pick,
+decide in advance rather than after seeing the p-values. Mauchly’s test
+has little power in small samples, so a non-significant result is weak
+reassurance; correcting by default costs little.
 
 ## Effect sizes
 
@@ -337,11 +343,11 @@ term has its own, relatively small, error term, so partial eta squared
 for those terms is large and not comparable with the same effect
 measured in a between-subjects design. `generalised_eta_sq` (Olejnik and
 Algina, 2003) puts the subject variation back into the denominator, so
-it is comparable across designs, and it is the measure to report when
-you want to compare with other studies. Neither has an interval.
+it is comparable across designs; report it when you want to compare with
+other studies. Neither has an interval.
 
-Generalised eta squared depends on which factors were *manipulated* and
-which were merely *observed*. By default every factor is treated as
+Generalised eta squared depends on which factors were manipulated and
+which were only observed. By default every factor is treated as
 manipulated. Gender was not assigned by the experimenter, so it belongs
 in `observed` (passed on to afex):
 
@@ -393,17 +399,18 @@ attr(fit$emmeans, "emmeans_model")
 #> [1] "multivariate"
 ```
 
-They come from afex’s *multivariate* model, so each cell’s standard
-error and degrees of freedom come from that cell’s own variance, not
-from a pooled error term (`df` is the number of subjects minus the
-number of between-subject cells, 10). The `emmeans_model` attribute
-records this.
+They come from afex’s multivariate model, so each cell’s standard error
+and degrees of freedom come from that cell’s own variance, not from a
+pooled error term (`df` is the number of subjects minus the number of
+between-subject cells, 10). The `emmeans_model` attribute records this.
+
+### Choosing the factors with `emm_specs`
 
 The second note of the fit warns that averaging over `treatment` is
 risky here, because `treatment:phase` is significant: the average change
 across phases hides the fact that the control group does not change.
-`emm_specs` chooses the factors the means are computed over. Asking for
-phase by treatment, averaged over hour and gender:
+`emm_specs` chooses the factors the marginal means are computed over.
+Asking for phase by treatment, averaged over hour and gender:
 
 ``` r
 
@@ -447,17 +454,17 @@ which is conservative when you only care about three of them). `adjust`
 chooses another method for the whole family. If you planned only a few
 comparisons, take their unadjusted `p_value`s and adjust them among
 themselves with [`p.adjust()`](https://rdrr.io/r/stats/p.adjust.html).
-The note confirms which factors were averaged over.
+The note records which factors were averaged over.
 
-When you need a contrast the wrapper does not compute – say, the change
-from pre to follow-up compared between treatments – `$emmeans_object` is
+For a contrast the wrapper does not compute, such as the change from
+pre-test to follow-up compared between treatments, `$emmeans_object` is
 the emmeans grid with your factor names and labels, ready for
 [`emmeans::contrast()`](https://rvlenth.github.io/emmeans/reference/contrast.html).
 
 ## Checking assumptions
 
-Two assumptions matter: sphericity, covered above, and normality of the
-within-subject errors.
+The within-subject tests rest on two assumptions: sphericity, covered
+[above](#sphericity), and normality of the within-subject errors.
 
 ``` r
 
@@ -486,11 +493,13 @@ are removed. Those residuals are `fit$residuals`, one per row of
 `$data_used` and in the same order, and Shapiro-Wilk is run on them
 separately for each within-subject cell. Pooling them would mix cells of
 different spread, which can fail a normality test even when every cell
-is normal. Here no cell rejects at the 5% level; the smallest p-value is
-0.051, in the pre : 5 cell. With 15 tests, one or two small p-values are
-expected by chance, so look for a pattern rather than a single cell. A
-cell that cannot be tested (fewer than three subjects, or no variation)
-gets an `NA` p-value and the reason in the `note` column.
+is normal.
+
+Here no cell rejects at the 5% level; the smallest p-value is 0.051, in
+the cell for phase pre, hour 5. With 15 tests, one or two small p-values
+are expected by chance, so look for a pattern rather than a single cell.
+A cell that cannot be tested (fewer than three subjects, or no
+variation) gets an `NA` p-value and the reason in the `note` column.
 
 ``` r
 
@@ -505,15 +514,15 @@ head(cbind(fit$data_used, residual = round(fit$residuals, 3)))
 ```
 
 The normality of the subject means, which the between-subject tests rely
-on, is not tested. The [diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+on, is not tested.
+[Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
 covers the checks across the package.
 
 ## Plots
 
 Each plot is a ggplot2 object; `plot(fit, "name")` returns it for you to
-print or modify (see [Plots and visual
-customisation](https://elkronos.github.io/anovakit/articles/visuals.md)).
+print or modify (see [Plots and
+themes](https://elkronos.github.io/anovakit/articles/visuals.md)).
 
 ### Residuals against fitted values
 
@@ -525,10 +534,10 @@ plot(fit, "residuals")
 ![](repeated-measures_files/figure-html/plot-residuals-1.png)
 
 The residuals and fitted values are the within-subject ones described
-above (a fitted value is the observed value minus its residual). What to
-look for: the same even band as in any residual plot, with no funnel.
-The values in this data set are whole numbers on a short scale, which is
-why the points line up along diagonal stripes.
+above (a fitted value is the observed value minus its residual). Look
+for an even band with no funnel. The values in this data set are whole
+numbers on a short scale, which is why the points line up along diagonal
+stripes.
 
 ### Normal Q-Q plot
 
@@ -539,14 +548,14 @@ plot(fit, "qq")
 
 ![](repeated-measures_files/figure-html/plot-qq-1.png)
 
-The residuals here are standardised within each within-subject cell, as
-they are tested in `$assumptions$normality`, so cells with different
-spreads are put on the same footing. What to look for: points along the
-dashed line, with no systematic curve at the ends. Here both ends bend
-in towards the middle: the residuals have lighter tails than a normal
-distribution, which is common for whole-number scores on a short scale
-and is generally harmless for the F tests. Heavy tails, bending away
-from the line, would be the worrying pattern.
+The residuals are standardised within each within-subject cell, as they
+are tested in `$assumptions$normality`, so cells with different spreads
+are put on the same footing. Look for points along the dashed line, with
+no systematic curve at the ends. Here both ends bend in towards the
+middle: the residuals have lighter tails than a normal distribution,
+which is common for whole-number scores on a short scale and is
+generally harmless for the F tests. Heavy tails, bending away from the
+line, would be the pattern to worry about.
 
 ### Residuals in row order
 
@@ -558,12 +567,12 @@ plot(fit, "index")
 ![](repeated-measures_files/figure-html/plot-index-1.png)
 
 The residuals in the row order of `$data_used`, which is the order the
-rows came in (here, 15 consecutive rows per subject). What to look for:
-no trends, and no runs of residuals on the same side of zero. A drift
-within each block of rows would suggest practice or fatigue effects that
-the model does not capture; if your data are sorted by time of testing,
-this is where a drift over the course of the study would show. Nothing
-of the kind is visible here.
+rows came in (here, 15 consecutive rows per subject). A trend, or a run
+of residuals on one side of zero, would point to structure the model
+misses. A drift within each block of rows would suggest practice or
+fatigue effects that the model does not capture; if your data are sorted
+by time of testing, a drift over the course of the study would show
+here. There is none in these data.
 
 ### Marginal means
 
@@ -588,7 +597,7 @@ and the third hour is the highest in every phase. The second, phase by
 treatment, shows the control group staying flat while `A` and `B` rise,
 which is the `treatment:phase` interaction.
 
-## Incomplete designs
+## Incomplete subjects
 
 A repeated measures ANOVA needs every subject in every within-subject
 cell.
@@ -625,14 +634,14 @@ chick$notes[1]
 #> [1] "5 subject(s) were removed because they are missing at least one within-subject cell: 18, 16, 15, 8, 44. A repeated measures ANOVA requires a complete design."
 ```
 
-Five chicks without a full set of weighings were removed before fitting,
-and they are listed in `$subjects_dropped` in the order of the subject
+Five chicks without a full set of weighings were removed before fitting.
+They are listed in `$subjects_dropped` in the order of the subject
 column’s levels (`Chick` is an ordered factor, which is why they are not
 in numeric order). `$n_removed` counts every input row that is not in
 `$data_used`, and three components break it down by cause: rows with a
 missing value, rows belonging to incomplete subjects, and rows combined
-by aggregation (next section). Here all 38 removed rows belong to
-incomplete subjects.
+by aggregation ([next section](#several-rows-per-cell)). Here all 38
+removed rows belong to incomplete subjects.
 
 A missing value costs more than its own row. Setting one weight to `NA`:
 
@@ -659,9 +668,11 @@ lme4 or afex’s `mixed()`) can use incomplete subjects;
 [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
 cannot.
 
-These growth data also show how badly sphericity can fail: weights
-spread out as chicks grow, so the variance of the differences grows with
-the gap between days.
+## When sphericity fails badly
+
+The `chick` fit also shows how badly sphericity can fail. Weights spread
+out as chicks grow, so the variance of the differences grows with the
+gap between days.
 
 ``` r
 
@@ -676,36 +687,7 @@ A Greenhouse-Geisser epsilon of 0.11 is close to its minimum of 1/11 for
 a 12-level factor: the corrected test has barely more degrees of freedom
 than a single comparison.
 
-### Internal names
-
-afex builds a model formula from column names and names its wide-format
-columns after the within-subject levels, so a column called `subject id`
-or levels such as `0, 2, 4` would be mangled.
-[`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
-therefore gives afex internal names and labels, and maps every table and
-plot back to yours. `$model` is the afex fit itself and keeps the
-internal names; `$internal_names` gives the correspondence:
-
-``` r
-
-chick$internal_names
-#>       role   name internal
-#> 1 response weight        Y
-#> 2  subject  Chick       ID
-#> 3   within   Time       W1
-#> 4  between   Diet       B1
-head(chick$model$data$long, 3)
-#>    ID B1  W1  Y
-#> 1 S01 L1 L01 41
-#> 2 S01 L1 L02 48
-#> 3 S01 L1 L03 53
-```
-
-The day levels 0, 2, 4, … are `L01`, `L02`, `L03`, … in `$model`, in
-level order. You only need this table if you work with `$model`
-directly.
-
-## Repeated rows: `fun_aggregate`
+## Several rows per cell
 
 Sometimes a subject has several rows in the same cell: several trials
 per condition, or, if you leave a factor out of the analysis, the rows
@@ -748,9 +730,9 @@ all.equal(by_phase_md$data_used$value, by_phase$data_used$value)
 
 In these contrived data the median and the mean of each subject’s five
 hourly values happen to coincide, so the result is the same; the note
-records the function either way. Aggregation is a convenience: if the
-repeated rows are a design factor, like `hour`, it is usually better to
-keep it in `within`.
+records the function either way. Aggregation is a convenience. If the
+repeated rows are a design factor, like `hour`, keep it in `within`
+instead.
 
 ## A within-only design
 
@@ -783,10 +765,10 @@ sl
 With a two-level factor there is only one difference per subject, so
 sphericity holds automatically: `$sphericity` is `NULL` and the note
 says why. The heading of the table says “no sphericity correction”, and
-`attr(sl$anova, "correction")` is “none”, even though `correction` was
-left at its default: there is nothing to correct, and the degrees of
-freedom are the uncorrected 1 and 9. The ANOVA is then the paired t-test
-in another form, with F = t²:
+`attr(sl$anova, "correction")` is “none”, although `correction` was left
+at its default. There is nothing to correct, and the degrees of freedom
+are the uncorrected 1 and 9. The ANOVA is then the paired t-test in
+another form, with F = t²:
 
 ``` r
 
@@ -814,31 +796,42 @@ shapiro.test(d)$p.value
 #> [1] 0.03334161
 ```
 
-Both rows give p = 0.033: the differences are not convincingly normal,
+Both rows give p = 0.033. The differences are not convincingly normal,
 because one patient’s difference (4.6 hours) is far larger than the
 others (without that patient, Shapiro-Wilk gives p = 0.77). Ten subjects
 is too few to lean on the test, but it is a reason to check the result
 with a nonparametric paired test.
 
-## Options worth knowing
+## Options
 
-- `correction` (`"GG"`, `"HF"`, `"none"`), shown [above](#sphericity).
-- `emm_specs`, shown [above](#marginal-means-and-comparisons). When it
-  leaves out a factor of the model, the means are averaged over it and a
-  note says so.
-- `adjust` sets the multiplicity adjustment for `$posthoc`: `"tukey"`
-  (the default), `"holm"`, `"bonferroni"`, `"BH"` and others;
-  `posthoc = FALSE` skips the comparisons.
-- `conf_level` sets the level of every interval.
-- A few arguments of
-  [`afex::aov_ez()`](https://rdrr.io/pkg/afex/man/aov_car.html) pass
-  through `...`: `observed` (above), `fun_aggregate` (above), `type = 2`
-  for Type II sums of squares, and
-  `anova_table = list(p_adjust_method = "holm")` to adjust the p-values
-  of `$anova` across its terms. Anything else is an error rather than
-  silently ignored. `covariate` is refused:
-  [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
-  does not fit covariates.
+`correction` (`"GG"`, `"HF"` or `"none"`) is compared under [Choosing
+the correction](#choosing-the-correction), and `emm_specs` under
+[Choosing the factors](#choosing-the-factors-with-emm_specs). `adjust`
+sets the multiplicity adjustment for `$posthoc`: `"tukey"` (the
+default), `"holm"`, `"bonferroni"`, `"BH"` and the others listed on
+[`?anova_rm`](https://elkronos.github.io/anovakit/reference/anova_rm.md).
+`posthoc = FALSE` skips the comparisons, and a note records it.
+`conf_level` sets the level of every interval. `factorize = TRUE` (the
+default) converts a response stored as a factor or as text to numbers
+through its labels, so a factor with levels 11, 17, 21 becomes 11, 17,
+21 rather than 1, 2, 3; a note records the conversion. With
+`factorize = FALSE` a non-numeric response is an error.
+
+### Arguments passed to afex
+
+Four arguments of
+[`afex::aov_ez()`](https://rdrr.io/pkg/afex/man/aov_car.html) pass
+through `...`: `observed` ([Effect sizes](#effect-sizes)),
+`fun_aggregate` ([Several rows per cell](#several-rows-per-cell)),
+`type = 2` for Type II sums of squares, and
+`anova_table = list(p_adjust_method = "holm")` to adjust the p-values of
+`$anova` across its terms. Anything else is an error rather than
+silently ignored. `covariate` is refused, because
+[`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
+does not fit covariates. `transformation` is refused too: transform the
+response column before calling
+[`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md),
+so that `$data_used` and the marginal means are on the analysed scale.
 
 ``` r
 
@@ -858,10 +851,34 @@ treatment-by-gender cell), so Type II and Type III tests differ for most
 terms. Only the terms that contain both between-subject factors, such as
 `treatment:gender`, are the same under both.
 
-- `factorize = TRUE` (the default) converts a response stored as a
-  factor or as text to numbers *through its labels*, so a factor with
-  levels 11, 17, 21 becomes 11, 17, 21 rather than 1, 2, 3; a note
-  records the conversion.
+### Internal names and `$model`
+
+afex builds a model formula from column names and names its wide-format
+columns after the within-subject levels, so a column called `subject id`
+or levels such as `0, 2, 4` would be mangled.
+[`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
+therefore gives afex internal names and labels, and maps every table and
+plot back to yours. `$model` is the afex fit itself and keeps the
+internal names; `$internal_names` gives the correspondence:
+
+``` r
+
+chick$internal_names
+#>       role   name internal
+#> 1 response weight        Y
+#> 2  subject  Chick       ID
+#> 3   within   Time       W1
+#> 4  between   Diet       B1
+head(chick$model$data$long, 3)
+#>    ID B1  W1  Y
+#> 1 S01 L1 L01 41
+#> 2 S01 L1 L02 48
+#> 3 S01 L1 L03 53
+```
+
+The day levels 0, 2, 4, … are `L01`, `L02`, `L03`, … in `$model`, in
+level order. You need this table only if you work with `$model`
+directly.
 
 ## What the notes say
 
@@ -873,8 +890,8 @@ fit$notes
 ```
 
 1.  Mauchly’s test rejects sphericity for `hour` and the terms involving
-    it, and the table uses the Greenhouse-Geisser correction. The
-    corrected p-values are the ones to report.
+    it, and the table uses the Greenhouse-Geisser correction. Report the
+    corrected p-values.
 2.  The default marginal means average over `treatment` and `gender`,
     but `treatment:phase` is significant, so those averages can hide the
     difference between treatments. The note suggests the full cell grid;
@@ -882,10 +899,11 @@ fit$notes
     is often enough.
 
 Other notes you may see: subjects removed for incomplete cells, rows
-aggregated, a response converted from a factor, epsilons computed
-directly because the error matrix is singular, a Huynh-Feldt estimate
-above 1, a design with no error degrees of freedom, and anything afex or
-emmeans said while the model was being fitted.
+aggregated, a response converted from a factor, `$anova` p-values
+adjusted across terms, epsilons computed directly because the error
+matrix is singular, a Huynh-Feldt estimate above 1, a design with no
+error degrees of freedom, and anything afex or emmeans said while the
+model was being fitted.
 
 ## Reporting the result
 
@@ -901,6 +919,16 @@ emmeans said while the model was being fitted.
 > pre-test and 4.33 at follow-up, against 5.00 to 7.25 for treatment A
 > and 4.17 to 7.29 for treatment B.
 
+## References
+
+O’Brien, R. G., & Kaiser, M. K. (1985). MANOVA method for analyzing
+repeated measures designs: An extensive primer. *Psychological
+Bulletin*, 97, 316-333.
+
+Olejnik, S., & Algina, J. (2003). Generalized eta and omega squared
+statistics: measures of effect size for some common research designs.
+*Psychological Methods*, 8(4), 434-447.
+
 ## See also
 
 - [`?anova_rm`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
@@ -910,21 +938,17 @@ emmeans said while the model was being fitted.
   results](https://elkronos.github.io/anovakit/articles/results.md) for
   the `anovakit_fit` object and `$emmeans_object`.
 - [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
-  ([article](https://elkronos.github.io/anovakit/articles/ancova.md))
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/ancova.md))
   for a pre-post design analysed with the baseline as a covariate.
 - [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
-  ([article](https://elkronos.github.io/anovakit/articles/welch.md)) and
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/welch.md))
+  and
   [`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
-  ([article](https://elkronos.github.io/anovakit/articles/kruskal-wallis.md))
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/kruskal-wallis.md))
   for independent groups.
+- [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/manova.md))
+  for several different responses analysed together.
 - [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-  and [Plots and visual
-  customisation](https://elkronos.github.io/anovakit/articles/visuals.md).
-
-O’Brien, R. G., & Kaiser, M. K. (1985). MANOVA method for analyzing
-repeated measures designs: An extensive primer. *Psychological
-Bulletin*, 97, 316-333.
-
-Olejnik, S., & Algina, J. (2003). Generalized eta and omega squared
-statistics: measures of effect size for some common research designs.
-*Psychological Methods*, 8(4), 434-447.
+  and [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md).

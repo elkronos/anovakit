@@ -11,8 +11,8 @@
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Counts and rates: analysis of deviance with anova_count()">
-<meta name="description" content="A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, frequency weights and groups with no events.">
-<meta property="og:description" content="A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, frequency weights and groups with no events.">
+<meta name="description" content="A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, groups with no events and frequency weights.">
+<meta property="og:description" content="A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, groups with no events and frequency weights.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -32,19 +32,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -53,9 +54,11 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -95,14 +98,13 @@
 <p><code><a href="../reference/anova_count.html">anova_count()</a></code> fits a regression for a count response
 (the number of breaks, claims, visits or incidents) across one or more
 grouping variables. It starts from a Poisson model, checks it for
-overdispersion, moves to a negative binomial model when the counts are
-more variable than a Poisson allows, and reports an analysis of deviance
+overdispersion, and moves to a negative binomial model when the counts
+vary more than a Poisson allows. It reports an analysis of deviance
 table, incidence rate ratios, estimated marginal rates and pairwise rate
 ratios. With an exposure column (time at risk, number of policies) it
-compares rates rather than counts. For a yes/no outcome use
-<code><a href="../reference/anova_bin.html">anova_bin()</a></code> (<a href="binary.html">walkthrough</a>); for
-other response distributions, <code><a href="../reference/anova_glm.html">anova_glm()</a></code> (<a href="glm.html">walkthrough</a>). The <a href="choosing.html">decision
-guide</a> covers the choice in more detail.</p>
+compares rates rather than counts.</p>
+<p>For a yes/no outcome, use <code><a href="../reference/anova_bin.html">anova_bin()</a></code> (<a href="binary.html">walkthrough</a>); for other response distributions,
+<code><a href="../reference/anova_glm.html">anova_glm()</a></code> (<a href="glm.html">walkthrough</a>). <a href="choosing.html">Choose an analysis</a> sets out the choice.</p>
 <div class="section level2">
 <h2 id="the-data">The data<a class="anchor" aria-label="anchor" href="#the-data"></a>
 </h2>
@@ -137,8 +139,8 @@ factorial experiment with 9 looms in each cell.</p>
 <p>The breaks are counts, so a Poisson model is the natural starting
 point. A Poisson distribution has its variance equal to its mean, and
 here the variance within each cell is between 1.3 and 7.4 times the
-mean. The counts are <em>overdispersed</em>, and dealing with that is
-the first thing the function does.</p>
+mean. The counts are <em>overdispersed</em>, and the function deals with
+that first.</p>
 </div>
 <div class="section level2">
 <h2 id="fitting-the-model">Fitting the model<a class="anchor" aria-label="anchor" href="#fitting-the-model"></a>
@@ -170,31 +172,31 @@ the model includes the interaction:</p>
 <span><span class="co">#&gt;   (use plot(x, which = "emmeans"))</span></span></code></pre></div>
 <p>Reading the printout from the top:</p>
 <ul>
-<li>The method names the model actually fitted: a negative binomial
-regression, not the Poisson one you might have expected.</li>
+<li>The method names the model fitted: a negative binomial regression,
+where you might have expected a Poisson one.</li>
 <li>
 <code>Observations used: 54</code>, all of them.</li>
 <li>The omnibus table, headed with what it holds: Type II tests,
 likelihood-ratio chi-square statistics.</li>
 <li>The notes: why the model is negative binomial, and a warning about
-what its tests are worth with 9 looms per cell. Both are discussed in
-the next section and <a href="#what-the-notes-say">below</a>.</li>
+how far its tests can be trusted with 9 looms per cell. Both are
+discussed in the next section and <a href="#what-the-notes-say">below</a>.</li>
 <li>The plots that were built (they are not drawn until you ask).</li>
 </ul>
 <p><code>summary(fit)</code> prints this plus the assumption checks, the
 rate ratios, the marginal means and the pairwise comparisons.</p>
 </div>
 <div class="section level2">
-<h2 id="poisson-negative-binomial-or-quasi-poisson">Poisson, negative binomial or quasi-Poisson?<a class="anchor" aria-label="anchor" href="#poisson-negative-binomial-or-quasi-poisson"></a>
+<h2 id="poisson-negative-binomial-or-quasi-poisson">Poisson, negative binomial or quasi-Poisson<a class="anchor" aria-label="anchor" href="#poisson-negative-binomial-or-quasi-poisson"></a>
 </h2>
 <p>The <code>model</code> argument decides the model. Its default,
 <code>"auto"</code>, fits a Poisson model first and computes its Pearson
 dispersion: the sum of squared Pearson residuals divided by the residual
 degrees of freedom, which is about 1 when the Poisson variance is right.
 Above <code>overdispersion_threshold</code> (1.5 by default) the
-function fits a negative binomial model instead, which needs the
-<strong>MASS</strong> package (without it, or if that fit fails, it uses
-quasi-Poisson). <code>$model_type</code> records the outcome:</p>
+function fits a negative binomial model instead, which needs the MASS
+package (without it, or if that fit fails, it uses quasi-Poisson).
+<code>$model_type</code> records the outcome:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">model_type</span></span>
 <span><span class="co">#&gt; [1] "negbin"</span></span>
@@ -205,13 +207,12 @@ quasi-Poisson). <code>$model_type</code> records the outcome:</p>
 <p><code>$dispersion</code> is the Pearson dispersion of the
 <em>Poisson</em> fit, the statistic the decision was made on: 3.76, well
 above 1.5. <code>$model_dispersion</code> is the same statistic for the
-model actually returned. At 1.08 it says the negative binomial’s
-variance function, <code>mu + mu^2 / theta</code>, has absorbed the
-extra variation. The second note gives theta, 12.1, and goes on to say
-something important: with 9 observations per cell the negative
-binomial’s likelihood-ratio tests and Wald intervals are markedly
-anti-conservative, and quasi-Poisson F tests are better calibrated at
-this size.</p>
+model returned. At 1.08 it says the negative binomial’s variance
+function, <code>mu + mu^2 / theta</code>, has absorbed the extra
+variation. The second note gives theta, 12.1, and adds a warning: with 9
+observations per cell the negative binomial’s likelihood-ratio tests and
+Wald intervals are markedly anti-conservative, and quasi-Poisson F tests
+are better calibrated at this size.</p>
 <p>Set <code>model</code> yourself to take the decision out of the
 function’s hands. Here is the interaction test under each of the three
 models:</p>
@@ -231,14 +232,14 @@ models:</p>
 <p>The Poisson model, which ignores the overdispersion, puts the p-value
 for the interaction below one in a million. Both models that allow for
 it put it between 0.01 and 0.05. An explicit
-<code>model = "poisson"</code> is kept even on data like these, but not
-silently:</p>
+<code>model = "poisson"</code> is kept even on data like these, with a
+note:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fits</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">$</span><span class="va">notes</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span><span class="co">#&gt; [1] "Pearson dispersion is 3.76, above the threshold of 1.50: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p &lt; 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses, and one on 2 (the largest term here) roughly 45%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
 <p>The note puts a size on the problem: at a dispersion of 3.76, a
-nominal 5% test rejects roughly 31% of true null hypotheses, six times
-as often as it should.</p>
+nominal 5% test on 1 degree of freedom rejects roughly 31% of true null
+hypotheses, six times as often as it should.</p>
 <p>The quasi-Poisson model keeps the Poisson estimates and scales their
 variance by the estimated dispersion. It has no likelihood, so its table
 uses F tests:</p>
@@ -252,9 +253,9 @@ uses F tests:</p>
 <span><span class="va">fits</span><span class="op">[[</span><span class="fl">2</span><span class="op">]</span><span class="op">]</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test."</span></span></code></pre></div>
 <p><code>overdispersion_threshold</code> moves the cut-off for
-<code>model = "auto"</code>. It is a fixed cut-off, not a test, and a
-Poisson model kept below it still gets the note on inflated statistics
-when the dispersion is beyond what chance would produce:</p>
+<code>model = "auto"</code>. It is a fixed cut-off rather than a test,
+and a Poisson model kept below it still gets the note on inflated
+statistics when the dispersion is beyond what chance would produce:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">lenient</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
 <span>                       interaction <span class="op">=</span> <span class="cn">TRUE</span>, overdispersion_threshold <span class="op">=</span> <span class="fl">5</span>,</span>
@@ -263,11 +264,11 @@ when the dispersion is beyond what chance would produce:</p>
 <span><span class="co">#&gt; [1] "poisson"</span></span>
 <span><span class="va">lenient</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Pearson dispersion is 3.76, at or below the threshold of 5.00, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p &lt; 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses, and one on 2 (the largest term here) roughly 45%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
-<p>Which to use? The negative binomial is a full likelihood model, and
-with more data per group it is usually the better choice. With groups as
-small as these, the note’s advice to prefer quasi-Poisson is worth
-taking for the tests; the rest of this article stays with the automatic
-choice so that you can see what it reports.</p>
+<p>The negative binomial is a full likelihood model, and with more data
+per group it is usually the better choice. With groups as small as
+these, follow the note and prefer quasi-Poisson for the tests. The rest
+of this article stays with the automatic choice, to show what it
+reports.</p>
 </div>
 <div class="section level2">
 <h2 id="the-omnibus-test">The omnibus test<a class="anchor" aria-label="anchor" href="#the-omnibus-test"></a>
@@ -285,11 +286,11 @@ degrees of freedom. Type II means each main effect is tested after the
 other and without the interaction, and the interaction after both. The
 <code>wool:tension</code> row says the effect of tension depends on the
 wool (p = 0.017), so the main effects cannot be read on their own; the
-rate ratios and marginal means below show what the interaction looks
-like.</p>
+rate ratios and marginal means below show the shape of the
+interaction.</p>
 </div>
 <div class="section level2">
-<h2 id="effect-sizes-rate-ratios">Effect sizes: rate ratios<a class="anchor" aria-label="anchor" href="#effect-sizes-rate-ratios"></a>
+<h2 id="effect-sizes">Effect sizes<a class="anchor" aria-label="anchor" href="#effect-sizes"></a>
 </h2>
 <p><code>$effect_sizes</code> holds incidence rate ratios (IRRs), each a
 level of a factor against its reference (first) level:</p>
@@ -307,6 +308,12 @@ level of a factor against its reference (first) level:</p>
 <span><span class="co">#&gt; 3 0.000186</span></span>
 <span><span class="co">#&gt; 4 0.005008</span></span>
 <span><span class="co">#&gt; 5 0.416123</span></span></code></pre></div>
+<p><code><a href="../reference/anova_count.html">anova_count()</a></code> has no <code>reference</code> argument. To
+compare against another level, reorder the factor before fitting, for
+example
+<code>w &lt;- warpbreaks; w$tension &lt;- relevel(w$tension, "M")</code>.
+The tension ratios then compare L and H with M. The omnibus table is
+unchanged.</p>
 <p>An IRR is the ratio of two expected counts (or two rates, with an
 offset): 1 means no difference, 0.5 half as many, 2 twice as many.
 <code>factor</code> names the grouping variable and
@@ -314,9 +321,9 @@ offset): 1 means no difference, 0.5 half as many, 2 twice as many.
 interaction, a main-effect ratio holds at the reference level of the
 factor it interacts with: <code>B vs A at tension = L</code> says wool B
 has 0.63 times the breaks of wool A <em>at low tension</em>. The
-interaction rows are ratios of rate ratios:
-<code>(B vs A) x (M vs L)</code> is 1.89, meaning the B-to-A ratio at
-medium tension is 1.89 times the B-to-A ratio at low tension.</p>
+interaction rows are ratios of rate ratios.
+<code>(B vs A) x (M vs L)</code> is 1.89, so the B-to-A ratio at medium
+tension is 1.89 times the B-to-A ratio at low tension.</p>
 <p>The intervals are Wald intervals on the log scale, exponentiated, and
 <code>p_value</code> tests each ratio against 1. They are always
 computed under treatment (reference) coding, whatever <code>type</code>
@@ -339,8 +346,8 @@ built on the log scale and back-transformed:</p>
 <span><span class="co">#&gt; 5    A       H     24.6 2.88 Inf     19.5      30.9</span></span>
 <span><span class="co">#&gt; 6    B       H     18.8 2.31 Inf     14.8      23.9</span></span></code></pre></div>
 <p>With the full interaction in the model these are the cell means of
-the data; the model’s contribution is the intervals.
-<code>$posthoc</code> compares every pair of cells, as rate ratios:</p>
+the data; the model contributes the intervals. <code>$posthoc</code>
+compares every pair of cells, as rate ratios:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"IRR"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>, <span class="st">"p_value"</span>,</span>
 <span>                      <span class="st">"p_adjusted"</span>, <span class="st">"adjustment"</span><span class="op">)</span><span class="op">]</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
@@ -368,7 +375,7 @@ adjusted for all 15 comparisons by the method in <code>adjustment</code>
 simultaneous.</p>
 <p>Most of those comparisons (<code>A L / B M</code>, say) answer no
 question anyone asked. For the comparisons of tensions within each wool,
-pass <code>$emmeans_object</code> to <strong>emmeans</strong>:</p>
+pass <code>$emmeans_object</code> to emmeans:</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">emmeans</span><span class="fu">::</span><span class="fu"><a href="https://rvlenth.github.io/emmeans/reference/contrast.html" class="external-link">contrast</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">emmeans_object</span>, method <span class="op">=</span> <span class="st">"pairwise"</span>, by <span class="op">=</span> <span class="st">"wool"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; wool = A:</span></span>
@@ -390,7 +397,7 @@ high, which do not differ. With wool B, high tension gives fewer breaks
 than the other two, less decisively.</p>
 </div>
 <div class="section level2">
-<h2 id="rates-counts-with-an-exposure">Rates: counts with an exposure<a class="anchor" aria-label="anchor" href="#rates-counts-with-an-exposure"></a>
+<h2 id="rates-with-an-exposure-offset">Rates with an exposure offset<a class="anchor" aria-label="anchor" href="#rates-with-an-exposure-offset"></a>
 </h2>
 <p>Counts are often collected over different amounts of exposure: more
 policyholders, longer follow-up, larger areas.
@@ -410,9 +417,9 @@ driver age, together with the number of policyholders in each group.
 <span><span class="co">#&gt; 6        1 1-1.5l 25-29     536     84</span></span></code></pre></div>
 <p>A group with 1,000 policyholders will have more claims than one with
 100, so the counts must be compared per policyholder. Name the exposure
-column in <code>offset</code>. Give it on its natural scale: the
-function takes the logarithm itself and enters it as
-<code>offset(log(Holders))</code> in the model formula.</p>
+column in <code>offset</code>, on its natural scale: the function takes
+the logarithm itself and enters it as <code>offset(log(Holders))</code>
+in the model formula.</p>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ins_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">ins</span>, <span class="st">"Claims"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Group"</span>, <span class="st">"Age"</span><span class="op">)</span>, offset <span class="op">=</span> <span class="st">"Holders"</span><span class="op">)</span></span>
 <span><span class="va">ins_fit</span></span>
@@ -436,9 +443,11 @@ function takes the logarithm itself and enters it as
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/formula.html" class="external-link">formula</a></span><span class="op">(</span><span class="va">ins_fit</span><span class="op">$</span><span class="va">model</span><span class="op">)</span>, showEnv <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Claims ~ Group + Age + offset(log(Holders))</span></span></code></pre></div>
 <p>Here the Poisson model was kept: the dispersion, 1.14, is below the
-threshold and within what chance produces (a Pearson test of
-overdispersion on its 57 residual degrees of freedom gives p = 0.22), so
-there is no note on inflation. Both factors matter:</p>
+threshold of 1.5, and the Pearson test cannot tell it from 1 (p = 0.22).
+The first note adds that with 57 residual degrees of freedom the test
+has little power. It gives the upper confidence bound of the dispersion,
+how far the tests would be inflated at that value, and the models to use
+if that matters. Both factors matter:</p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">ins_fit</span><span class="op">$</span><span class="va">effect_sizes</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt;          term factor    comparison   IRR conf_low conf_high  p_value</span></span>
@@ -451,10 +460,9 @@ there is no note on inflation. Both factors matter:</p>
 <p>The rate ratios are now ratios of claims <em>per policyholder</em>:
 drivers aged over 35 make 0.59 times as many claims per policy as
 drivers under 25 with the same size of car, and cars over 2 litres 1.77
-times as many as cars under 1 litre. (<code>Group</code> and
-<code>Age</code> are ordered factors. The rate ratios compare levels
-with the first level all the same, as they would for unordered
-factors.)</p>
+times as many as cars under 1 litre. <code>Group</code> and
+<code>Age</code> are ordered factors; the rate ratios still compare each
+level with the first, as they would for unordered factors.</p>
 <p>The marginal means are rates at an exposure of 1, which a note
 records: claims per policyholder. The unit of the exposure is the unit
 of the rate, so to report claims per thousand policyholders, give the
@@ -530,19 +538,21 @@ Poisson tests conservative.</li>
 <li>
 <code>model_dispersion</code> is the same statistic for the model
 returned (the same number as <code>$model_dispersion</code>). For a
-negative binomial fit, a value near 1 says the variance function fits;
-one well above 1 says it does not, and that a model for the source of
-the extra variation (a missing grouping variable, clustering) is
-needed.</li>
+negative binomial fit, a value near 1 says the variance function fits. A
+value well above 1 says it does not, and that the source of the extra
+variation (a missing grouping variable, clustering) needs
+modelling.</li>
 <li>
 <code>cell_counts</code> is the number of observations in each cell
 of the design (with frequency weights it adds the number of table rows;
-see <a href="#frequency-weights">below</a>). Small cells are where the
-asymptotic tests are least trustworthy, as the note on theta said.</li>
+see <a href="#weights-and-vcov_type">below</a>). Small cells are where
+the asymptotic tests are least trustworthy, as the note on theta
+said.</li>
 </ul>
 <p>The model also assumes independent counts and that the log rate is
 additive in the terms included, which the interaction test checks for
-the grouping factors. More on the checks across the package is in the <a href="diagnostics.html">diagnostics article</a>.</p>
+the grouping factors. The <a href="diagnostics.html">diagnostics
+guide</a> covers the checks across the package.</p>
 <div class="section level3">
 <h3 id="a-group-with-no-events">A group with no events<a class="anchor" aria-label="anchor" href="#a-group-with-no-events"></a>
 </h3>
@@ -582,11 +592,12 @@ incidents:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: emmeans, observed</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "emmeans"))</span></span></code></pre></div>
-<p>Two notes flag the problem. The first counts the groups with fewer
+<p>The notes flag the problem. The first counts the groups with fewer
 than 5 events in total, whose rates rest on very little information. The
 third names the group with no events, says that the rate ratios
 involving it, its marginal mean and the comparisons involving it are
-unreliable, and says what still works. The results bear it out:</p>
+unreliable, and says what still works. The fourth says how the interval
+for that rate ratio was found. The results bear them out:</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">zero_fit</span><span class="op">$</span><span class="va">effect_sizes</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="co">#&gt;        term factor     comparison      IRR conf_low conf_high p_value</span></span>
@@ -599,17 +610,17 @@ unreliable, and says what still works. The results bear it out:</p>
 <span><span class="co">#&gt; 2  north / east 5.07e+08 2.22e-16       Inf     1.0000</span></span>
 <span><span class="co">#&gt; 3  south / east 1.06e+09 2.22e-16       Inf     1.0000</span></span></code></pre></div>
 <p><code>east vs north</code> is estimated as practically zero, with a
-Wald p-value of 0.99: the Wald machinery has nothing to work with,
-however clear the difference. Its interval in <code>$effect_sizes</code>
-is profiled and one-sided, open at 0 and bounded above at about 0.096;
-only the Wald intervals of the comparisons with <code>east</code> in
-<code>$posthoc</code> run from 0 to infinity. The likelihood-ratio test
-in the omnibus table does work, and it is the number to report for the
-overall comparison. For the rate ratios involving <code>east</code>,
-follow the note’s advice: collapse the level with another, or use an
-exact method. A robust covariance would fail here too, and
-<code>vcov_type</code> falls back to the model-based one with a note
-saying so:</p>
+Wald p-value of 0.99: the Wald standard error is useless here, however
+clear the difference. Its interval in <code>$effect_sizes</code> is
+profiled and one-sided, open at 0 and bounded above at about 0.096; the
+Wald intervals of the comparisons with <code>east</code> in
+<code>$posthoc</code> run from practically 0 to infinity, around
+estimates of 5e+08 and more. The likelihood-ratio test in the omnibus
+table does work, and it is the number to report for the overall
+comparison. For the rate ratios involving <code>east</code>, follow the
+note: collapse the level with another, or use an exact method. A robust
+covariance would fail here too, and <code>vcov_type</code> falls back to
+the model-based one with a note:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grep</a></span><span class="op">(</span><span class="st">"Robust"</span>, <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">incidents</span>, <span class="st">"events"</span>, <span class="st">"site"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>,</span>
 <span>                           plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">notes</span>, value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
@@ -619,28 +630,28 @@ saying so:</p>
 <div class="section level2">
 <h2 id="plots">Plots<a class="anchor" aria-label="anchor" href="#plots"></a>
 </h2>
-<p><code>fit$plots</code> holds two <strong>ggplot2</strong> objects,
-returned rather than drawn. Use <code>plot(fit, "name")</code> or
+<p><code>fit$plots</code> holds two ggplot2 objects, returned rather
+than drawn. Use <code>plot(fit, "name")</code> or
 <code>fit$plots$name</code> to get one.</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="counts_files/figure-html/plot-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The <code>emmeans</code> plot shows the estimated marginal means with
 their intervals. The first grouping variable goes on the x axis and the
-second becomes the colour, one line per level. What to look for: lines
-that are not parallel show an interaction. For wool A, low tension
-stands well above medium and high; for wool B, low and medium are
-together and high is lowest. The low-tension line falls steeply from A
-to B while the medium one rises, so the lines are far from parallel.</p>
+second becomes the colour, one line per level. Lines that are not
+parallel show an interaction. For wool A, low tension stands well above
+medium and high; for wool B, low and medium are together and high is
+lowest. The low-tension line falls steeply from A to B while the medium
+one rises.</p>
 <div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"observed"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="counts_files/figure-html/plot-observed-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The <code>observed</code> plot is a box plot of the raw counts in
 each cell, ordered by median and labelled with the cell’s number of
-observations. What to look for: spread that grows with the median
-(expected for counts, and what the negative binomial’s variance function
-allows for), outlying looms, and whether the order of the medians agrees
-with the marginal means.</p>
+observations. Look for spread that grows with the median (expected for
+counts, and what the negative binomial’s variance function allows for),
+outlying looms, and whether the order of the medians agrees with the
+marginal means.</p>
 <p>With an offset, raw counts would mostly show where the exposure is,
 so the plot shows observed rates instead: each row’s count divided by
 its exposure, here claims per policyholder.</p>
@@ -650,13 +661,13 @@ its exposure, here claims per policyholder.</p>
 <p>The title and the y axis name the rate. The order of the boxes
 follows the rate ratios: the lowest median is for drivers over 35 with
 the smallest cars (<code>&lt;1l : &gt;35</code>), the highest for
-drivers under 25 with the largest (<code>&gt;2l : &lt;25</code>). What
-to look for is the same as before, plus one thing: a rate computed from
-a small exposure is noisy. The widest box, <code>&gt;2l : &lt;25</code>,
-comes from the four groups of young drivers of large cars, which hold
-between 3 and 24 policyholders each.</p>
-<p>The plot should tell the same story as the marginal rates. A quick
-check is to pool the claims and policyholders by age band:</p>
+drivers under 25 with the largest (<code>&gt;2l : &lt;25</code>). A rate
+computed from a small exposure is noisy. The widest box,
+<code>&gt;2l : &lt;25</code>, comes from the four groups of young
+drivers of large cars, which hold between 3 and 24 policyholders
+each.</p>
+<p>The plot should tell the same story as the marginal rates. To check,
+pool the claims and policyholders by age band:</p>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">by_age</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="va">Claims</span>, <span class="va">Holders</span><span class="op">)</span> <span class="op">~</span> <span class="va">Age</span>, data <span class="op">=</span> <span class="va">ins</span>, FUN <span class="op">=</span> <span class="va">sum</span><span class="op">)</span></span>
 <span><span class="va">by_age</span><span class="op">$</span><span class="va">rate</span> <span class="op">&lt;-</span> <span class="va">by_age</span><span class="op">$</span><span class="va">Claims</span> <span class="op">/</span> <span class="va">by_age</span><span class="op">$</span><span class="va">Holders</span></span>
@@ -672,15 +683,15 @@ check is to pool the claims and policyholders by age band:</p>
 <span><span class="co">#&gt; 6 25-29 0.1825590</span></span>
 <span><span class="co">#&gt; 7 30-35 0.1571197</span></span>
 <span><span class="co">#&gt; 8   &gt;35 0.1299627</span></span></code></pre></div>
-<p>The pooled rates fall with age, as the marginal rates do. They are
-not the same numbers: the marginal rates are adjusted for car group and
-average over the four car groups equally, while the pooled rates are
-weighted by where the policyholders are. Each plot is a ggplot and can
-be modified with <code>+</code>; the <a href="visuals.html">plots
-article</a> has more.</p>
+<p>The pooled rates fall with age, as the marginal rates do. The numbers
+differ because the marginal rates are adjusted for car group and average
+over the four car groups equally, while the pooled rates are weighted by
+where the policyholders are. Each plot is a ggplot and can be modified
+with <code>+</code>; <a href="visuals.html">Plots and themes</a> has
+more.</p>
 </div>
 <div class="section level2">
-<h2 id="options-worth-knowing">Options worth knowing<a class="anchor" aria-label="anchor" href="#options-worth-knowing"></a>
+<h2 id="options">Options<a class="anchor" aria-label="anchor" href="#options"></a>
 </h2>
 <div class="section level3">
 <h3 id="interaction">
@@ -688,8 +699,8 @@ article</a> has more.</p>
 </h3>
 <p>The model is additive by default. An additive model gives each
 factor’s effect averaged over the other, which is what you want when the
-interaction is absent and misleading when it is not. For comparison, the
-additive fit of the same data reports marginal means for each factor
+interaction is absent and misleading when it is present. The additive
+fit of the same data reports marginal means for each factor
 separately:</p>
 <div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">additive</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
@@ -705,10 +716,10 @@ separately:</p>
 <span><span class="co">#&gt; 3 tension &lt;NA&gt;       L     35.9 3.03 Inf     30.4      42.3</span></span>
 <span><span class="co">#&gt; 4 tension &lt;NA&gt;       M     26.6 2.33 Inf     22.4      31.6</span></span>
 <span><span class="co">#&gt; 5 tension &lt;NA&gt;       H     21.5 1.95 Inf     18.0      25.7</span></span></code></pre></div>
-<p>The wool rows average over tensions, hiding the fact that the wool
-difference runs in opposite directions at low and medium tension. Decide
-on the interaction before looking at the answers, as the design here
-justified.</p>
+<p>The wool rows average over tensions, so they hide the fact that the
+wool difference runs in opposite directions at low and medium tension.
+Decide on the interaction before looking at the answers, as the design
+here justified.</p>
 </div>
 <div class="section level3">
 <h3 id="test_statistic">
@@ -716,11 +727,11 @@ justified.</p>
 </h3>
 <p><code>"LR"</code> (the default) gives likelihood-ratio tests;
 <code>"Wald"</code> gives Wald chi-square tests; <code>"F"</code> gives
-F tests, which is what a quasi-Poisson model uses anyway. On a negative
-binomial (or Poisson) model, <code>"F"</code> estimates a dispersion
-from the Pearson residuals and divides the deviances by it, which makes
-the table a quasi-likelihood test while the rate ratios still assume the
-model’s own dispersion. The note says so:</p>
+F tests, which a quasi-Poisson model uses anyway. On a negative binomial
+(or Poisson) model, <code>"F"</code> estimates a dispersion from the
+Pearson residuals and divides the deviances by it. The table then
+becomes a quasi-likelihood test while the rate ratios still assume the
+model’s own dispersion, and the note says so:</p>
 <div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wald_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
 <span>                        interaction <span class="op">=</span> <span class="cn">TRUE</span>, test_statistic <span class="op">=</span> <span class="st">"Wald"</span>,</span>
@@ -744,51 +755,15 @@ model’s own dispersion. The note says so:</p>
 <code>model = "quasipoisson"</code>.</p>
 </div>
 <div class="section level3">
-<h3 id="vcov_type">
-<code>vcov_type</code><a class="anchor" aria-label="anchor" href="#vcov_type"></a>
+<h3 id="weights-and-vcov_type">Weights and <code>vcov_type</code><a class="anchor" aria-label="anchor" href="#weights-and-vcov_type"></a>
 </h3>
-<p><code>vcov_type</code> requests heteroskedasticity-consistent
-(sandwich) standard errors, <code>"HC0"</code> to <code>"HC4"</code>,
-from the <strong>sandwich</strong> package. They reach the rate ratios,
-the marginal means and the comparisons. A likelihood-ratio test compares
-deviances and cannot use them, so the omnibus table uses them only with
-<code>test_statistic = "Wald"</code>:</p>
+<p><code>weights</code> names a column of prior weights. Whole-number
+weights, some above 1, are frequency weights: each row stands for that
+many identical observations, and the analysis is the one the expanded
+data would give. <code>InsectSprays</code> has 12 insect counts for each
+of six sprays; as a frequency table it has one row per spray and count,
+with the number of times that count occurred in <code>Freq</code>:</p>
 <div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">robust</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
-<span>                      interaction <span class="op">=</span> <span class="cn">TRUE</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>,</span>
-<span>                      test_statistic <span class="op">=</span> <span class="st">"Wald"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">robust</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;           term df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1         wool  1  2.526565 0.1119436981</span></span>
-<span><span class="co">#&gt; 2      tension  2 16.808766 0.0002238839</span></span>
-<span><span class="co">#&gt; 3 wool:tension  2  6.765016 0.0339621730</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>comparison <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">comparison</span>,</span>
-<span>           model_low <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">conf_low</span>,</span>
-<span>           model_high <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">conf_high</span>,</span>
-<span>           hc3_low <span class="op">=</span> <span class="va">robust</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">conf_low</span>,</span>
-<span>           hc3_high <span class="op">=</span> <span class="va">robust</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">conf_high</span><span class="op">)</span></span>
-<span><span class="co">#&gt;              comparison model_low model_high   hc3_low  hc3_high</span></span>
-<span><span class="co">#&gt; 1 B vs A at tension = L 0.4651349  0.8625808 0.4369807 0.9181560</span></span>
-<span><span class="co">#&gt; 2    M vs L at wool = A 0.3938590  0.7366784 0.3696585 0.7849066</span></span>
-<span><span class="co">#&gt; 3    H vs L at wool = A 0.4032354  0.7532465 0.3679333 0.8255184</span></span>
-<span><span class="co">#&gt; 4   (B vs A) x (M vs L) 1.2122753  2.9560520 1.1459874 3.1270404</span></span>
-<span><span class="co">#&gt; 5   (B vs A) x (H vs L) 0.7667100  1.9009866 0.7290004 1.9993205</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grep</a></span><span class="op">(</span><span class="st">"robust"</span>, <span class="va">robust</span><span class="op">$</span><span class="va">notes</span>, value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "The omnibus Wald test uses the robust (HC3) covariance, as $effect_sizes, the marginal means and the comparisons do."</span></span></code></pre></div>
-<p>The robust intervals are wider here: with 9 looms a cell, the
-sandwich estimate is noisy, and it is better used as a check on the
-model-based standard errors than as a replacement for them.</p>
-</div>
-<div class="section level3">
-<h3 id="frequency-weights">Frequency weights<a class="anchor" aria-label="anchor" href="#frequency-weights"></a>
-</h3>
-<p>A table of counts with a column saying how often each count occurred
-is a frequency table. <code>weights</code> names that column, and
-whole-number weights (some above 1) are read as frequencies: each row
-stands for that many identical observations. <code>InsectSprays</code>
-has 12 insect counts for each of six sprays; here it is as a frequency
-table:</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">spray_tab</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/as.data.frame.html" class="external-link">as.data.frame</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span>spray <span class="op">=</span> <span class="va">InsectSprays</span><span class="op">$</span><span class="va">spray</span>,</span>
 <span>                                 count <span class="op">=</span> <span class="va">InsectSprays</span><span class="op">$</span><span class="va">count</span><span class="op">)</span>,</span>
 <span>                           stringsAsFactors <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
@@ -805,56 +780,35 @@ table:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">spray_tab</span><span class="op">)</span>, observations <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">spray_tab</span><span class="op">$</span><span class="va">Freq</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt;         rows observations </span></span>
 <span><span class="co">#&gt;           43           72</span></span></code></pre></div>
-<p>The frequency table and the original 72 rows give the same
-analysis:</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<p>Fitted to the original rows and to the table, the analysis is the
+same:</p>
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">from_rows</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">InsectSprays</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">from_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">spray_tab</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>,</span>
 <span>                          plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>rows <span class="op">=</span> <span class="va">from_rows</span><span class="op">$</span><span class="va">dispersion</span>, table <span class="op">=</span> <span class="va">from_table</span><span class="op">$</span><span class="va">dispersion</span><span class="op">)</span></span>
 <span><span class="co">#&gt;     rows    table </span></span>
 <span><span class="co">#&gt; 1.507713 1.507713</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>rows <span class="op">=</span> <span class="va">from_rows</span><span class="op">$</span><span class="va">model_type</span>, table <span class="op">=</span> <span class="va">from_table</span><span class="op">$</span><span class="va">model_type</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     rows    table </span></span>
-<span><span class="co">#&gt; "negbin" "negbin"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">from_rows</span><span class="op">$</span><span class="va">anova</span>, <span class="va">from_table</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">from_rows</span><span class="op">$</span><span class="va">effect_sizes</span>, <span class="va">from_table</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">from_rows</span><span class="op">$</span><span class="va">emmeans</span>, <span class="va">from_table</span><span class="op">$</span><span class="va">emmeans</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] TRUE</span></span>
-<span><span class="va">from_table</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 1.51, above the threshold of 1.50, so a negative binomial model was fitted instead of Poisson. Set model = \"poisson\" to override."                                                                                                                                                                                                                                                                                                                                                             </span></span>
-<span><span class="co">#&gt; [2] "The weights in `Freq` are whole numbers, so they are treated as frequency weights: each row stands for that many observations. The Pearson dispersion divides by the 72 observations they represent minus the 6 parameters, not by the 43 rows, which would inflate it."                                                                                                                                                                                                                                               </span></span>
-<span><span class="co">#&gt; [3] "Negative binomial dispersion parameter theta = 28.100 (SE 17.700), so the variance is about mu + mu^2/28.1. Theta is poorly determined, but it is large: the data are only weakly overdispersed, and model = \"poisson\" would give a similar answer. With 12 observations in the smallest group, the likelihood-ratio tests and Wald intervals are moderately anti-conservative: at 10-30 observations per group, nominal 5% tests reject roughly 6-10% of true null hypotheses and 95% intervals cover about 91-95%."</span></span></code></pre></div>
-<p>The dispersion is the same in both, because with frequency weights it
-divides by the number of observations the weights represent (minus the
-number of parameters), not by the number of rows. Dividing by rows, as
-<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>’s own residual degrees of freedom would, inflates
-it:</p>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">pois_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">count</span> <span class="op">~</span> <span class="va">spray</span>, family <span class="op">=</span> <span class="va">poisson</span>, data <span class="op">=</span> <span class="va">spray_tab</span>,</span>
-<span>                  weights <span class="op">=</span> <span class="va">Freq</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals</a></span><span class="op">(</span><span class="va">pois_table</span>, type <span class="op">=</span> <span class="st">"pearson"</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">df.residual</a></span><span class="op">(</span><span class="va">pois_table</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 2.689433</span></span></code></pre></div>
-<p>That inflation could switch a Poisson model to a negative binomial
-one for no reason. (Here both values are above the threshold, so the
-choice would be the same either way; the correct one, 1.508, is only
-just above it, and the theta note says the negative binomial has only
-weakly overdispersed data to work with.) With <code>vcov_type</code>,
-the sandwich is also computed as it would be on the expanded data:</p>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hc_rows</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">InsectSprays</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>,</span>
-<span>                       plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">hc_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">spray_tab</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>,</span>
-<span>                        vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">hc_rows</span><span class="op">$</span><span class="va">effect_sizes</span>, <span class="va">hc_table</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
-<p>With frequency weights, <code>$assumptions$cell_counts</code> gives
-both sizes: <code>n</code> is the number of observations in each cell
-(the sum of the weights) and <code>rows</code> the number of rows of the
-table behind them.</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
+<span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grep</a></span><span class="op">(</span><span class="st">"frequency weights"</span>, <span class="va">from_table</span><span class="op">$</span><span class="va">notes</span>, value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] "The weights in `Freq` are whole numbers, so they are treated as frequency weights: each row stands for that many observations. The Pearson dispersion divides by the 72 observations they represent minus the 6 parameters, not by the 43 rows, which would inflate it."</span></span></code></pre></div>
+<p>Three things are specific to <code><a href="../reference/anova_count.html">anova_count()</a></code>. First, the
+dispersion that decides between Poisson and negative binomial divides by
+the 72 observations the weights represent minus the parameters, not by
+the 43 rows. Dividing by rows, as <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>’s own residual
+degrees of freedom would, gives 2.69 instead of 1.51, and could switch a
+Poisson model to a negative binomial one for no reason. Here both values
+are above the threshold of 1.5, so the choice is the same either way;
+the correct value is only just above it, and the theta note says the
+negative binomial has only weakly overdispersed data to work with.</p>
+<p>Second, <code>$assumptions$cell_counts</code> gives two sizes:
+<code>n</code> is the number of observations in each cell (the sum of
+the weights) and <code>rows</code> the number of table rows behind
+them.</p>
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">from_table</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">cell_counts</span></span>
 <span><span class="co">#&gt;   cell  n rows</span></span>
 <span><span class="co">#&gt; 1    A 12    8</span></span>
@@ -863,19 +817,22 @@ table behind them.</p>
 <span><span class="co">#&gt; 4    D 12    6</span></span>
 <span><span class="co">#&gt; 5    E 12    6</span></span>
 <span><span class="co">#&gt; 6    F 12    9</span></span></code></pre></div>
-<p>The <code>observed</code> plot draws the observations too, expanding
-the table, so it is the same plot the 72 original rows give, with 12
-observations per spray:</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">spray_tab</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, weights <span class="op">=</span> <span class="st">"Freq"</span><span class="op">)</span>, <span class="st">"observed"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="counts_files/figure-html/weights-plot-1.png" class="r-plt" alt="" width="100%"></p>
-<p>A table that stands for more than 200,000 observations is not
-expanded; the plot then shows one point per row, and a note says so:</p>
-<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">big_tab</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/transform.html" class="external-link">transform</a></span><span class="op">(</span><span class="va">spray_tab</span>, Freq <span class="op">=</span> <span class="va">Freq</span> <span class="op">*</span> <span class="fl">5000</span><span class="op">)</span></span>
-<span><span class="va">big_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">big_tab</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>, weights <span class="op">=</span> <span class="st">"Freq"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grep</a></span><span class="op">(</span><span class="st">"200,000"</span>, <span class="va">big_fit</span><span class="op">$</span><span class="va">notes</span>, value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "The plot of observed counts shows one point per row of the frequency table, not per observation: the table stands for more than 200,000 observations."</span></span></code></pre></div>
+<p>Third, the <code>observed</code> plot is built from the expanded
+table (one row per observation), so its boxes match the plot of the 72
+original rows. A table that stands for more than 200,000 observations is
+not expanded: the boxes are then built from one row per table row, and a
+note says so.</p>
+<p>Weights that are not whole numbers are not frequencies. They are used
+as given, so their scale matters, and the dispersion that chooses the
+model is computed with them rescaled to average 1.
+<code>vcov_type</code> (<code>"HC0"</code> to <code>"HC4"</code>) gives
+heteroscedasticity-consistent (sandwich) standard errors for the rate
+ratios, the marginal means and the comparisons, and for the omnibus
+table only with <code>test_statistic = "Wald"</code>. With frequency
+weights they are computed as on the expanded data. <a href="weights.html">Weights and robust standard errors</a> has an
+example on <code>warpbreaks</code>, the rules for every kind of weight,
+and the cases where the model-based covariance is used instead, such as
+a group with no events (<a href="#a-group-with-no-events">above</a>).</p>
 </div>
 <div class="section level3">
 <h3 id="type-adjust-conf_level-and-posthoc">
@@ -887,7 +844,7 @@ which changes the main-effect rows of <code>$anova</code> when there is
 an interaction; the rate ratios are unchanged.
 <code>posthoc = FALSE</code> skips the pairwise comparisons, with a
 note:</p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">type3</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
 <span>                     interaction <span class="op">=</span> <span class="cn">TRUE</span>, type <span class="op">=</span> <span class="st">"III"</span>, posthoc <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>                     plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
@@ -909,29 +866,28 @@ interval, as in the other model-based functions; the <a href="binary.html">binar
 <div class="section level2">
 <h2 id="what-the-notes-say">What the notes say<a class="anchor" aria-label="anchor" href="#what-the-notes-say"></a>
 </h2>
-<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Pearson dispersion is 3.76, above the threshold of 1.50, so a negative binomial model was fitted instead of Poisson. Set model = \"poisson\" to override."                                                                                                                                                                                                                                                                                                                                                                                                                                               </span></span>
 <span><span class="co">#&gt; [2] "Negative binomial dispersion parameter theta = 12.082 (SE 3.300), so the variance is about mu + mu^2/12.1. With 9 observations in the smallest group, the likelihood-ratio tests and Wald intervals are markedly anti-conservative: at 5-10 observations per group, nominal 5% tests reject roughly 10-15% of true null hypotheses (2-3 times too often) and 95% intervals, including the pairwise comparisons, cover only about 89-93%. Treating theta as known explains only part of this; the rest is small-sample asymptotics. model = \"quasipoisson\" (F tests) is better calibrated at this size."</span></span></code></pre></div>
 <ul>
 <li>The first note records the model choice: the Poisson dispersion, the
-threshold, and the model fitted instead. It is also how to override
+threshold, and the model fitted instead. It also says how to override
 it.</li>
 <li>The second gives the negative binomial’s theta, the variance
 function it implies, and how far to trust the tests and intervals given
 the size of the smallest group. With 9 looms per cell it recommends
-quasi-Poisson F tests, and in a write-up of these data that is the
-version of the interaction test worth reporting alongside (or instead
-of) this one.</li>
+quasi-Poisson F tests. In a write-up of these data, report that version
+of the interaction test alongside (or instead of) this one.</li>
 </ul>
 <p>There is no note on the layout of the marginal means, because with
 the interaction in the model they are cells; an additive fit (the
 insurance model, for one) adds a note explaining the per-factor layout.
 Other fits in this article showed the notes on an explicit Poisson model
-with overdispersion, on quasi-Poisson F tests, on exposure, on sparse
-and empty groups, on robust standard errors, and on frequency weights
-(including a table too large to plot one point per observation). The <a href="results.html">results article</a> explains how <code>$notes</code>
-fits with the rest of the object.</p>
+with overdispersion, on quasi-Poisson F tests, on a kept Poisson model
+whose dispersion test has little power, on exposure, on sparse and empty
+groups, on robust standard errors, and on frequency weights. <a href="results.html">Working with results</a> explains how
+<code>$notes</code> fits with the rest of the object.</p>
 </div>
 <div class="section level2">
 <h2 id="reporting-the-result">Reporting the result<a class="anchor" aria-label="anchor" href="#reporting-the-result"></a>
@@ -956,16 +912,17 @@ and high tension reduced breaks by about half relative to low tension
 <code><a href="../reference/anova_count.html">?anova_count</a></code> for every argument, and
 <code><a href="../reference/anovakit_fit.html">?anovakit_fit</a></code> for the returned object.</li>
 <li>
-<a href="binary.html">Binary outcomes with
-<code>anova_bin()</code></a>, the companion function for yes/no
-responses.</li>
+<a href="binary.html">Binary outcomes: <code>anova_bin()</code></a>,
+the companion function for yes/no responses.</li>
 <li>
-<a href="glm.html">Generalised linear models with
-<code>anova_glm()</code></a> for other families.</li>
+<a href="glm.html">Any GLM family: <code>anova_glm()</code></a> for
+other families.</li>
+<li>
+<a href="weights.html">Weights and robust standard errors</a>.</li>
 <li>
 <a href="results.html">Working with results</a> and <a href="diagnostics.html">Diagnostics</a>.</li>
 <li>
-<a href="visuals.html">Plots and visual customisation</a>.</li>
+<a href="visuals.html">Plots and themes</a>.</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

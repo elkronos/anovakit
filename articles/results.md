@@ -6,10 +6,9 @@ library(anovakit)
 ```
 
 Every anovakit function returns an object of class `anovakit_fit`. It is
-a plain named list: every table is a data frame, every figure a
-**ggplot2** object, and nothing is hidden behind accessor functions.
-This article shows what is in it and how to use it. The examples use
-`chickwts`, the weights of 71 chicks raised on six feed supplements.
+a plain named list: every table is a data frame, every figure a ggplot2
+object, and nothing is hidden behind accessor functions. The examples
+use `chickwts`, the weights of 71 chicks raised on six feed supplements.
 
 ``` r
 
@@ -25,9 +24,11 @@ fit <- anova_glm(chickwts, "weight", "feed")
 ```
 
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-with its default Gaussian family is a classical one-way ANOVA, which is
-a convenient model-based example. Everything below applies to all eight
-functions; where one differs, it says so.
+with its default Gaussian family is a classical one-way ANOVA.
+Everything below applies to all eight functions; where one differs, the
+text says so. [Design
+choices](https://elkronos.github.io/anovakit/articles/design.md)
+explains the rules behind what a fit contains.
 
 ## What is in a fit
 
@@ -52,11 +53,11 @@ The first fourteen components are the same for every function:
 | `anova` | The omnibus test table. |
 | `effect_sizes` | The method’s effect sizes, with intervals where they exist. |
 | `emmeans` | Estimated marginal means (group summaries for Welch and Kruskal-Wallis). |
-| `emmeans_object` | The **emmeans** grid behind `$emmeans`, for further contrasts. |
+| `emmeans_object` | The emmeans grid behind `$emmeans`, for further contrasts. |
 | `posthoc` | Pairwise comparisons. |
 | `assumptions` | The assumption checks this method needs. |
 | `plots` | Named list of ggplot2 figures. |
-| `data_used` | The rows and columns the analysis actually used. |
+| `data_used` | The rows and columns the analysis used. |
 | `n_removed` | How many input rows are not in `data_used`. |
 | `conf_level` | The level of every interval in the fit. |
 | `notes` | Everything the function decided or could not compute. |
@@ -93,10 +94,13 @@ fit
 #>   (use plot(x, which = "box"))
 ```
 
-[`summary()`](https://rdrr.io/r/base/summary.html) shows the rest:
-effect sizes, marginal means, comparisons and the assumption checks. It
-returns an object, so you can keep it and print it later with different
-`digits`.
+[`summary()`](https://rdrr.io/r/base/summary.html) shows the rest: the
+assumption checks (for
+[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
+these include the coefficient table), effect sizes, marginal means,
+comparisons and, where the function computes them, model-fit statistics.
+It returns an object, so you can keep it and print it later with
+different `digits`.
 
 ``` r
 
@@ -190,7 +194,7 @@ s
 #>  778 794        427000            196000          65
 ```
 
-Both use `digits` for display only; the numbers stored in the fit are
+`digits` changes the display only; the numbers stored in the fit are
 never rounded.
 
 ## The tables are ordinary data frames
@@ -223,8 +227,7 @@ attributes(fit$anova)[c("ss_type", "statistic")]
 
 The pairwise comparisons have one row per pair. `p_value` is the
 *unadjusted* p-value, `p_adjusted` the adjusted one, and `adjustment`
-names the method, so nothing about the adjustment has to be remembered
-from the call:
+names the method, so the table records its own adjustment:
 
 ``` r
 
@@ -258,9 +261,9 @@ sig[order(-abs(sig$estimate)), ]
 The intervals in `$posthoc` from the model-based functions are
 simultaneous. With a single-step method such as Tukey’s they use the
 same adjustment as `p_adjusted`, so an interval that excludes zero
-agrees with an adjusted p-value below `1 - conf_level`. Step-down
-methods such as Holm’s cannot be turned into intervals; **emmeans** then
-uses Bonferroni intervals, and `$notes` says so.
+agrees with an adjusted p-value below `1 - conf_level`. For step-down
+methods such as Holm’s, see [Design
+choices](https://elkronos.github.io/anovakit/articles/design.html#multiplicity-adjustments-depend-on-the-method).
 
 Writing a table out is one line:
 
@@ -269,14 +272,15 @@ Writing a table out is one line:
 write.csv(fit$posthoc, "comparisons.csv", row.names = FALSE)
 ```
 
-## Read the notes
+## The notes
 
 `$notes` is a character vector. It records every decision the function
 made on your behalf (which model it chose, which rows it dropped, which
 correction it applied), everything it could not compute and why, and
-anything **car**, **emmeans**, **stats** or **afex** said while fitting.
-None of it is printed to the console as a warning, so this is the one
-place to look.
+every warning or message raised while fitting ([Design
+choices](https://elkronos.github.io/anovakit/articles/design.html#nothing-prints)
+lists whose). None of it is printed to the console, so `$notes` is the
+one place to look.
 
 This simple fit needed no decisions, so its notes are empty:
 
@@ -286,8 +290,8 @@ fit$notes
 #> character(0)
 ```
 
-Ask for heteroscedasticity-consistent standard errors and there is more
-to say: which parts of the output use them, and what they cannot do.
+With heteroscedasticity-consistent standard errors, the notes say which
+parts of the output use them and what they cannot do.
 
 ``` r
 
@@ -299,9 +303,9 @@ writeLines(robust$notes)
 #> Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.
 ```
 
-Treat the notes as a checklist to read before you quote a number. They
-are plain text, so you can also search them, for example to flag which
-fits in a batch used robust standard errors:
+Read them before you quote a number. They are plain text, so you can
+also search them, for example to flag which fits in a batch used robust
+standard errors:
 
 ``` r
 
@@ -357,8 +361,8 @@ str(g$data_used)
 
 `$emmeans` and `$posthoc` cover the usual questions: the mean of each
 group, and every pairwise difference. For anything else,
-`$emmeans_object` is the **emmeans** reference grid the tables were
-built from.
+`$emmeans_object` is the emmeans reference grid the tables were built
+from.
 
 ``` r
 
@@ -388,6 +392,10 @@ confint(ct, level = fit$conf_level)
 #> Conf-level adjustment: dunnettx method for 5 estimates
 ```
 
+The grid carries emmeans’ default level, so pass
+`level = fit$conf_level` as here (see [Design
+choices](https://elkronos.github.io/anovakit/articles/design.html#conf_level-sets-every-interval)).
+
 Or a custom contrast: the four plant-based feeds against the two
 animal-based ones. The coefficients follow the order of the factor
 levels.
@@ -408,21 +416,13 @@ confint(emmeans::contrast(grid, plant_vs_animal), level = fit$conf_level)
 #> Confidence level used: 0.95
 ```
 
-Two things to keep in mind:
-
-- The grid carries **emmeans**’ default confidence level, not the fit’s
-  `conf_level`. Pass `level = fit$conf_level` (as above) when you want
-  the two to agree.
-- When grouping factors enter a model additively, the means are reported
-  per factor and `$emmeans_object` is a named list with one grid per
-  factor. In
-  [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
-  there is one grid per response, under
-  `fit$univariate[[response]]$emmeans_object`.
-  [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
-  and
-  [`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
-  fit no model **emmeans** can use, so theirs is `NULL`.
+When grouping factors enter a model additively, the means are reported
+per factor and `$emmeans_object` is a named list with one grid per
+factor. In
+[`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
+there is one grid per response, under
+`fit$univariate[[response]]$emmeans_object`. For Welch and
+Kruskal-Wallis fits it is `NULL` (see the next section).
 
 ## Going further with the model
 
@@ -491,10 +491,10 @@ building them and keeps the objects small.
 
 ## Many analyses at once
 
-Because every function has the same signature and returns the same
-structure, running one analysis over several outcomes or subsets is a
-loop. Here the built-in `ToothGrowth` data compare the two vitamin C
-supplements separately at each dose:
+Every function takes its columns by name and returns the same structure,
+so running one analysis over several outcomes or subsets is a loop. Here
+the built-in `ToothGrowth` data compare the two vitamin C supplements
+separately at each dose:
 
 ``` r
 
@@ -562,3 +562,20 @@ fit$call
 
 Fits made with `plots = FALSE` are much smaller, which matters when you
 store many of them.
+
+## See also
+
+- [Design
+  choices](https://elkronos.github.io/anovakit/articles/design.md): what
+  a function decides on your behalf, and which settings can change a
+  result.
+- [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md):
+  every figure and how to customise it.
+- [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md):
+  the contents of `$assumptions`.
+- [Weights and robust standard
+  errors](https://elkronos.github.io/anovakit/articles/weights.md): what
+  `vcov_type` and `weights` change in the tables.
+- [`?anovakit_fit`](https://elkronos.github.io/anovakit/reference/anovakit_fit.md):
+  every component, including those specific to one function.

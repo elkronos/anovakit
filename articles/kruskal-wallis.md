@@ -8,18 +8,20 @@ library(anovakit)
 [`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
 compares a numeric response across groups using ranks rather than the
 values themselves: the Kruskal-Wallis test across all groups, then
-Dunn’s pairwise comparisons. Because only the order of the values
-matters, it suits responses that are skewed, have outliers, are measured
-on a coarse or ordinal scale, or include values that are known only to
-be “more extreme than everything else”. It asks whether values in some
-groups tend to rank higher than in others. That is not a test of means,
-and it is a test of medians only when the groups’ distributions have the
-same shape. When the means are the question, use
+Dunn’s pairwise comparisons. Only the order of the values matters, so it
+suits responses that are skewed, have outliers, are measured on a coarse
+or ordinal scale, or include values known only to be “more extreme than
+everything else”.
+
+The test asks whether values in some groups tend to rank higher than in
+others. It is not a test of means, and it is a test of medians only when
+the groups’ distributions have the same shape. When the means are the
+question, use
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
 ([walkthrough](https://elkronos.github.io/anovakit/articles/welch.md)).
-The [decision
-guide](https://elkronos.github.io/anovakit/articles/choosing.md) covers
-the choice in more detail.
+[Choose an
+analysis](https://elkronos.github.io/anovakit/articles/choosing.md) sets
+out the choice.
 
 ## The data
 
@@ -64,7 +66,8 @@ groups are unequal in size.
 ## Fitting the model
 
 Columns are named as character strings: the response, then one or more
-grouping columns.
+grouping columns. The response must be numeric; convert an ordered
+factor with [`as.integer()`](https://rdrr.io/r/base/integer.html) first.
 
 ``` r
 
@@ -90,7 +93,7 @@ Reading the printout from the top:
 
 - The first line names the method, and `Call:` records how the fit was
   made.
-- `Observations used: 116` counts the rows analysed. The 37 rows with no
+- `Observations used:` counts the 116 rows analysed. The 37 rows with no
   ozone reading were dropped, and the printout points to `$notes` for
   the details.
 - `Omnibus test` is the Kruskal-Wallis test, described in the next
@@ -124,8 +127,9 @@ kw$anova
 #> 1 Month  29.26658  4 6.900714e-06
 ```
 
-- `term` is the grouping column (or a label for the combined cells when
-  there are several; see [below](#several-grouping-columns)).
+- `term` is the grouping column, or a label for the combined cells when
+  there are several (see [Several grouping
+  columns](#several-grouping-columns)).
 - `statistic` is the Kruskal-Wallis H. All 116 values are ranked
   together, and H measures how far each month’s mean rank lies from the
   overall mean rank, weighted by the month’s size. It includes the
@@ -147,16 +151,17 @@ kruskal.test(Ozone ~ Month, data = aq)$statistic
 #>                   29.26658
 ```
 
-([`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
+[`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
 passes [`kruskal.test()`](https://rdrr.io/r/stats/kruskal.test.html) the
 ranks rather than the raw values, so that ties are counted exactly as
 they were ranked. The two can differ slightly only when the data contain
-values that differ by floating-point error alone; see
-[below](#values-that-differ-only-by-rounding-error).)
+values that differ by floating-point error alone (see [Values that
+differ only by rounding
+error](#values-that-differ-only-by-rounding-error)).
 
 The mean ranks differ between months far more than chance would produce
-(p \< 0.001). The test does not say which months differ. That is what
-Dunn’s comparisons are for.
+(p \< 0.001). The test does not say which months differ; Dunn’s
+comparisons do.
 
 ## Effect sizes
 
@@ -184,16 +189,15 @@ With H the tie-corrected statistic, n observations and k groups:
   subtracts what k groups would produce by chance. A negative value is
   reported as 0, with a note.
 
-Take care with the names, which follow Tomczak and Tomczak (2014) and
-the **effectsize** package. Here epsilon squared is the unadjusted
-measure and therefore never smaller than eta squared, which is the
-reverse of what the same two names mean in a parametric analysis.
-Whichever you report, name it.
+The names follow Tomczak and Tomczak (2014) and the effectsize package.
+Here epsilon squared is the unadjusted measure and therefore never
+smaller than eta squared, the reverse of what the same two names mean in
+a parametric analysis. Whichever you report, name it.
 
 About 25% of the variation in the ranks of the ozone readings lies
 between months. No interval is reported for either measure.
 
-## Group summaries and Dunn’s comparisons
+## Group summaries and comparisons
 
 No model is fitted, so `$emmeans` holds plain group summaries:
 
@@ -208,11 +212,10 @@ print(kw$emmeans, digits = 3)
 #> 5   Sep 29     23      48.7 31.4 24.1 4.48     22.3      40.6
 ```
 
-The `mean_rank` column is the quantity Dunn’s comparisons are built
-from. The `median` is usually the more useful summary to report
-alongside them. The `mean`, `sd` and the t interval for the mean
-(`conf_low`, `conf_high`) are there for reference. They describe the raw
-values, and play no part in the test.
+Dunn’s comparisons are built from the `mean_rank` column. The `median`
+is usually the more useful summary to report alongside them. The `mean`,
+`sd` and the t interval for the mean (`conf_low`, `conf_high`) describe
+the raw values and play no part in the test.
 
 `$posthoc` holds Dunn’s comparisons, one row per pair of months:
 
@@ -238,14 +241,14 @@ print(kw$posthoc, digits = 3)
 - `p_value` is the two-sided p-value from the normal distribution,
   unadjusted.
 - `p_adjusted` is adjusted by the method in `adjustment`:
-  Benjamini-Hochberg (`"BH"`) by default.
+  Benjamini-Hochberg (`"BH"`) by default (see [`adjust`](#adjust) under
+  Options).
 
 Dunn’s test uses the ranks from the single joint ranking of all 116
-observations. It does not re-rank each pair, so it is not the same as
-running a Wilcoxon rank-sum test on each pair: the comparisons use the
-same ranking as the omnibus test. `rstatix::dunn_test()` reports the
-same comparisons as `group2` minus `group1`, so its statistics have the
-opposite sign.
+observations, the same ranking as the omnibus test. It does not re-rank
+each pair, so it differs from running a Wilcoxon rank-sum test on each
+pair. `rstatix::dunn_test()` reports the same comparisons as `group2`
+minus `group1`, so its statistics have the opposite sign.
 
 ### The tie correction
 
@@ -293,44 +296,10 @@ ratings on a five-point scale.
 July and August both rank well above May (both adjusted p \< 0.001) and
 above September (adjusted p = 0.004 and 0.009). July and August do not
 differ from each other (adjusted p = 0.860), and neither do May, June
-and September. June sits between: its difference from July is just
-inside 5% after adjustment (0.0496), and from August just outside
+and September. June sits between: its difference from July is narrowly
+inside 5% after adjustment (0.0496), and from August narrowly outside
 (0.0691). With only 9 June readings, the June comparisons are the least
 precise in the table.
-
-### Choosing `adjust`
-
-The default, Benjamini-Hochberg, controls the false discovery rate:
-among the comparisons you call significant, the expected proportion of
-false ones. That suits the usual follow-up question “which of these
-pairs differ?” When you need control of the chance of even one false
-positive (the family-wise error rate), use `"holm"`, which is uniformly
-more powerful than `"bonferroni"`. Any
-[`stats::p.adjust()`](https://rdrr.io/r/stats/p.adjust.html) method is
-accepted, spelled out in full. `"tukey"` is not: Dunn’s test is a
-comparison of ranks, not a linear contrast.
-
-``` r
-
-adj <- sapply(c("BH", "holm", "bonferroni", "none"), function(a)
-  anova_kw(aq, "Ozone", "Month", adjust = a, plots = FALSE)$posthoc$p_adjusted)
-cbind(ph[, c("group1", "group2")], signif(adj, 3))
-#>    group1 group2       BH     holm bonferroni     none
-#> 1     May    Jun 4.44e-01 1.00e+00   1.00e+00 3.55e-01
-#> 2     May    Jul 9.89e-05 9.89e-05   9.89e-05 9.89e-06
-#> 3     May    Aug 1.79e-04 3.23e-04   3.58e-04 3.58e-05
-#> 4     May    Sep 2.66e-01 7.46e-01   1.00e+00 1.86e-01
-#> 5     Jun    Jul 4.96e-02 1.49e-01   2.48e-01 2.48e-02
-#> 6     Jun    Aug 6.91e-02 2.07e-01   4.15e-01 4.15e-02
-#> 7     Jun    Sep 9.98e-01 1.00e+00   1.00e+00 9.98e-01
-#> 8     Jul    Aug 8.60e-01 1.00e+00   1.00e+00 7.74e-01
-#> 9     Jul    Sep 4.31e-03 1.04e-02   1.29e-02 1.29e-03
-#> 10    Aug    Sep 8.67e-03 2.43e-02   3.47e-02 3.47e-03
-```
-
-Only `p_adjusted` changes. Under Holm, the June against July comparison
-no longer passes at 5% (0.1489), while the comparisons of July and
-August with May and September all still do.
 
 ## Checking assumptions
 
@@ -343,9 +312,9 @@ kw$assumptions
 #> list()
 ```
 
-The test does rest on two things no diagnostic in the fit checks. The
-first is that the observations are independent. Daily readings are not:
-a high-ozone day tends to be followed by another.
+The test does rest on two things that no diagnostic in the fit checks.
+The first is that the observations are independent. Daily readings are
+not: a high-ozone day tends to be followed by another.
 
 ``` r
 
@@ -360,9 +329,9 @@ lag1
 
 With a day-to-day correlation of 0.54, the 116 readings carry less
 independent information than their number suggests, so treat the
-p-values here as somewhat optimistic. The second is that if you want to
-read a difference as a shift in the median, the groups’ distributions
-need similar shapes. The box plot below is the place to judge that.
+p-values here as somewhat optimistic. The second is that a difference
+can be read as a shift in the median only if the groups’ distributions
+have similar shapes. Judge that from the box plot below.
 
 With `diagnostics = TRUE` the function adds a per-group Shapiro-Wilk
 table in `$assumptions$normality`, a Q-Q plot in `$plots$qq`, and a
@@ -386,12 +355,10 @@ names(kwd$plots)
 ```
 
 As the note says, these are context only: nothing in the test depends on
-them. They can help you explain why you chose a rank test. Here May and
-September are clearly non-normal, which is the kind of evidence that
-argues against comparing means with
+them. They can support the choice of a rank test. Here May and September
+are clearly non-normal, evidence against comparing means with
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md).
-The [diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+[Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
 covers the checks across the whole package.
 
 ## Plots
@@ -404,20 +371,18 @@ plot(kw, "box")
 ![](kruskal-wallis_files/figure-html/plot-box-1.png)
 
 The `box` plot is always built. It shows the distribution of each group,
-ordered by median and labelled with its size. What to look for:
+ordered by median and labelled with its size.
 
-- **Where the groups sit.** July and August sit clearly above the other
-  three months, the pattern Dunn’s comparisons found (with the June
-  comparisons the least certain).
-- **Shape.** In most months the upper whisker is longer than the lower
-  one, and May, June, September and August each have at least one high
-  outlier. That long upper tail is what pulls the means above the
-  medians.
-- **Spread.** The spreads differ: the boxes for July and August are much
-  taller than those for the other three months. So the groups differ in
-  more than location, and the result is best read as “ozone tends to be
-  higher in July and August” rather than as a statement about medians
-  alone.
+July and August sit clearly above the other three months, the pattern
+Dunn’s comparisons found, with the June comparisons the least certain.
+In most months the upper whisker is longer than the lower one, and May,
+June, September and August each have at least one high outlier; that
+long upper tail pulls the means above the medians.
+
+The spreads differ too: the boxes for July and August are much taller
+than those for the other three months. The groups differ in more than
+location, so the result is best read as “ozone tends to be higher in
+July and August” rather than as a statement about medians alone.
 
 ``` r
 
@@ -430,11 +395,11 @@ The `qq` plot appears only with `diagnostics = TRUE`. Each value is
 expressed as its deviation from its own group’s mean, divided by its own
 group’s standard deviation, and the points are compared with a normal
 distribution. Here the upper tail curves well above the dashed line and
-the lowest points also sit above it, the pattern of right skew: a long
-upper tail and a short lower one. Like the Shapiro-Wilk table, it is
+the lowest points also sit above it, the pattern of right skew (a long
+upper tail and a short lower one). Like the Shapiro-Wilk table, it is
 context only.
 
-Both are ordinary **ggplot2** objects that you can modify with `+`:
+Both are ordinary ggplot2 objects that you can modify with `+`:
 
 ``` r
 
@@ -445,14 +410,20 @@ plot(kw, "box") +
 
 ![](kruskal-wallis_files/figure-html/plot-modify-1.png)
 
-See [Plots and visual
-customisation](https://elkronos.github.io/anovakit/articles/visuals.md)
-for more.
+[Plots and
+themes](https://elkronos.github.io/anovakit/articles/visuals.md) covers
+customisation.
 
-## Infinite values
+## How values are ranked
 
-Missing values are dropped and counted in `$n_removed`, as above.
-Infinite values are not. In a rank analysis `Inf` is simply larger than
+Missing values are dropped and counted in `$n_removed`, as above. A
+response in which every value is the same is refused, because there is
+nothing to rank. Two other cases need care: infinite values, and values
+that should be equal but are stored slightly differently.
+
+### Infinite values
+
+Infinite values are kept. In a rank analysis `Inf` is larger than
 everything else, which is how you might record, say, a participant who
 never completed a task. The small constructed example below records the
 minutes taken to solve a puzzle, with three kinds of hint. Anyone who
@@ -506,14 +477,14 @@ plot(pz, "box")
 
 ![](kruskal-wallis_files/figure-html/inf-box-1.png)
 
-Here the labels read 5 for `none` and 7 for `text`, not 8: the people
-who gave up are missing from the picture, although they hold the highest
+The labels read 5 for `none` and 7 for `text`, not 8. The people who
+gave up are missing from the picture, although they hold the highest
 ranks in the test. The boxes’ medians are those of the finishers only,
 so the `none` box sits at 13.9 minutes against a true median of 18.15 in
 `$emmeans`. For data like these, read the medians and mean ranks in
 `$emmeans` alongside the plot.
 
-A comparison of means has no use for an infinite value.
+A comparison of means has no use for an infinite value, so
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
 drops those rows, as it does missing ones:
 
@@ -523,7 +494,85 @@ anova_welch(puzzle, "minutes", "hint", plots = FALSE)$n_removed
 #> [1] 4
 ```
 
-## Options worth knowing
+### Values that differ only by rounding error
+
+Values are ranked exactly as stored. Two numbers that should be equal
+but were computed differently, such as `0.1 + 0.2` and `0.3`, are
+therefore ranked as distinct values, not as a tie. The function looks
+for such near-ties and says when it finds them:
+
+``` r
+
+nt <- data.frame(g = rep(c("a", "b"), each = 3),
+                 y = c(0.1 + 0.2, 0.2, 0.25, 0.3, 0.9, 1.1))
+nt_fit <- anova_kw(nt, "y", "g", plots = FALSE)
+nt_fit$notes
+#> [1] "Some values of `y` differ only in their last few significant digits (as 0.1 + 0.2 and 0.3 do) and were ranked as distinct values, not as ties. If they are meant to be equal, round the response before the analysis."
+c(anova_kw = nt_fit$anova$statistic,
+  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
+#>     anova_kw kruskal.test 
+#>     2.333333     2.401961
+```
+
+[`kruskal.test()`](https://rdrr.io/r/stats/kruskal.test.html) on the raw
+values ranks the two numbers as distinct but counts them as a tie when
+it corrects for ties, because it counts ties on the printed values. Its
+statistic therefore differs slightly from the one
+[`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
+reports, which counts ties on the ranks it used. If such values are
+meant to be equal, round the response before the analysis. They then
+become a genuine tie, the note goes away, and the two statistics agree:
+
+``` r
+
+nt$y <- round(nt$y, 10)
+nt_round <- anova_kw(nt, "y", "g", plots = FALSE)
+nt_round$notes
+#> character(0)
+c(anova_kw = nt_round$anova$statistic,
+  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
+#>     anova_kw kruskal.test 
+#>     3.137255     3.137255
+```
+
+## Options
+
+`diagnostics` (default `FALSE`) is covered under [Checking
+assumptions](#checking-assumptions).
+
+### `adjust`
+
+The default, Benjamini-Hochberg, controls the false discovery rate:
+among the comparisons you call significant, the expected proportion of
+false ones. That suits the usual follow-up question of which pairs
+differ. When you need control of the chance of even one false positive
+(the family-wise error rate), use `"holm"`, which is uniformly more
+powerful than `"bonferroni"`. Any
+[`stats::p.adjust()`](https://rdrr.io/r/stats/p.adjust.html) method is
+accepted, spelled out in full. `"tukey"` is not, because Dunn’s test is
+a comparison of ranks, not a linear contrast.
+
+``` r
+
+adj <- sapply(c("BH", "holm", "bonferroni", "none"), function(a)
+  anova_kw(aq, "Ozone", "Month", adjust = a, plots = FALSE)$posthoc$p_adjusted)
+cbind(ph[, c("group1", "group2")], signif(adj, 3))
+#>    group1 group2       BH     holm bonferroni     none
+#> 1     May    Jun 4.44e-01 1.00e+00   1.00e+00 3.55e-01
+#> 2     May    Jul 9.89e-05 9.89e-05   9.89e-05 9.89e-06
+#> 3     May    Aug 1.79e-04 3.23e-04   3.58e-04 3.58e-05
+#> 4     May    Sep 2.66e-01 7.46e-01   1.00e+00 1.86e-01
+#> 5     Jun    Jul 4.96e-02 1.49e-01   2.48e-01 2.48e-02
+#> 6     Jun    Aug 6.91e-02 2.07e-01   4.15e-01 4.15e-02
+#> 7     Jun    Sep 9.98e-01 1.00e+00   1.00e+00 9.98e-01
+#> 8     Jul    Aug 8.60e-01 1.00e+00   1.00e+00 7.74e-01
+#> 9     Jul    Sep 4.31e-03 1.04e-02   1.29e-02 1.29e-03
+#> 10    Aug    Sep 8.67e-03 2.43e-02   3.47e-02 3.47e-03
+```
+
+Only `p_adjusted` changes. Under Holm, the June against July comparison
+no longer passes at 5% (0.1489), while the comparisons of July and
+August with May and September all still do.
 
 ### `conf_level`
 
@@ -574,48 +623,10 @@ wk$notes
 ```
 
 The test compares the six cells. As the note says, it cannot separate a
-wool effect from a tension effect or test their interaction.
-
-### Values that differ only by rounding error
-
-Values are ranked exactly as stored. Two numbers that should be equal
-but were computed differently, such as `0.1 + 0.2` and `0.3`, are
-therefore ranked as distinct values, not as a tie. The function looks
-for such near-ties and says when it finds them:
-
-``` r
-
-nt <- data.frame(g = rep(c("a", "b"), each = 3),
-                 y = c(0.1 + 0.2, 0.2, 0.25, 0.3, 0.9, 1.1))
-nt_fit <- anova_kw(nt, "y", "g", plots = FALSE)
-nt_fit$notes
-#> [1] "Some values of `y` differ only in their last few significant digits (as 0.1 + 0.2 and 0.3 do) and were ranked as distinct values, not as ties. If they are meant to be equal, round the response before the analysis."
-c(anova_kw = nt_fit$anova$statistic,
-  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
-#>     anova_kw kruskal.test 
-#>     2.333333     2.401961
-```
-
-[`kruskal.test()`](https://rdrr.io/r/stats/kruskal.test.html) on the raw
-values ranks the two numbers as distinct but counts them as a tie when
-it corrects for ties, because it counts ties on the printed values. That
-is why its statistic differs slightly from the one
-[`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
-reports, which counts ties on the ranks it actually used. If such values
-are meant to be equal, round the response before the analysis. They then
-become a genuine tie, the note goes away, and the two statistics agree:
-
-``` r
-
-nt$y <- round(nt$y, 10)
-nt_round <- anova_kw(nt, "y", "g", plots = FALSE)
-nt_round$notes
-#> character(0)
-c(anova_kw = nt_round$anova$statistic,
-  kruskal.test = unname(kruskal.test(y ~ g, data = nt)$statistic))
-#>     anova_kw kruskal.test 
-#>     3.137255     3.137255
-```
+wool effect from a tension effect or test their interaction. For a
+factorial rank-based analysis, the note points to the Scheirer-Ray-Hare
+extension or an aligned rank transform, neither of which anovakit
+provides.
 
 ## What the notes say
 
@@ -626,11 +637,21 @@ kw$notes
 ```
 
 For the ozone fit the only note records the 37 rows dropped for missing
-values, and names the columns that were checked. Other notes you have
-seen above: infinite values kept, the contextual status of the
-diagnostics, `posthoc = FALSE`, combined cells, and near-ties. The
-function also writes a note when `eta_squared_H` is negative (and
-floored at 0) or undefined. Read `$notes` on every fit.
+values, and names the column that held them (`Ozone`).
+[`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
+also writes a note when:
+
+- infinite values were kept and ranked ([Infinite
+  values](#infinite-values));
+- values differ only by rounding error and were ranked as distinct
+  ([near-ties](#values-that-differ-only-by-rounding-error));
+- several grouping columns were combined into cells;
+- `posthoc = FALSE` left `$posthoc` empty;
+- `diagnostics = TRUE` added the normality checks, which are context
+  only, or a group was too small or too large for its Shapiro-Wilk test;
+- `eta_squared_H` was negative and floored at 0 (the note gives the
+  unfloored value), or is undefined because there is one observation per
+  group.
 
 ## Reporting the result
 
@@ -662,10 +683,9 @@ days, mostly in June.
 - [Working with
   results](https://elkronos.github.io/anovakit/articles/results.md) for
   the structure of the returned object and more on reporting.
-- [Diagnostics across the
-  package](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-  and [Plots and visual
-  customisation](https://elkronos.github.io/anovakit/articles/visuals.md).
-- The [Get Started
-  vignette](https://elkronos.github.io/anovakit/articles/anovakit.md)
-  for a tour of every function.
+- [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+  and [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md).
+- [Design
+  choices](https://elkronos.github.io/anovakit/articles/design.md) for
+  why the default adjustment differs between functions.

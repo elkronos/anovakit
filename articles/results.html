@@ -32,19 +32,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -53,9 +54,11 @@
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -94,9 +97,8 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://elkronos.github.io/anovakit/">anovakit</a></span><span class="op">)</span></span></code></pre></div>
 <p>Every anovakit function returns an object of class
 <code>anovakit_fit</code>. It is a plain named list: every table is a
-data frame, every figure a <strong>ggplot2</strong> object, and nothing
-is hidden behind accessor functions. This article shows what is in it
-and how to use it. The examples use <code>chickwts</code>, the weights
+data frame, every figure a ggplot2 object, and nothing is hidden behind
+accessor functions. The examples use <code>chickwts</code>, the weights
 of 71 chicks raised on six feed supplements.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">chickwts</span><span class="op">$</span><span class="va">feed</span><span class="op">)</span></span>
@@ -106,9 +108,9 @@ of 71 chicks raised on six feed supplements.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span><span class="op">)</span></span></code></pre></div>
 <p><code><a href="../reference/anova_glm.html">anova_glm()</a></code> with its default Gaussian family is a
-classical one-way ANOVA, which is a convenient model-based example.
-Everything below applies to all eight functions; where one differs, it
-says so.</p>
+classical one-way ANOVA. Everything below applies to all eight
+functions; where one differs, the text says so. <a href="design.html">Design choices</a> explains the rules behind what a
+fit contains.</p>
 <div class="section level2">
 <h2 id="what-is-in-a-fit">What is in a fit<a class="anchor" aria-label="anchor" href="#what-is-in-a-fit"></a>
 </h2>
@@ -160,8 +162,8 @@ Kruskal-Wallis).</td>
 </tr>
 <tr class="odd">
 <td><code>emmeans_object</code></td>
-<td>The <strong>emmeans</strong> grid behind <code>$emmeans</code>, for
-further contrasts.</td>
+<td>The emmeans grid behind <code>$emmeans</code>, for further
+contrasts.</td>
 </tr>
 <tr class="even">
 <td><code>posthoc</code></td>
@@ -177,7 +179,7 @@ further contrasts.</td>
 </tr>
 <tr class="odd">
 <td><code>data_used</code></td>
-<td>The rows and columns the analysis actually used.</td>
+<td>The rows and columns the analysis used.</td>
 </tr>
 <tr class="even">
 <td><code>n_removed</code></td>
@@ -219,9 +221,11 @@ names of the plots:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
-<p><code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> shows the rest: effect sizes, marginal means,
-comparisons and the assumption checks. It returns an object, so you can
-keep it and print it later with different <code>digits</code>.</p>
+<p><code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> shows the rest: the assumption checks (for
+<code><a href="../reference/anova_glm.html">anova_glm()</a></code> these include the coefficient table), effect
+sizes, marginal means, comparisons and, where the function computes
+them, model-fit statistics. It returns an object, so you can keep it and
+print it later with different <code>digits</code>.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span>, digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span></span>
@@ -311,7 +315,7 @@ keep it and print it later with different <code>digits</code>.</p>
 <span><span class="co">#&gt; Model fit</span></span>
 <span><span class="co">#&gt;  AIC BIC null_deviance residual_deviance df_residual</span></span>
 <span><span class="co">#&gt;  778 794        427000            196000          65</span></span></code></pre></div>
-<p>Both use <code>digits</code> for display only; the numbers stored in
+<p><code>digits</code> changes the display only; the numbers stored in
 the fit are never rounded.</p>
 </div>
 <div class="section level2">
@@ -336,8 +340,8 @@ heading to write:</p>
 <span><span class="co">#&gt; [1] "F"</span></span></code></pre></div>
 <p>The pairwise comparisons have one row per pair. <code>p_value</code>
 is the <em>unadjusted</em> p-value, <code>p_adjusted</code> the adjusted
-one, and <code>adjustment</code> names the method, so nothing about the
-adjustment has to be remembered from the call:</p>
+one, and <code>adjustment</code> names the method, so the table records
+its own adjustment:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span><span class="op">)</span></span>
 <span><span class="co">#&gt;  [1] "contrast"   "estimate"   "se"         "df"         "conf_low"  </span></span>
@@ -364,30 +368,27 @@ that survive the Tukey adjustment, largest difference first:</p>
 are simultaneous. With a single-step method such as Tukey’s they use the
 same adjustment as <code>p_adjusted</code>, so an interval that excludes
 zero agrees with an adjusted p-value below <code>1 - conf_level</code>.
-Step-down methods such as Holm’s cannot be turned into intervals;
-<strong>emmeans</strong> then uses Bonferroni intervals, and
-<code>$notes</code> says so.</p>
+For step-down methods such as Holm’s, see <a href="design.html#multiplicity-adjustments-depend-on-the-method">Design
+choices</a>.</p>
 <p>Writing a table out is one line:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/write.table.html" class="external-link">write.csv</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span>, <span class="st">"comparisons.csv"</span>, row.names <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="read-the-notes">Read the notes<a class="anchor" aria-label="anchor" href="#read-the-notes"></a>
+<h2 id="the-notes">The notes<a class="anchor" aria-label="anchor" href="#the-notes"></a>
 </h2>
 <p><code>$notes</code> is a character vector. It records every decision
 the function made on your behalf (which model it chose, which rows it
 dropped, which correction it applied), everything it could not compute
-and why, and anything <strong>car</strong>, <strong>emmeans</strong>,
-<strong>stats</strong> or <strong>afex</strong> said while fitting. None
-of it is printed to the console as a warning, so this is the one place
+and why, and every warning or message raised while fitting (<a href="design.html#nothing-prints">Design choices</a> lists whose). None
+of it is printed to the console, so <code>$notes</code> is the one place
 to look.</p>
 <p>This simple fit needed no decisions, so its notes are empty:</p>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; character(0)</span></span></code></pre></div>
-<p>Ask for heteroscedasticity-consistent standard errors and there is
-more to say: which parts of the output use them, and what they cannot
-do.</p>
+<p>With heteroscedasticity-consistent standard errors, the notes say
+which parts of the output use them and what they cannot do.</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">robust</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>,</span>
 <span>                    plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
@@ -395,9 +396,9 @@ do.</p>
 <span><span class="co">#&gt; Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative, and for a one-way design anova_welch() is better calibrated.</span></span>
 <span><span class="co">#&gt; The omnibus F test compares deviances scaled by a dispersion estimated from the Pearson residuals, so it uses the model's variance function, not the robust (HC3) covariance, which only the coefficient table, the marginal means and the comparisons use. For an omnibus test that uses it, set test_statistic = "Wald".</span></span>
 <span><span class="co">#&gt; Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.</span></span></code></pre></div>
-<p>Treat the notes as a checklist to read before you quote a number.
-They are plain text, so you can also search them, for example to flag
-which fits in a batch used robust standard errors:</p>
+<p>Read them before you quote a number. They are plain text, so you can
+also search them, for example to flag which fits in a batch used robust
+standard errors:</p>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fits</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  welch  <span class="op">=</span> <span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
@@ -442,8 +443,8 @@ mean-centred when <code><a href="../reference/anova_ancova.html">anova_ancova()<
 </h2>
 <p><code>$emmeans</code> and <code>$posthoc</code> cover the usual
 questions: the mean of each group, and every pairwise difference. For
-anything else, <code>$emmeans_object</code> is the
-<strong>emmeans</strong> reference grid the tables were built from.</p>
+anything else, <code>$emmeans_object</code> is the emmeans reference
+grid the tables were built from.</p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">grid</span> <span class="op">&lt;-</span> <span class="va">fit</span><span class="op">$</span><span class="va">emmeans_object</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">grid</span><span class="op">)</span></span>
@@ -465,6 +466,9 @@ anything else, <code>$emmeans_object</code> is the
 <span><span class="co">#&gt; Degrees-of-freedom method: user-specified </span></span>
 <span><span class="co">#&gt; Confidence level used: 0.95 </span></span>
 <span><span class="co">#&gt; Conf-level adjustment: dunnettx method for 5 estimates</span></span></code></pre></div>
+<p>The grid carries emmeans’ default level, so pass
+<code>level = fit$conf_level</code> as here (see <a href="design.html#conf_level-sets-every-interval">Design
+choices</a>).</p>
 <p>Or a custom contrast: the four plant-based feeds against the two
 animal-based ones. The coefficients follow the order of the factor
 levels.</p>
@@ -481,20 +485,12 @@ levels.</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Degrees-of-freedom method: user-specified </span></span>
 <span><span class="co">#&gt; Confidence level used: 0.95</span></span></code></pre></div>
-<p>Two things to keep in mind:</p>
-<ul>
-<li>The grid carries <strong>emmeans</strong>’ default confidence level,
-not the fit’s <code>conf_level</code>. Pass
-<code>level = fit$conf_level</code> (as above) when you want the two to
-agree.</li>
-<li>When grouping factors enter a model additively, the means are
+<p>When grouping factors enter a model additively, the means are
 reported per factor and <code>$emmeans_object</code> is a named list
 with one grid per factor. In <code><a href="../reference/anova_manova.html">anova_manova()</a></code> there is one
 grid per response, under
-<code>fit$univariate[[response]]$emmeans_object</code>.
-<code><a href="../reference/anova_welch.html">anova_welch()</a></code> and <code><a href="../reference/anova_kw.html">anova_kw()</a></code> fit no model
-<strong>emmeans</strong> can use, so theirs is <code>NULL</code>.</li>
-</ul>
+<code>fit$univariate[[response]]$emmeans_object</code>. For Welch and
+Kruskal-Wallis fits it is <code>NULL</code> (see the next section).</p>
 </div>
 <div class="section level2">
 <h2 id="going-further-with-the-model">Going further with the model<a class="anchor" aria-label="anchor" href="#going-further-with-the-model"></a>
@@ -553,8 +549,8 @@ them and keeps the objects small.</p>
 <div class="section level2">
 <h2 id="many-analyses-at-once">Many analyses at once<a class="anchor" aria-label="anchor" href="#many-analyses-at-once"></a>
 </h2>
-<p>Because every function has the same signature and returns the same
-structure, running one analysis over several outcomes or subsets is a
+<p>Every function takes its columns by name and returns the same
+structure, so running one analysis over several outcomes or subsets is a
 loop. Here the built-in <code>ToothGrowth</code> data compare the two
 vitamin C supplements separately at each dose:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
@@ -610,6 +606,28 @@ whole, figures included. <code>$call</code> records how it was made:</p>
 <span><span class="co">#&gt; anova_glm(data = chickwts, response = "weight", groups = "feed")</span></span></code></pre></div>
 <p>Fits made with <code>plots = FALSE</code> are much smaller, which
 matters when you store many of them.</p>
+</div>
+<div class="section level2">
+<h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a>
+</h2>
+<ul>
+<li>
+<a href="design.html">Design choices</a>: what a function decides on
+your behalf, and which settings can change a result.</li>
+<li>
+<a href="visuals.html">Plots and themes</a>: every figure and how to
+customise it.</li>
+<li>
+<a href="diagnostics.html">Diagnostics</a>: the contents of
+<code>$assumptions</code>.</li>
+<li>
+<a href="weights.html">Weights and robust standard errors</a>: what
+<code>vcov_type</code> and <code>weights</code> change in the
+tables.</li>
+<li>
+<code><a href="../reference/anovakit_fit.html">?anovakit_fit</a></code>: every component, including those
+specific to one function.</li>
+</ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

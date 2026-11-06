@@ -16,27 +16,30 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs"><li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs"><li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
   </ul></li>
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-guides"><li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-guides"><li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul></li>
@@ -60,42 +63,56 @@
       <h3>Start here</h3>
       <div class="section-desc"></div>
 
-      <dl><dt><a href="anovakit.html">Getting started with anovakit</a></dt>
-        <dd>
-        </dd><dt><a href="choosing.html">Which function? Choosing an analysis</a></dt>
-        <dd><p>A decision guide: four questions about your data that lead to one of the eight functions, the situations each one is built for, and the mistakes the choice is meant to avoid.</p>
-        </dd><dt><a href="results.html">Working with results: the anovakit_fit object</a></dt>
-        <dd><p>What every function returns, how to print, extract and reuse it, how to go further with emmeans and the fitted model, and how to report a result.</p>
+      <dl><dt><a href="anovakit.html">Get started with anovakit</a></dt>
+        <dd><p>One analysis from start to finish (Welch’s ANOVA on mtcars, then the same question with a covariate in anova_ancova()), and the arguments every function shares.</p>
+        </dd><dt><a href="choosing.html">Choose an analysis</a></dt>
+        <dd><p>A decision guide: four questions about your data that lead to one of the eight functions, a table of common situations, and what each function is for.</p>
       </dd></dl></div>
     <div class="section ">
-      <h3>Walkthroughs</h3>
-      <div class="section-desc"><p>One article per function: the data, the fit, the output, effect sizes, comparisons, diagnostics, plots, options and a model write-up.</p></div>
+      <h3>One outcome, independent groups</h3>
+      <div class="section-desc"></div>
 
       <dl><dt><a href="welch.html">Welch's ANOVA: comparing means when variances differ</a></dt>
         <dd><p>A walkthrough of anova_welch(): the omnibus Welch test, pairwise Welch t tests, standardised mean differences that do not assume equal variances, and the three diagnostic plots.</p>
         </dd><dt><a href="kruskal-wallis.html">Kruskal-Wallis: comparing groups by ranks</a></dt>
         <dd><p>A walkthrough of anova_kw(): the Kruskal-Wallis test, epsilon squared, Dunn’s comparisons with the tie correction, missing and infinite values, and the optional diagnostics.</p>
         </dd><dt><a href="ancova.html">ANCOVA: comparing groups at the same value of a covariate</a></dt>
-        <dd><p>A walkthrough of anova_ancova() on the anorexia treatment data: covariate-adjusted means, the homogeneity-of-slopes test, simple slopes, centring and robust tests.</p>
-        </dd><dt><a href="repeated-measures.html">Repeated measures ANOVA: the same subjects under several conditions</a></dt>
-        <dd><p>A walkthrough of anova_rm(): mixed designs, sphericity corrections, generalised eta squared, incomplete subjects and within-subject residual checks.</p>
+        <dd><p>A walkthrough of anova_ancova() on the anorexia treatment data: the homogeneity-of-slopes test, simple slopes, covariate centring, adjusted marginal means and robust standard errors (vcov_type).</p>
+      </dd></dl></div>
+    <div class="section ">
+      <h3>Repeated measures and several outcomes</h3>
+      <div class="section-desc"></div>
+
+      <dl><dt><a href="repeated-measures.html">Repeated measures ANOVA: the same subjects under several conditions</a></dt>
+        <dd><p>A walkthrough of anova_rm(): mixed designs, sphericity corrections, generalised eta squared, within-subject residual checks, incomplete subjects and repeated rows.</p>
         </dd><dt><a href="manova.html">MANOVA: comparing groups on several responses at once</a></dt>
-        <dd><p>A walkthrough of anova_manova() on the iris measurements: the multivariate test, univariate follow-ups, canonical discriminant analysis, Box’s M and Mardia’s tests, and MANCOVA.</p>
-        </dd><dt><a href="binary.html">Binary outcomes: logistic regression with anova_bin()</a></dt>
-        <dd><p>A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, frequency weights and separation.</p>
+        <dd><p>A walkthrough of anova_manova() on the iris measurements: the multivariate test, univariate follow-ups, canonical discriminant analysis, Box’s M and Mardia’s tests, MANCOVA and several grouping variables.</p>
+      </dd></dl></div>
+    <div class="section ">
+      <h3>Binary, count and other outcomes</h3>
+      <div class="section-desc"></div>
+
+      <dl><dt><a href="binary.html">Binary outcomes: logistic regression with anova_bin()</a></dt>
+        <dd><p>A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, separation, frequency weights and robust standard errors.</p>
         </dd><dt><a href="counts.html">Counts and rates: analysis of deviance with anova_count()</a></dt>
-        <dd><p>A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, frequency weights and groups with no events.</p>
-        </dd><dt><a href="glm.html">Analysis of deviance: factorial designs and non-normal responses</a></dt>
-        <dd><p>A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, then a Gamma model for a positive, right-skewed response, with its coefficient table, dispersion, robust standard errors and weights.</p>
+        <dd><p>A walkthrough of anova_count() on the warpbreaks and insurance-claims data: Poisson or negative binomial, rate ratios, marginal rates, exposure offsets, groups with no events and frequency weights.</p>
+        </dd><dt><a href="glm.html">Any GLM family: analysis of deviance with anova_glm()</a></dt>
+        <dd><p>A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, and a Gamma model with a log link for a positive, right-skewed response, with its coefficient table, dispersion, ratios of means and robust standard errors.</p>
       </dd></dl></div>
     <div class="section ">
       <h3>Guides</h3>
-      <div class="section-desc"><p>Topics that cut across every function.</p></div>
+      <div class="section-desc"><p>Topics that cut across the functions.</p></div>
 
-      <dl><dt><a href="diagnostics.html">Diagnostics: what anovakit checks and what to do about it</a></dt>
-        <dd><p>Every assumption check the eight functions run, organised by what is being checked: how to read each one, a worked example that makes it fire, and the argument or function that helps when it fails.</p>
-        </dd><dt><a href="visuals.html">Plots: every figure anovakit returns, and how to customise them</a></dt>
-        <dd><p>A tour of every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, build your own from the result tables, combine and save them.</p>
+      <dl><dt><a href="results.html">Working with results: the anovakit_fit object</a></dt>
+        <dd><p>What every function returns, how to print, extract and reuse it, how to go further with emmeans and the fitted model, and how to report a result.</p>
+        </dd><dt><a href="diagnostics.html">Diagnostics: what anovakit checks and what to do about it</a></dt>
+        <dd><p>Every assumption check the eight functions run, organised by what is being checked: how to read each one, a worked example that makes it fire, and the argument or function that helps when it fails. Also covers exact fits and the limits of numerical precision.</p>
+        </dd><dt><a href="visuals.html">Plots and themes</a></dt>
+        <dd><p>Every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, set a theme for all of them, build your own from the result tables, combine and save them.</p>
+        </dd><dt><a href="weights.html">Weights and robust standard errors</a></dt>
+        <dd><p>How anova_bin(), anova_count() and anova_glm() read prior weights as frequencies, trials or sampling weights, what happens to zero weights, and where vcov_type’s robust covariance reaches and when it is not used.</p>
+        </dd><dt><a href="design.html">Design choices</a></dt>
+        <dd><p>Why the defaults are what they are, which decisions a function makes for you and where it records them, and which settings can and cannot change a result.</p>
       </dd></dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>

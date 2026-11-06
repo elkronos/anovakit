@@ -349,7 +349,7 @@ bin$effect_sizes
 #> 1 deviance_explained 0.08270479
 #> 2        mcfadden_r2 0.08270479
 
-# Heteroskedasticity-consistent standard errors, which flow through to the
+# Heteroscedasticity-consistent standard errors, which flow through to the
 # marginal means and the comparisons
 anova_glm(d, "y", "A", vcov_type = "HC3", plots = FALSE)$emmeans
 #>    A estimate        se  df conf_low conf_high

@@ -8,22 +8,25 @@ library(anovakit)
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
 compares the mean of a numeric response across two or more groups
 without assuming that the groups share a variance. It is the package’s
-default choice for a one-way comparison of means: when the variances are
-equal it gives up almost nothing to the classical F test, and when they
-are not it keeps its stated error rate where the classical test does
-not. If the response is heavily skewed, ordinal, or has values that are
-only “more extreme” rather than measured, compare ranks with
+default for a one-way comparison of means. When the variances are equal
+it gives up almost nothing to the classical F test, and when they are
+not it keeps its stated error rate where the classical test does not.
+
+Other functions cover the neighbouring cases. For a response that is
+heavily skewed, ordinal, or has values that are only “more extreme”
+rather than measured, compare ranks with
 [`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md)
 ([walkthrough](https://elkronos.github.io/anovakit/articles/kruskal-wallis.md)).
 To adjust for a covariate use
-[`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md),
+[`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
+([walkthrough](https://elkronos.github.io/anovakit/articles/ancova.md)),
 and to separate the main effects and interaction of two or more factors
 use
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
 ([walkthrough](https://elkronos.github.io/anovakit/articles/glm.md)).
-The [decision
-guide](https://elkronos.github.io/anovakit/articles/choosing.md) covers
-the choice in more detail.
+[Choose an
+analysis](https://elkronos.github.io/anovakit/articles/choosing.md) sets
+out the choice.
 
 ## The data
 
@@ -54,11 +57,10 @@ round(cbind(mean = tapply(PlantGrowth$weight, PlantGrowth$group, mean),
 ```
 
 The question is whether the treatments change the mean weight. The
-standard deviations are not the same: `trt1` varies about 1.79 times as
-much as `trt2`, so its variance is about 3.22 times as large. With
-groups this small you cannot tell whether that is a real difference in
-spread or sampling noise, and that uncertainty is exactly the case for a
-test that does not need to know.
+standard deviations differ: `trt1` varies about 1.79 times as much as
+`trt2`, so its variance is about 3.22 times as large. With groups of ten
+you cannot tell whether that is a real difference in spread or sampling
+noise. Welch’s test does not need to know.
 
 ## Fitting the model
 
@@ -86,19 +88,19 @@ Reading the printout from the top:
 
 - The first line names the method, and `Call:` records how the fit was
   made.
-- `Observations used: 30` is the number of rows analysed. Had any rows
-  been dropped for a missing or infinite value, the count would appear
-  here with a pointer to `$notes`.
+- `Observations used:` gives the 30 rows analysed. Had any rows been
+  dropped for a missing or infinite value, the count would appear here
+  with a pointer to `$notes`.
 - `Omnibus test` is the Welch test itself, described in the next
   section.
 - There is no `Notes` block, because the function had nothing to report
-  for these data. [What the notes say](#what-the-notes-say) below
-  explains when it does.
+  for these data. [What the notes say](#what-the-notes-say) lists when
+  it does.
 - `Plots available` lists the three plots stored in `$plots`.
 
 `summary(fit)` prints the same header followed by every table the fit
 holds: the assumption checks, effect sizes, group summaries and pairwise
-comparisons. The sections below take those one at a time.
+comparisons. The sections below take them one at a time.
 
 ## The omnibus test
 
@@ -109,24 +111,25 @@ fit$anova
 #> 1 group  5.180972      2 17.12842 0.01739282
 ```
 
-- `term` is the grouping column (or a label for the combined cells when
-  there are several; see [below](#several-grouping-columns)).
+- `term` is the grouping column, or a label for the combined cells when
+  there are several (see [Several grouping
+  columns](#several-grouping-columns)).
 - `statistic` is Welch’s F. It is built from each group’s own variance,
   with each group’s mean weighted by its precision (its size over its
   variance), so a noisy group counts for less.
 - `num_df` is the number of groups minus one.
 - `den_df` is Welch’s approximate denominator degrees of freedom,
-  estimated from the group sizes and variances. It is not on the same
-  footing as the classical test’s 30 - 3 = 27. With three groups of ten
-  it would be 18 even if the three sample variances were identical, and
-  it falls as they diverge: here it is 17.13.
+  estimated from the group sizes and variances. It is not comparable
+  with the classical test’s 30 - 3 = 27. With three groups of ten it
+  would be 18 even if the three sample variances were identical, and it
+  falls as they diverge: here it is 17.13.
 - `p_value` is the probability of an F at least this large if all the
   group means were equal.
 
 The test is
 [`stats::oneway.test()`](https://rdrr.io/r/stats/oneway.test.html) with
 `var.equal = FALSE`, and the `htest` object it returns is kept in
-`$model`. There is no fitted model, so `$emmeans_object` is `NULL`.
+`$model`. No model is fitted, so `$emmeans_object` is `NULL`.
 
 ``` r
 
@@ -144,10 +147,10 @@ oneway.test(weight ~ group, data = PlantGrowth, var.equal = TRUE)
 #> F = 4.8461, num df = 2, denom df = 27, p-value = 0.01591
 ```
 
-The classical F test, shown second, happens to reach a similar
-conclusion here (p = 0.016 against 0.017). That will not always be so.
+The classical F test, shown second, reaches a similar conclusion here (p
+= 0.016 against 0.017). That will not always be so.
 
-## Why not the classical F test?
+## Welch’s test against the classical F test
 
 `InsectSprays` counts the insects left on plots treated with six sprays,
 twelve plots per spray. The spreads differ a great deal:
@@ -165,20 +168,18 @@ ins$notes
 #> [1] "Largest group variance is 12.9 times the smallest. Welch's test handles this; the classical F test would not."
 ```
 
-The note fires whenever the largest group variance is more than four
-times the smallest. Here it is 12.87 times. The difference between the
-sprays is so large that both tests reject overwhelmingly, so these data
-cannot show what goes wrong. For that you need a case where the truth is
-known.
+The note appears whenever the largest group variance is more than four
+times the smallest; here it is 12.87 times. The sprays differ so much
+that both tests reject overwhelmingly, so these data cannot show what
+goes wrong. That needs a case where the truth is known.
 
-The simulation below draws data in which every group has the **same**
-mean, so any rejection is a false positive, and in which the smallest
-group is the noisiest. It also includes two equal-variance settings, one
-with no difference and one with a real one, to show what Welch’s test
-costs when its protection is not needed.
-[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)’s
-omnibus test is
-[`oneway.test()`](https://rdrr.io/r/stats/oneway.test.html), so the
+The simulation below draws data in which every group has the same mean,
+so any rejection is a false positive, and in which the smallest group is
+the noisiest. It also includes two equal-variance settings, one with no
+difference and one with a real one, to show what Welch’s test costs when
+its protection is not needed. The omnibus test in
+[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+is [`oneway.test()`](https://rdrr.io/r/stats/oneway.test.html), so the
 simulation calls that directly.
 
 ``` r
@@ -219,8 +220,8 @@ point. At a nominal 5% level:
   true null in 19.7% of data sets, about 4 times its nominal rate, while
   Welch’s stays at 5.3%.
 
-The classical test pools the variances, so a small, noisy group is
-treated as if it were as precise as the others, and its chance
+The classical test pools the variances, so it treats a small, noisy
+group as if it were as precise as the others, and that group’s chance
 deviations look like real differences. Unequal variances paired with
 unequal group sizes are common in observational data, and you rarely
 know in advance that you are not in that situation. That is why Welch’s
@@ -240,14 +241,15 @@ print(fit$effect_sizes, digits = 3)
 Each row is a standardised mean difference for one pair of groups, in
 the same direction as the pairwise difference (`group1` minus `group2`).
 
-**The standardiser.** Each difference in means is divided by
+### The standardiser
+
+Each difference in means is divided by
 $`s^* = \sqrt{(s_1^2 + s_2^2)/2}`$, the square root of the average of
 the two groups’ variances, as the `standardiser` column records. The
 usual pooled standard deviation assumes the two variances are equal: its
 meaning and its sampling variance both depend on that. The
 average-variance standardiser does not, so the effect size makes the
-same assumption as the test. You can check the arithmetic for `ctrl`
-against `trt1`:
+same assumption as the test. The arithmetic for `ctrl` against `trt1`:
 
 ``` r
 
@@ -258,15 +260,20 @@ d_ct
 #> [1] 0.5327478
 ```
 
-**The bias correction.** That value is Cohen’s d on the average-variance
-standardiser. By default (`hedges_correction = TRUE`) the estimate is
-multiplied by Hedges’ small-sample correction, evaluated at the
-Satterthwaite degrees of freedom of the standardiser, and the column is
-called `hedges_g`. The correction shrinks the estimate slightly towards
-zero, here from 0.533 to 0.508.
+### The bias correction
 
-**The interval.** `conf_low` and `conf_high` are an interval for the
-population value
+That value is Cohen’s d on the average-variance standardiser. By default
+(`hedges_correction = TRUE`) the estimate is multiplied by Hedges’
+small-sample correction, evaluated at the Satterthwaite degrees of
+freedom of the standardiser, and the column is called `hedges_g`. The
+correction shrinks the estimate slightly towards zero, here from 0.533
+to 0.508. With very small groups it shrinks it a lot, and below 2
+degrees of freedom it is not applied; [What the notes
+say](#what-the-notes-say) covers both cases.
+
+### The interval
+
+`conf_low` and `conf_high` are an interval for the population value
 $`\delta^* = (\mu_1 - \mu_2) / \sqrt{(\sigma_1^2 + \sigma_2^2)/2}`$. It
 is found by inverting the noncentral t distribution of Welch’s statistic
 on Welch’s degrees of freedom, then rescaling to the average-variance
@@ -285,13 +292,18 @@ effectsize::cohens_d(weight ~ group, data = two, pooled_sd = FALSE)
 #> - Estimated using un-pooled SD.
 ```
 
-**The labels.** `magnitude` applies Cohen’s conventional thresholds of
-0.2, 0.5 and 0.8 to the absolute value. The labels are a rough guide.
-Look at the interval too: the `ctrl` versus `trt1` estimate is labelled
-“medium”, but its interval runs from -0.37 to 1.42 and so is consistent
-with anything from a small effect in the other direction to a large one.
+### The magnitude labels
 
-## Group means and comparisons
+`magnitude` applies Cohen’s conventional thresholds of 0.2, 0.5 and 0.8
+to the absolute value of the estimate. When the estimate lies outside
+its own interval, which can happen with very small groups, the label is
+taken from the nearer interval bound instead. The labels are a rough
+guide, so read the interval as well. The `ctrl` against `trt1` estimate
+is labelled “medium”, but its interval runs from -0.37 to 1.42, which is
+consistent with anything from a small effect in the other direction to a
+large one.
+
+## Group summaries and comparisons
 
 No model is fitted, so `$emmeans` holds plain group summaries: each
 group’s size, mean, standard deviation and standard error, with a t
@@ -321,12 +333,13 @@ print(fit$posthoc, digits = 3)
 #> 3       holm
 ```
 
-This is **not** the Games-Howell procedure, although it is related. Both
-use, for each pair, a standard error and degrees of freedom built from
-those two groups alone. Games-Howell then refers the statistic to the
-studentised range distribution to get simultaneous intervals.
+The comparisons are related to the Games-Howell procedure but are not
+the same. Both use, for each pair, a standard error and degrees of
+freedom built from those two groups alone. Games-Howell then refers the
+statistic to the studentised range distribution to get simultaneous
+intervals.
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
-does something simpler:
+does two simpler steps:
 
 1.  For each of the `choose(k, 2)` pairs it runs
     [`stats::t.test()`](https://rdrr.io/r/stats/t.test.html) with
@@ -334,15 +347,15 @@ does something simpler:
     (`group1` minus `group2`), the interval `conf_low` to `conf_high`,
     the Welch t `statistic`, its own `df`, and the unadjusted two-sided
     `p_value`.
-2.  It then passes all the p-values to
+2.  It passes all the p-values to
     [`stats::p.adjust()`](https://rdrr.io/r/stats/p.adjust.html) with
     the method in `adjust` (Holm by default). The result is
     `p_adjusted`, and the method is recorded in `adjustment`.
 
 As in every function in the package, `p_value` is unadjusted and
-`p_adjusted` is adjusted. The intervals are **not** adjusted: each is an
-ordinary 95% interval for that one difference. The third row is exactly
-the Welch t test of `trt1` against `trt2`:
+`p_adjusted` is adjusted. The intervals are not adjusted: each is an
+ordinary 95% interval for that one difference. The third row is the
+Welch t test of `trt1` against `trt2`:
 
 ``` r
 
@@ -351,21 +364,41 @@ t.test(weight ~ group, data = trts)$p.value
 #> [1] 0.009298405
 ```
 
-Reading the table: `trt2` plants were heavier than `trt1` plants by
-0.865, and that difference survives the Holm adjustment (adjusted p =
-0.028). The `ctrl` versus `trt2` difference has an unadjusted p of 0.048
-but an adjusted one of 0.096: on its own it would pass at 5%, but not
-once you allow for having made three comparisons.
+`trt2` plants were heavier than `trt1` plants by 0.865, and that
+difference survives the Holm adjustment (adjusted p = 0.028). The `ctrl`
+against `trt2` difference has an unadjusted p of 0.048 but an adjusted
+one of 0.096. On its own it would pass at 5%, but not once you allow for
+having made three comparisons.
 
-`"tukey"` is not an accepted `adjust` method here, as it is on the
-functions whose comparisons come from **emmeans**. These are separate
-Welch t tests, not linear contrasts on a shared error term:
+The functions whose comparisons come from emmeans accept
+`adjust = "tukey"`;
+[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+does not, because its comparisons are separate Welch t tests rather than
+linear contrasts on a shared error term:
 
 ``` r
 
 anova_welch(PlantGrowth, "weight", "group", adjust = "tukey")
 #> Error:
 #> ! `adjust` must be one of: holm, hochberg, hommel, bonferroni, BH, BY, fdr, none; got "tukey".
+```
+
+With two groups (`two`, the `ctrl` and `trt1` subset from the
+effect-size section) the single pairwise comparison is the omnibus test.
+Welch’s F is the square of the Welch t, the p-values are identical, and
+no adjustment is applied.
+
+``` r
+
+f2g <- anova_welch(two, "weight", "group", plots = FALSE)
+f2g$anova
+#>    term statistic num_df   den_df   p_value
+#> 1 group  1.419101      1 16.52359 0.2503825
+f2g$posthoc[, c("statistic", "df", "p_value", "p_adjusted")]
+#>   statistic       df   p_value p_adjusted
+#> 1   1.19126 16.52359 0.2503825  0.2503825
+f2g$notes
+#> [1] "With two groups the pairwise comparison is the omnibus test; no multiplicity adjustment was needed."
 ```
 
 ## Checking assumptions
@@ -386,35 +419,32 @@ fit$assumptions$variance_ratio
 #> [1] 3.215998
 ```
 
-**Normality within each group.** The Shapiro-Wilk test is run separately
-for each group, not on pooled residuals. Pooling residuals from groups
-with different spreads produces a mixture that can fail a normality test
-even when every group is perfectly normal, which would argue against the
-very method being used. A group with fewer than 3 or more than 5,000
-observations is not tested. Its row then has a reason in the `note`
-column, and `$notes` names it. None of the three groups here gives cause
-for concern, but with ten observations the test has little power, so
-read the Q-Q plot below as well.
+The Shapiro-Wilk test is run separately for each group, not on pooled
+residuals. Pooling residuals from groups with different spreads produces
+a mixture that can fail a normality test even when every group is
+normal, which would argue against the method being used. A group with
+fewer than 3 or more than 5,000 observations is not tested; its row has
+the reason in the `note` column, and `$notes` names it. None of the
+three groups here gives cause for concern, but with ten observations the
+test has little power, so read the Q-Q plot below as well.
 
-**The variance ratio** is the largest group variance divided by the
-smallest. It is information rather than a test: Welch’s method does not
-need it to be close to 1. Above 4, `$notes` points it out, as it did for
-`InsectSprays`.
+The variance ratio is the largest group variance divided by the
+smallest. It is information rather than a test, since Welch’s method
+does not need it to be close to 1. Above 4, `$notes` reports it, as it
+did for `InsectSprays`.
 
 If a group is clearly skewed or has outliers, the mean may not be the
 summary you want. Compare ranks with
 [`anova_kw()`](https://elkronos.github.io/anovakit/reference/anova_kw.md),
 or model the response’s distribution with
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-(a Gamma family for a positive, right-skewed response, for example). The
-[diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+(a Gamma family for a positive, right-skewed response, for example).
+[Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
 covers the checks across the whole package.
 
 ## Plots
 
-The fit holds three **ggplot2** objects. None is drawn until you ask for
-it.
+The fit holds three ggplot2 objects. None is drawn until you ask for it.
 
 ``` r
 
@@ -426,10 +456,10 @@ plot(fit, "means")
 The `means` plot shows each group’s mean as a bar, with its 95% interval
 from `$emmeans`, and the group size under each label. Each interval is
 built from its own group’s standard deviation, so different widths
-reflect different spreads (and sizes). The intervals here are for the
-group means, not for the differences between them: two intervals that
-overlap do not mean the difference is non-significant. Read the
-comparisons from `$posthoc`.
+reflect different spreads and sizes. The intervals are for the group
+means, not for the differences between them: two intervals that overlap
+do not mean the difference is non-significant. Read the comparisons from
+`$posthoc`.
 
 ``` r
 
@@ -439,9 +469,9 @@ plot(fit, "box")
 ![](welch_files/figure-html/plot-box-1.png)
 
 The `box` plot shows the raw distribution of each group, ordered by
-median and labelled with its size. This is where unequal spreads,
-skewness and outliers show up. Here `trt1` is visibly more spread out
-than `trt2`, and two `trt1` plants lie above its upper whisker.
+median and labelled with its size. Unequal spreads, skewness and
+outliers show up here. `trt1` is visibly more spread out than `trt2`,
+and two `trt1` plants lie above its upper whisker.
 
 ``` r
 
@@ -471,11 +501,11 @@ plot(fit, "box") +
 
 ![](welch_files/figure-html/plot-modify-1.png)
 
-The [plots
-article](https://elkronos.github.io/anovakit/articles/visuals.md) covers
-customisation in more detail.
+[Plots and
+themes](https://elkronos.github.io/anovakit/articles/visuals.md) covers
+customisation.
 
-## Options worth knowing
+## Options
 
 ### `adjust`
 
@@ -501,9 +531,9 @@ cbind(fit$posthoc[, c("group1", "group2")], round(adj, 4))
 
 ### `conf_level`
 
-`conf_level` sets the level of **every** interval the function returns:
-the group means, the pairwise differences and the standardised effect
-sizes (and the title of the `means` plot).
+`conf_level` sets the level of every interval the function returns: the
+group means, the pairwise differences and the standardised effect sizes.
+It also sets the level shown in the title of the `means` plot.
 
 ``` r
 
@@ -521,10 +551,10 @@ print(f90$effect_sizes[, c("group1", "group2", "hedges_g", "conf_low",
 #> 3   trt1   trt2   -1.273   -2.170    -0.482
 ```
 
-Because the comparison intervals are per-comparison, one way to get
-Bonferroni-simultaneous intervals for all three differences is to ask
-for `conf_level = 1 - 0.05 / 3`. That widens the group-mean and
-effect-size intervals too.
+The comparison intervals are per-comparison, so one way to get
+Bonferroni-simultaneous intervals for all three differences is
+`conf_level = 1 - 0.05 / 3`. That widens the group-mean and effect-size
+intervals too.
 
 ### `hedges_correction`
 
@@ -599,26 +629,7 @@ says so. For that factorial question use
 with `interaction = TRUE`
 ([walkthrough](https://elkronos.github.io/anovakit/articles/glm.md)).
 The second note shows that the cell variances differ by a factor of more
-than 13, which is the situation Welch’s test is built for.
-
-### Two groups
-
-With two groups the single pairwise comparison is the omnibus test:
-Welch’s F is the square of the Welch t, the p-values are identical, and
-no adjustment is applied.
-
-``` r
-
-f2g <- anova_welch(two, "weight", "group", plots = FALSE)
-f2g$anova
-#>    term statistic num_df   den_df   p_value
-#> 1 group  1.419101      1 16.52359 0.2503825
-f2g$posthoc[, c("statistic", "df", "p_value", "p_adjusted")]
-#>   statistic       df   p_value p_adjusted
-#> 1   1.19126 16.52359 0.2503825  0.2503825
-f2g$notes
-#> [1] "With two groups the pairwise comparison is the omnibus test; no multiplicity adjustment was needed."
-```
+than 13, the situation Welch’s test is built for.
 
 ## What the notes say
 
@@ -628,23 +639,37 @@ fit$notes
 #> character(0)
 ```
 
-For the `PlantGrowth` fit, `$notes` is empty. No rows were dropped,
-every group was large enough for its Shapiro-Wilk test, the variance
-ratio was below 4, there was one grouping column, and there were more
-than two groups. Each of those would otherwise have produced a note. You
-have seen several above: the variance ratio (`InsectSprays`), combined
-cells (`warpbreaks`), two groups, and `posthoc = FALSE`. The function
-also writes a note, at any `conf_level`, when a group of two
-observations holds most of a pair’s variance, so that the standardiser
-has fewer than 2 degrees of freedom and the bias correction is not
-applied to that pair; a group of 30 beside one of two is enough. It
-names, with their degrees of freedom and correction factor, the pairs
-where that factor is below 0.8, which is at about 4 degrees of freedom
-or fewer: two groups of three with equal variances give exactly 4 and a
-factor of 0.798, so the correction pulls the estimate well towards zero.
-It writes another when an estimate falls outside its own interval, which
-can happen with very small groups and a low `conf_level`. Read `$notes`
-on every fit, including when you expect it to be empty.
+For the `PlantGrowth` fit, `$notes` is empty.
+[`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+writes a note when:
+
+- rows were dropped for a missing or infinite value;
+- a group was too small or too large for its Shapiro-Wilk test;
+- the largest group variance is more than four times the smallest
+  (`InsectSprays` above);
+- several grouping columns were combined into cells (`warpbreaks`
+  above);
+- there are only two groups, so no adjustment was needed;
+- `posthoc = FALSE` left `$posthoc` and `$effect_sizes` empty;
+- for a pair, at any `conf_level`, a group of two observations holds
+  most of the variance, so the standardiser has fewer than 2 degrees of
+  freedom and the bias correction is not applied (`hedges_g` then holds
+  Cohen’s d for that pair; the correction there would multiply the
+  estimate by less than 0.57). A group of 30 beside one of two is
+  enough;
+- for a pair, the correction factor is below 0.8, which happens at about
+  4 degrees of freedom or fewer. Two groups of three with equal
+  variances give exactly 4 and a factor of 0.798, so the correction
+  pulls the estimate well towards zero. The note gives each pair’s
+  degrees of freedom and factor;
+- an estimate falls outside its own interval, which can happen with very
+  small groups and a low `conf_level`;
+- a pair’s spread is at the floating-point resolution of its means, so
+  its comparison and effect size are `NA`. When such pairs make up more
+  than 5% of Welch’s F, the omnibus test is `NA` too. Subtracting a
+  constant close to the values from the response avoids this.
+
+Read `$notes` on every fit, including when you expect it to be empty.
 
 ## Reporting the result
 
@@ -661,8 +686,9 @@ drift from the analysis:
 > 2: adjusted p = 0.096).
 
 The signs are flipped from the table so that the sentence reads
-“treatment 2 minus treatment 1”. State which standardiser you used: a
-Hedges’ g on the pooled standard deviation is a different quantity.
+“treatment 2 minus treatment 1”. State which standardiser you used,
+because a Hedges’ g on the pooled standard deviation is a different
+quantity.
 
 ## See also
 
@@ -670,21 +696,21 @@ Hedges’ g on the pooled standard deviation is a different quantity.
   and the [Kruskal-Wallis
   walkthrough](https://elkronos.github.io/anovakit/articles/kruskal-wallis.md)
   for a rank-based comparison.
-- [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-  and the [analysis-of-deviance
-  walkthrough](https://elkronos.github.io/anovakit/articles/glm.md) for
-  factorial designs.
 - [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
   and the [ANCOVA
   walkthrough](https://elkronos.github.io/anovakit/articles/ancova.md)
   to adjust for a covariate.
+- [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
+  and the [analysis-of-deviance
+  walkthrough](https://elkronos.github.io/anovakit/articles/glm.md) for
+  factorial designs and skewed responses.
 - [Working with
   results](https://elkronos.github.io/anovakit/articles/results.md) for
   the structure of the returned object and more on reporting.
-- [Diagnostics across the
-  package](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-  and [Plots and visual
-  customisation](https://elkronos.github.io/anovakit/articles/visuals.md).
-- The [Get Started
-  vignette](https://elkronos.github.io/anovakit/articles/anovakit.md)
-  for a tour of every function.
+- [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+  and [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md).
+- [Design
+  choices](https://elkronos.github.io/anovakit/articles/design.md) for
+  why every interval follows `conf_level` and why the default adjustment
+  differs between functions.

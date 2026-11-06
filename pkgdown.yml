@@ -7,6 +7,7 @@ articles:
   articles/binary: binary.html
   articles/choosing: choosing.html
   articles/counts: counts.html
+  articles/design: design.html
   articles/diagnostics: diagnostics.html
   articles/glm: glm.html
   articles/kruskal-wallis: kruskal-wallis.html
@@ -14,8 +15,9 @@ articles:
   articles/repeated-measures: repeated-measures.html
   articles/results: results.html
   articles/visuals: visuals.html
+  articles/weights: weights.html
   articles/welch: welch.html
-last_built: 2026-11-06T07:48Z
+last_built: 2026-11-06T08:17Z
 urls:
   reference: https://elkronos.github.io/anovakit/reference
   article: https://elkronos.github.io/anovakit/articles

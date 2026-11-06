@@ -7,19 +7,24 @@ library(anovakit)
 
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
 compares the mean of a numeric response across groups while adjusting
-for one or more numeric covariates. Use it when something you measured
-before the groups could differ – a baseline score, a starting weight –
-also predicts the outcome: adjusting for it removes that source of noise
-and compares the groups at the same value of the covariate. With no
-covariate, use
+for one or more numeric covariates. Use it when something measured
+before the groups could differ, such as a baseline score or a starting
+weight, also predicts the outcome. Adjusting for it takes that variation
+out of the error and compares the groups at the same value of the
+covariate.
+
+With no covariate, use
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+([walkthrough](https://elkronos.github.io/anovakit/articles/welch.md))
 or
-[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md);
-with several responses,
+[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
+([walkthrough](https://elkronos.github.io/anovakit/articles/glm.md)).
+With several responses,
 [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
-accepts covariates too. The [decision
-guide](https://elkronos.github.io/anovakit/articles/choosing.md) covers
-the choice in more detail.
+([walkthrough](https://elkronos.github.io/anovakit/articles/manova.md))
+accepts covariates too. [Choose an
+analysis](https://elkronos.github.io/anovakit/articles/choosing.md) sets
+out the choice.
 
 ## The data
 
@@ -52,10 +57,10 @@ aggregate(cbind(Prewt, Postwt) ~ Treat, data = an, FUN = mean)
 
 The groups start at slightly different weights, and a patient’s weight
 afterwards depends partly on where she started (the correlation between
-the two is 0.33). The question an ANCOVA answers is: *for patients of
-the same starting weight*, does the treatment make a difference to the
-weight afterwards? `Postwt` is the response, `Treat` the grouping
-variable and `Prewt` the covariate.
+the two is 0.33). The ANCOVA asks whether, for patients of the same
+starting weight, the treatment makes a difference to the weight
+afterwards. `Postwt` is the response, `Treat` the grouping variable and
+`Prewt` the covariate.
 
 ## Fitting the model
 
@@ -96,15 +101,15 @@ Reading the printout from the top:
   `$n_removed`; there are none here.
 - The omnibus table has a `Prewt:Treat` row because the function fitted
   two candidate models and a homogeneity-of-slopes test chose the one
-  with a separate slope for each group (see the next section).
-- The notes say what the function decided and why. Read them on every
-  fit; they are discussed [below](#what-the-notes-say).
+  with a separate slope for each group (next section).
+- The notes record what the function decided and why. They are explained
+  [below](#what-the-notes-say).
 - `Plots available` lists the ggplot2 objects in `$plots`.
 
 `summary(fit)` prints all of this and then the assumption checks, effect
 sizes, marginal means, pairwise comparisons, the slopes test and the
-per-group slopes. The rest of this article takes those components one at
-a time.
+per-group slopes. The sections below take those components one at a
+time.
 
 ## The homogeneity-of-slopes test
 
@@ -112,9 +117,9 @@ Classical ANCOVA assumes that the covariate has the same slope in every
 group, so that the groups differ by a constant amount whatever the
 covariate value.
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
-checks this before anything else. It fits two candidate models – the
+checks this before anything else. It fits two candidate models (the
 covariate entered additively, and the same model plus the product of the
-covariate with the grouping terms – and compares them with one nested F
+covariate with the grouping terms) and compares them with one nested F
 test:
 
 ``` r
@@ -127,9 +132,9 @@ fit$slopes_test
 ```
 
 Here the test rejects (p = 0.00667), so `homogeneous` is `FALSE` and the
-interaction model was fitted. Both candidates are kept, so the one not
-chosen is still available, and the comparison can be reproduced from
-them:
+interaction model was fitted. Both candidates are kept in
+`$model_additive` and `$model_interaction`, and the comparison can be
+reproduced from them:
 
 ``` r
 
@@ -149,8 +154,10 @@ anova(fit$model_additive, fit$model_interaction)
 #> Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 ```
 
-When the slopes differ, the thing to read is the slope in each group,
-`$simple_slopes` (from
+### Simple slopes
+
+When the slopes differ, read the slope in each group, `$simple_slopes`
+(from
 [`emmeans::emtrends()`](https://rvlenth.github.io/emmeans/reference/emtrends.html)):
 
 ``` r
@@ -164,28 +171,27 @@ print(fit$simple_slopes[, c("Treat", "slope", "se", "conf_low", "conf_high",
 ```
 
 In both active treatments a heavier start goes with a heavier finish
-(about 0.85 and 0.91 lb per lb), but in the control group there is
-essentially no relation (-0.13, with an interval that spans zero). The
-treatment effect is therefore not one number: it depends on the starting
-weight. `$simple_slopes` is `NULL` whenever the additive model is used,
-because there is then only one slope.
+(about 0.85 and 0.91 lb per lb). In the control group the slope is
+-0.13, with an interval that spans zero. The treatment effect therefore
+depends on the starting weight. `$simple_slopes` is `NULL` whenever the
+additive model is used, because there is then only one slope.
 
-### Why `force_interaction` exists
+### Choosing the model in advance with `force_interaction`
 
 Letting a test on the same data choose the model has a cost in both
 directions, and the notes say so. When the test retains the interaction,
 as here, the p-values that follow do not allow for that choice and can
 be too small. When the slopes really differ but the test misses it, the
 additive model’s adjusted comparisons are biased by the slope difference
-times the difference in covariate means – which averages out when groups
-are randomised, but not otherwise. Even with randomised groups the
-selection step leaves the group row somewhat above its nominal level
-(about 6–7% at the 5% level in the simulations), and with unbalanced
-covariates far above it. The help page
-([`?anova_ancova`](https://elkronos.github.io/anovakit/reference/anova_ancova.md))
-reports those simulations.
+times the difference in covariate means. That bias averages out when
+groups are randomised, but not otherwise. Even with randomised groups
+the selection step leaves the group row somewhat above its nominal level
+(about 6–7% at the 5% level in the simulations reported on
+[`?anova_ancova`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)),
+and with unbalanced covariates far above it.
 
-`force_interaction` removes the selection step. Decide in advance:
+`force_interaction` removes the selection step; set it before looking at
+the data:
 
 - `force_interaction = TRUE` always fits the separate-slopes model. With
   centred covariates and Type III tests, the group row is then a valid
@@ -206,9 +212,56 @@ fixed$notes[2]
 #> [1] "The covariate-by-group interaction was fitted because force_interaction = TRUE; the homogeneity-of-slopes test itself gave p = 0.006666. The group row of the ANOVA table is then a comparison at the covariate mean, not a constant adjusted difference: read $simple_slopes and $emmeans instead."
 ```
 
-The model and the table are the same as before – the test happened to
-choose the same model – but the notes now say the choice was yours, and
-the warning about selection is gone.
+The test had chosen the same model, so the table is unchanged. The notes
+now say the choice was yours, and the warning about selection is gone.
+
+## Covariate centring
+
+Every covariate is mean-centred before fitting
+(`center_covariates = TRUE`). The means subtracted are in
+`$covariate_means`, and `$data_used` holds the centred values:
+
+``` r
+
+fit$covariate_means
+#>    Prewt 
+#> 82.40833
+head(fit$data_used, 3)
+#>   Postwt Treat     Prewt .cell
+#> 1   80.2  Cont -1.708333  Cont
+#> 2   80.1  Cont  6.991667  Cont
+#> 3   86.4  Cont  9.391667  Cont
+```
+
+Centring always moves the intercept. When the covariate-by-group terms
+are in the model and `type = "III"`, it also moves the group row,
+because that row then tests the groups at covariate = 0. Without
+centring, that is a starting weight of zero pounds, which none of these
+patients had:
+
+``` r
+
+unc <- anova_ancova(an, "Postwt", "Treat", "Prewt", center_covariates = FALSE,
+                    plots = FALSE)
+data.frame(term = fit$anova$term,
+           p_centred = fit$anova$p_value,
+           p_uncentred = unc$anova$p_value)
+#>          term    p_centred p_uncentred
+#> 1       Prewt 0.0010866494 0.001086649
+#> 2       Treat 0.0003214744 0.012945287
+#> 3 Prewt:Treat 0.0066655907 0.006665591
+#> 4   Residuals           NA          NA
+all.equal(fit$emmeans, unc$emmeans)
+#> [1] TRUE
+```
+
+Only the `Treat` row changed. The covariate row, the interaction row and
+the marginal means are identical, because `$emmeans`, `$posthoc` and
+`$simple_slopes` are always evaluated with every covariate at its mean.
+In the additive model, and under Type II, centring does not change the
+group row at all. Set `center_covariates = FALSE` only if the
+covariate’s own zero is the point you want the intercept to describe;
+the notes of `unc` record what it did.
 
 ## The omnibus test
 
@@ -232,13 +285,12 @@ Each row is a term of the model:
   mean square, and `p_value` its upper-tail probability on `df` and the
   residual degrees of freedom.
 
-The `Treat` row is the one most people want, and in this model it needs
-care. Because the covariate is centred and the slopes are separate, it
-compares the groups *at the mean starting weight* (82.4 lb). It is not a
-constant treatment effect, since there is none when the slopes differ.
-`Prewt` tests the covariate’s slope averaged over the groups, and
-`Prewt:Treat` is the slope difference the homogeneity test found (with
-the same F and p-value).
+Because the covariate is centred and the slopes are separate, the
+`Treat` row compares the groups at the mean starting weight (82.4 lb).
+There is no constant treatment effect when the slopes differ, so the row
+cannot be one. `Prewt` tests the covariate’s slope averaged over the
+groups, and `Prewt:Treat` is the slope difference the homogeneity test
+found (with the same F and p-value).
 
 ## Effect sizes
 
@@ -256,57 +308,9 @@ residual sum of squares: the share of the variation not explained by the
 other terms that this term explains. `partial_omega_sq` corrects that
 for the bias of a sample estimate and is the better estimate of the
 population value; it is floored at 0 (with a note) when a term explains
-less than chance would. Both are *partial* measures, each with its own
+less than chance would. Both are partial measures, each with its own
 denominator, and Type III sums of squares do not add up to the total, so
 do not add the rows together. Neither comes with an interval.
-
-## Covariate centring
-
-Every covariate is mean-centred before fitting
-(`center_covariates = TRUE`). The means subtracted are in
-`$covariate_means`, and `$data_used` holds the centred values:
-
-``` r
-
-fit$covariate_means
-#>    Prewt 
-#> 82.40833
-head(fit$data_used, 3)
-#>   Postwt Treat     Prewt .cell
-#> 1   80.2  Cont -1.708333  Cont
-#> 2   80.1  Cont  6.991667  Cont
-#> 3   86.4  Cont  9.391667  Cont
-```
-
-What centring changes depends on the model. It always moves the
-intercept. When the covariate-by-group terms are in the model and
-`type = "III"`, it also moves the group row, because that row then tests
-the groups *at covariate = 0*. Without centring, zero pounds is a
-starting weight none of these patients had:
-
-``` r
-
-unc <- anova_ancova(an, "Postwt", "Treat", "Prewt", center_covariates = FALSE,
-                    plots = FALSE)
-data.frame(term = fit$anova$term,
-           p_centred = fit$anova$p_value,
-           p_uncentred = unc$anova$p_value)
-#>          term    p_centred p_uncentred
-#> 1       Prewt 0.0010866494 0.001086649
-#> 2       Treat 0.0003214744 0.012945287
-#> 3 Prewt:Treat 0.0066655907 0.006665591
-#> 4   Residuals           NA          NA
-all.equal(fit$emmeans, unc$emmeans)
-#> [1] TRUE
-```
-
-Only the `Treat` row changed. The covariate row, the interaction row and
-the adjusted means are identical, because `$emmeans`, `$posthoc` and
-`$simple_slopes` are always evaluated with every covariate at its mean.
-In the additive model, and under Type II, centring does not change the
-group row at all. Set `center_covariates = FALSE` only if the
-covariate’s own zero is the point you want the intercept to describe;
-the notes of `unc` explain what it did.
 
 ## Marginal means and comparisons
 
@@ -319,10 +323,10 @@ fit$emmeans
 #> 3    FT 89.74757 1.614813 66 86.52349  92.97165
 ```
 
-These are covariate-adjusted means: the predicted post-treatment weight
-in each group for a patient starting at the mean weight of 82.41 lb.
-They differ from the raw means above because the groups did not start at
-exactly that weight.
+These are covariate-adjusted marginal means: the predicted
+post-treatment weight in each group for a patient starting at the mean
+weight of 82.41 lb. They differ from the raw means above because the
+groups did not start at exactly that weight.
 
 ``` r
 
@@ -334,35 +338,22 @@ print(fit$posthoc[, c("contrast", "estimate", "conf_low", "conf_high",
 #> 3  Cont - FT    -8.75  -13.728    -3.780 7.63e-05   0.000223      tukey
 ```
 
-`p_value` is the unadjusted p-value of each comparison; `p_adjusted` is
+`p_value` is the unadjusted p-value of each comparison. `p_adjusted` is
 adjusted for the three comparisons by the method in `adjustment` (Tukey
 by default), and the intervals are adjusted to match. Report
-`p_adjusted` when you are looking at all pairs. `adjust` takes any of
-the methods listed on the help page, for example `adjust = "holm"`;
-`"none"` makes the two columns equal.
-
-``` r
-
-holm <- anova_ancova(an, "Postwt", "Treat", "Prewt", adjust = "holm",
-                     plots = FALSE)
-print(holm$posthoc[, c("contrast", "p_value", "p_adjusted")], digits = 3)
-#>     contrast  p_value p_adjusted
-#> 1 CBT - Cont 1.49e-02   0.029782
-#> 2   CBT - FT 3.79e-02   0.037884
-#> 3  Cont - FT 7.63e-05   0.000229
-```
+`p_adjusted` when you are looking at all pairs; `adjust` chooses another
+method ([Options](#adjust)).
 
 The emmeans grid itself is in `$emmeans_object`, for any contrast the
 wrapper does not compute (give `level =` when you summarise it; see
 [Working with
 results](https://elkronos.github.io/anovakit/articles/results.md)).
 
-### What the adjustment buys
+### Against unadjusted analyses
 
-Compare this with two analyses that ignore the starting weight in
-different ways.
+Two common analyses ignore the starting weight in different ways.
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
-compares the raw post-treatment weights; an ANOVA on the change scores
+compares the raw post-treatment weights. An ANOVA on the change scores
 (`Postwt - Prewt`) assumes that each pound of starting weight carries
 over one for one, a slope of exactly 1.
 
@@ -386,15 +377,14 @@ print(chg$posthoc[, c("contrast", "estimate", "p_adjusted")], digits = 3)
 ```
 
 All three find that family treatment beats the control, but they answer
-different questions. Welch’s test ignores the starting weight
-altogether: its CBT-control difference of 4.59 lb makes no allowance for
-the 1.13 lb by which the CBT group started heavier, and the variation
-the starting weight explains stays in the error. The change-score
-analysis imposes a slope of 1, which the simple slopes above show no
-group has, and with it the CBT-control comparison weakens to adjusted p
-= 0.21, against 0.039 in the ANCOVA. ANCOVA estimates the slope from the
-data instead, which is why it is usually the better choice for a
-pre-post design.
+different questions. Welch’s test ignores the starting weight: its
+CBT-control difference of 4.59 lb makes no allowance for the 1.13 lb by
+which the CBT group started heavier, and the variation the starting
+weight explains stays in the error. The change-score analysis imposes a
+slope of 1, which the simple slopes above show no group has, and with it
+the CBT-control comparison weakens to adjusted p = 0.21, against 0.039
+in the ANCOVA. ANCOVA estimates the slope from the data, which is why it
+is usually the better choice for a pre-post design.
 
 ## Checking assumptions
 
@@ -413,61 +403,29 @@ fit$assumptions$levene
 #> 1   2  69   1.02573 0.3639361
 ```
 
-- `normality` is a Shapiro-Wilk test on the model residuals. It tests
-  the assumption that the errors are normal; a small p-value in a small
-  sample deserves a look at the Q-Q plot, while in a large sample the
-  test flags departures too small to matter. Here W = 0.979 and p =
-  0.28.
+- `normality` is a Shapiro-Wilk test on the model residuals. A small
+  p-value in a small sample calls for a look at the Q-Q plot; in a large
+  sample the test flags departures too small to matter. Here W = 0.979
+  and p = 0.28.
 - `levene` is Levene’s test (on absolute deviations from the medians) of
   the residuals across the groups (the cells, with several grouping
   variables). A rejection means the pooled residual variance is not a
-  fair summary; the note it triggers suggests `vcov_type = "HC3"`, shown
-  [below](#robust-tests-with-vcov_type). Here p = 0.36.
+  fair summary; the note it triggers suggests `vcov_type = "HC3"`
+  ([Options](#vcov_type)). Here p = 0.36.
 - `slopes` is the homogeneity-of-slopes test, the same table as
   `$slopes_test`.
 
 A covariate that is constant, constant within every group, or an exact
 linear combination of the groups and the other covariates is refused
 with an error rather than fitted, since there is nothing to adjust for.
-The [diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md)
+[Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
 covers the checks across the package.
 
 ## Plots
 
 Every plot is a ggplot2 object in `$plots`; `plot(fit, "name")` returns
 one, and you can add layers or themes to it with `+` (see [Plots and
-visual
-customisation](https://elkronos.github.io/anovakit/articles/visuals.md)).
-
-### Residuals against fitted values
-
-``` r
-
-plot(fit, "residuals")
-```
-
-![](ancova_files/figure-html/plot-residuals-1.png)
-
-What to look for: an even band around zero. A funnel (spread growing
-with the fitted value) points to unequal variances; a curve points to a
-covariate relation that is not linear. Here there is neither. The tight
-column of points at fitted values of about 80 to 82 lb is the control
-group: with a nearly flat slope, its fitted values hardly vary.
-
-### Normal Q-Q plot
-
-``` r
-
-plot(fit, "qq")
-```
-
-![](ancova_files/figure-html/plot-qq-1.png)
-
-What to look for: points close to the dashed line. Systematic bends at
-the ends mean heavy or light tails; a single point far off it is an
-outlier worth checking in the data. These residuals follow the line with
-a mild S-shape, which is in keeping with the Shapiro-Wilk test above.
+themes](https://elkronos.github.io/anovakit/articles/visuals.md)).
 
 ### The covariate plot
 
@@ -478,20 +436,50 @@ plot(fit, "covariate")
 
 ![](ancova_files/figure-html/plot-covariate-1.png)
 
-This is the plot to look at first in any ANCOVA. It shows the response
-against the covariate *on its original scale*, with the lines of the
-model that was fitted and their confidence bands (the bands use
-`conf_level`). With the interaction, as here, each group has its own
-slope; when the additive model is used, the solid lines are parallel and
-each group’s own least-squares line is added dashed, so the plot still
-shows directly whether parallel lines are a fair description. Here they
-are not: the control group’s line is almost flat while the two treatment
-lines rise. Look too at whether the groups cover the same range of the
-covariate – adjusted means for a group observed only at one end are
-extrapolations, and `$notes` names such a group. With several covariates
-there is one plot per covariate, named `covariate_<name>`.
+Look at this plot first in any ANCOVA. It shows the response against the
+covariate on its original scale, with the lines of the fitted model and
+their confidence bands (the bands use `conf_level`). With the
+interaction, as here, each group has its own slope. When the additive
+model is used, the solid lines are parallel and each group’s own
+least-squares line is added dashed, so the plot shows whether parallel
+lines are a fair description. Here they are not: the control group’s
+line is almost flat while the two treatment lines rise.
 
-### Adjusted means
+Check too whether the groups cover the same range of the covariate.
+Marginal means for a group observed only at one end are extrapolations,
+and `$notes` names such a group. With several covariates there is one
+plot per covariate, named `covariate_<name>`.
+
+### Residuals against fitted values
+
+``` r
+
+plot(fit, "residuals")
+```
+
+![](ancova_files/figure-html/plot-residuals-1.png)
+
+Look for an even band around zero. A funnel (spread growing with the
+fitted value) points to unequal variances; a curve points to a covariate
+relation that is not linear. Here there is neither. The tight column of
+points at fitted values of about 80 to 82 lb is the control group: with
+a nearly flat slope, its fitted values hardly vary.
+
+### Normal Q-Q plot
+
+``` r
+
+plot(fit, "qq")
+```
+
+![](ancova_files/figure-html/plot-qq-1.png)
+
+Points should lie close to the dashed line. Systematic bends at the ends
+mean heavy or light tails; a single point far off the line is an outlier
+to check in the data. These residuals follow the line with a mild
+S-shape, in keeping with the Shapiro-Wilk test above.
+
+### Marginal means
 
 ``` r
 
@@ -500,18 +488,24 @@ plot(fit, "emmeans")
 
 ![](ancova_files/figure-html/plot-emmeans-1.png)
 
-The covariate-adjusted means from `$emmeans` with their confidence
-intervals. With a separate-slopes model, remember that these are the
-group means at one starting weight; the covariate plot shows how the
-gaps change away from it.
+The covariate-adjusted marginal means from `$emmeans` with their
+confidence intervals. With a separate-slopes model these are the group
+means at one starting weight; the covariate plot shows how the gaps
+change away from it.
 
-## Options worth knowing
+## Options
 
-### Robust tests with `vcov_type`
+`force_interaction` and `homogeneity_alpha` are covered
+[above](#choosing-the-model-in-advance-with-force_interaction). The
+arguments below change the covariance, the grouping model and the
+comparisons.
+
+### `vcov_type`
 
 `vcov_type = "HC3"` (or `"HC0"` to `"HC4"`, which need the sandwich
 package) replaces the model-based covariance with a
-heteroscedasticity-consistent one.
+heteroscedasticity-consistent one. Use it when the residual spread
+differs between groups.
 
 ``` r
 
@@ -535,17 +529,23 @@ data.frame(Treat = fit$emmeans$Treat, se_model = fit$emmeans$se,
 
 The F tests in `$anova` are now Wald F tests built from the robust
 covariance (through `car::Anova(vcov. = )`), on the model’s residual
-degrees of freedom, so the table has no sums of squares, and its
-`statistic` attribute (which
-[`print()`](https://rdrr.io/r/base/print.html) shows in the heading)
-says so. The same covariance reaches `$emmeans`, `$posthoc` and
-`$simple_slopes`: the control group’s standard error shrinks and the
-family-treatment group’s grows, reflecting their different residual
-spreads. Two things do not change: `$effect_sizes` still come from the
-model-based sums of squares, and the homogeneity-of-slopes test stays
-the model-based F test. The notes of `rob` say both.
+degrees of freedom, so the table has no sums of squares; its `statistic`
+attribute, which [`print()`](https://rdrr.io/r/base/print.html) shows in
+the heading, says so. The same covariance reaches `$emmeans`, `$posthoc`
+and `$simple_slopes`. The control group’s standard error shrinks and the
+family-treatment group’s grows, in line with their different residual
+spreads.
 
-### Several grouping variables: `interaction`
+`$effect_sizes` still come from the model-based sums of squares, and the
+homogeneity-of-slopes test stays the model-based F test. The notes of
+`rob` say both, and add that comparisons with robust standard errors
+keep the residual degrees of freedom, which can be anti-conservative
+with very small groups of unequal variance. [Weights and robust standard
+errors](https://elkronos.github.io/anovakit/articles/weights.md) covers
+the rules shared with the other model-based functions, including when
+the package falls back to the model-based covariance.
+
+### `interaction`: several grouping variables
 
 With two or more grouping variables, the default `interaction = TRUE`
 fits their full factorial, which is what a factorial ANCOVA is.
@@ -590,9 +590,10 @@ print(two$emmeans, digits = 4)
 ```
 
 With `interaction = FALSE` the grouping variables enter additively, and
-the means and comparisons are reported for each factor separately,
-averaged over the other, with a `term` column; each factor is its own
-multiplicity family.
+the marginal means and comparisons are reported for each factor
+separately, averaged over the other, with a `term` column; each factor
+is its own multiplicity family. `interaction` also takes a whole number,
+such as `interaction = 2`, which keeps interactions up to that order.
 
 ``` r
 
@@ -607,8 +608,7 @@ print(add$posthoc[, c("term", "contrast", "estimate", "p_adjusted")],
 #> 4 smoke      no - yes      400   0.000302
 ```
 
-A whole number keeps interactions up to that order. The notes of both
-fits carry one more message worth reading:
+The notes of both fits carry an imbalance warning:
 
 ``` r
 
@@ -618,20 +618,37 @@ two$notes[3]
 
 The mothers’ mean weights differ between the cells by up to 1.03 pooled
 within-group SDs, so a slope difference the test missed would bias the
-comparisons. Since smoking and race were not randomised, this is the
-situation where `force_interaction = TRUE` is the safer choice.
+comparisons. Smoking and race were not randomised, so this is a case for
+`force_interaction = TRUE`.
 
-### The rest
+### `adjust`
 
-- `type = "II"` gives Type II sums of squares, where each term is
-  adjusted for every other term that does not contain it. Under Type II
-  the group row is the same whether or not the covariate is centred.
-- `conf_level` sets the level of every interval: the marginal means, the
-  comparisons, the simple slopes and the bands of the covariate plot.
-- `homogeneity_alpha` is the level of the slopes test (default 0.05).
-- `posthoc = FALSE` skips the pairwise comparisons, which is worth doing
-  when there are many cells; a note records it.
-- `plots = FALSE` skips building the plots, which saves time in a loop.
+`adjust` sets the multiplicity adjustment for `$posthoc`; it takes any
+of the methods listed on
+[`?anova_ancova`](https://elkronos.github.io/anovakit/reference/anova_ancova.md),
+and `"none"` makes `p_value` and `p_adjusted` equal.
+
+``` r
+
+holm <- anova_ancova(an, "Postwt", "Treat", "Prewt", adjust = "holm",
+                     plots = FALSE)
+print(holm$posthoc[, c("contrast", "p_value", "p_adjusted")], digits = 3)
+#>     contrast  p_value p_adjusted
+#> 1 CBT - Cont 1.49e-02   0.029782
+#> 2   CBT - FT 3.79e-02   0.037884
+#> 3  Cont - FT 7.63e-05   0.000229
+```
+
+### Other arguments
+
+`type = "II"` gives Type II sums of squares, where each term is adjusted
+for every other term that does not contain it; the group row is then the
+same whether or not the covariate is centred. `conf_level` sets the
+level of every interval: the marginal means, the comparisons, the simple
+slopes and the bands of the covariate plot. `posthoc = FALSE` skips the
+pairwise comparisons, which saves time when there are many cells, and a
+note records it. `plots = FALSE` skips building the plots, which saves
+time in a loop.
 
 ## What the notes say
 
@@ -653,13 +670,23 @@ fit$notes
     not account for that choice. `force_interaction = TRUE`, decided in
     advance, avoids it.
 
-Other notes appear when they apply: an imbalance warning when the
-additive model is used and the covariate means differ between groups by
-more than half a pooled within-group SD (as in the birth-weight
-example), an extrapolation warning when the covariate mean lies outside
-a group’s observed range, a Levene rejection, dropped rows, and anything
-[`lm()`](https://rdrr.io/r/stats/lm.html), car or emmeans said while the
-model was being fitted.
+Other notes appear when they apply:
+
+- an imbalance warning when the additive model is used and the covariate
+  means differ between groups by more than half a pooled within-group SD
+  (as in the birth-weight example);
+- an extrapolation warning when the covariate mean lies outside a
+  group’s observed range;
+- with `center_covariates = FALSE`, a warning when zero lies outside the
+  covariate’s observed range;
+- with `interaction = FALSE`, that the marginal means and comparisons
+  are reported for each grouping factor separately;
+- with `posthoc = FALSE`, that the comparisons were not computed;
+- partial omega squared floored at 0 for a term;
+- a Levene rejection, the robust-covariance notes shown under
+  `vcov_type`, and dropped rows;
+- anything [`lm()`](https://rdrr.io/r/stats/lm.html), car or emmeans
+  said while the model was being fitted.
 
 ## Reporting the result
 
@@ -684,17 +711,21 @@ model was being fitted.
 - [Working with
   results](https://elkronos.github.io/anovakit/articles/results.md) for
   the `anovakit_fit` object, the notes and `$emmeans_object`.
+- [Weights and robust standard
+  errors](https://elkronos.github.io/anovakit/articles/weights.md) for
+  `vcov_type` across the package.
 - [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
-  ([article](https://elkronos.github.io/anovakit/articles/welch.md)) and
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/welch.md))
+  and
   [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
-  ([article](https://elkronos.github.io/anovakit/articles/glm.md)) for
-  comparisons without a covariate.
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/glm.md))
+  for comparisons without a covariate.
 - [`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
-  ([article](https://elkronos.github.io/anovakit/articles/manova.md))
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/manova.md))
   for several responses, with or without covariates.
 - [`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
-  ([article](https://elkronos.github.io/anovakit/articles/repeated-measures.md))
+  ([walkthrough](https://elkronos.github.io/anovakit/articles/repeated-measures.md))
   when every subject is measured under several conditions.
 - [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md)
-  and [Plots and visual
-  customisation](https://elkronos.github.io/anovakit/articles/visuals.md).
+  and [Plots and
+  themes](https://elkronos.github.io/anovakit/articles/visuals.md).

@@ -22,7 +22,8 @@ method, reports effect sizes, computes estimated marginal means and
 pairwise comparisons, and returns `ggplot2` objects rather than drawing
 them. See
 [`vignette("anovakit")`](https://elkronos.github.io/anovakit/articles/anovakit.md)
-for a tour and the README for the design decisions behind it.
+for a tour and the “Design choices” article on the website for the
+decisions behind the defaults.
 
 The package supersedes a collection of loose scripts distributed from
 the same repository. If you used those, note the following before
@@ -131,7 +132,7 @@ found. The changes a user will notice:
 - **Packaging.** `ggplot2 (>= 3.4.0)` and `testthat (>= 3.1.8)` are
   declared.
 
-### Plot theme option
+### Plots: a theme option and two fixes
 
 - `options(anovakit.theme = ...)` sets the base theme of every plot the
   package draws: a complete ggplot2 theme, or a function returning one
@@ -145,6 +146,20 @@ found. The changes a user will notice:
   See
   [`?anovakit`](https://elkronos.github.io/anovakit/reference/anovakit-package.md)
   and the plots article.
+- The marginal-means plot joins the means of an ordered first factor
+  with a line, as the plots article describes. The check looked at the
+  marginal-means table, whose factors are never ordered, so the line was
+  never drawn.
+- The ANCOVA covariate plot puts each clause of its subtitle on its own
+  line; as one line it ran off the right edge of the figure.
+
+### Documentation
+
+The website is reorganised: Get started, Choose an analysis, eight
+walkthroughs that follow the same section order, and guides to results,
+diagnostics, plots and themes, weights and robust standard errors (new),
+and the design choices behind the defaults (new). The README is now a
+short landing page.
 
 ### Changes made after two further reviews, before release
 

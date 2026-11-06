@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Analysis of deviance: factorial designs and non-normal responses • anovakit</title>
+<title>Any GLM family: analysis of deviance with anova_glm() • anovakit</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Analysis of deviance: factorial designs and non-normal responses">
-<meta name="description" content="A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, then a Gamma model for a positive, right-skewed response, with its coefficient table, dispersion, robust standard errors and weights.">
-<meta property="og:description" content="A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, then a Gamma model for a positive, right-skewed response, with its coefficient table, dispersion, robust standard errors and weights.">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Any GLM family: analysis of deviance with anova_glm()">
+<meta name="description" content="A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, and a Gamma model with a log link for a positive, right-skewed response, with its coefficient table, dispersion, ratios of means and robust standard errors.">
+<meta property="og:description" content="A walkthrough of anova_glm(): a two-way Gaussian ANOVA with Type II and Type III tests, and a Gamma model with a log link for a positive, right-skewed response, with its coefficient table, dispersion, ratios of means and robust standard errors.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -32,19 +32,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -53,9 +54,11 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -81,7 +84,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Analysis of deviance: factorial designs and non-normal responses</h1>
+      <h1>Any GLM family: analysis of deviance with anova_glm()</h1>
             
       
       <small class="dont-index">Source: <a href="https://github.com/elkronos/anovakit/blob/main/vignettes/articles/glm.Rmd" class="external-link"><code>vignettes/articles/glm.Rmd</code></a></small>
@@ -94,16 +97,19 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://elkronos.github.io/anovakit/">anovakit</a></span><span class="op">)</span></span></code></pre></div>
 <p><code><a href="../reference/anova_glm.html">anova_glm()</a></code> fits a generalised linear model of a
 response on one or more grouping factors, in any <code>family</code>,
-and reports an analysis-of-deviance table, effect sizes, estimated
-marginal means and pairwise comparisons. With the default Gaussian
-family it is an ordinary factorial analysis of variance. Other families
-model responses whose spread changes with their mean. It is the general
-tool. For a one-way comparison of means with unequal variances,
-<code><a href="../reference/anova_welch.html">anova_welch()</a></code> is better calibrated (<a href="welch.html">walkthrough</a>). For 0/1 outcomes use
-<code><a href="../reference/anova_bin.html">anova_bin()</a></code> (<a href="binary.html">walkthrough</a>), and
-for counts use <code><a href="../reference/anova_count.html">anova_count()</a></code> (<a href="counts.html">walkthrough</a>): both add diagnostics and effect
-sizes that this function does not. To adjust for a numeric covariate use
-<code><a href="../reference/anova_ancova.html">anova_ancova()</a></code> (<a href="ancova.html">walkthrough</a>).</p>
+and reports an analysis of deviance table, effect sizes, marginal means
+and pairwise comparisons. With the default Gaussian family it is an
+ordinary factorial analysis of variance. Other families model responses
+whose spread changes with their mean.</p>
+<p>Four functions cover particular cases better. For a one-way
+comparison of means with unequal variances, <code><a href="../reference/anova_welch.html">anova_welch()</a></code>
+is better calibrated (<a href="welch.html">walkthrough</a>). For 0/1
+outcomes use <code><a href="../reference/anova_bin.html">anova_bin()</a></code> (<a href="binary.html">walkthrough</a>), and for counts
+<code><a href="../reference/anova_count.html">anova_count()</a></code> (<a href="counts.html">walkthrough</a>): both
+add diagnostics and effect sizes that <code><a href="../reference/anova_glm.html">anova_glm()</a></code> does not.
+To adjust for a numeric covariate use <code><a href="../reference/anova_ancova.html">anova_ancova()</a></code> (<a href="ancova.html">walkthrough</a>).</p>
+<p>This walkthrough follows two analyses side by side: a Gaussian
+two-way ANOVA, and a Gamma model for prices.</p>
 <div class="section level2">
 <h2 id="the-data">The data<a class="anchor" aria-label="anchor" href="#the-data"></a>
 </h2>
@@ -111,19 +117,11 @@ sizes that this function does not. To adjust for a numeric covariate use
 cells responsible for tooth growth) in 60 guinea pigs. Each animal
 received vitamin C at one of three doses (0.5, 1 or 2 mg/day) by one of
 two delivery methods: orange juice (<code>OJ</code>) or ascorbic acid
-(<code>VC</code>). <code>dose</code> is stored as a number, so make it a
-factor: it is a grouping variable here, with three levels.</p>
+(<code>VC</code>). <code>dose</code> is stored as a number; here it is a
+grouping variable with three levels, so make it a factor.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tg</span> <span class="op">&lt;-</span> <span class="va">ToothGrowth</span></span>
 <span><span class="va">tg</span><span class="op">$</span><span class="va">dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">dose</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">tg</span><span class="op">)</span></span>
-<span><span class="co">#&gt;    len supp dose</span></span>
-<span><span class="co">#&gt; 1  4.2   VC  0.5</span></span>
-<span><span class="co">#&gt; 2 11.5   VC  0.5</span></span>
-<span><span class="co">#&gt; 3  7.3   VC  0.5</span></span>
-<span><span class="co">#&gt; 4  5.8   VC  0.5</span></span>
-<span><span class="co">#&gt; 5  6.4   VC  0.5</span></span>
-<span><span class="co">#&gt; 6 10.0   VC  0.5</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">supp</span>, <span class="va">tg</span><span class="op">$</span><span class="va">dose</span><span class="op">)</span></span>
 <span><span class="co">#&gt;     </span></span>
 <span><span class="co">#&gt;      0.5  1  2</span></span>
@@ -133,11 +131,34 @@ factor: it is a grouping variable here, with three levels.</p>
 <span><span class="co">#&gt;      0.5     1     2</span></span>
 <span><span class="co">#&gt; OJ 13.23 22.70 26.06</span></span>
 <span><span class="co">#&gt; VC  7.98 16.77 26.14</span></span></code></pre></div>
-<p>This is a balanced 2 x 3 factorial design with ten animals per cell.
-The interesting question is not just whether dose and supplement matter,
-but whether the effect of the supplement depends on the dose. The cell
-means suggest it does: orange juice is ahead at the two lower doses, but
-not at 2 mg/day.</p>
+<p>This is a balanced 2 x 3 design with ten animals per cell. Besides
+whether dose and supplement matter, the question is whether the effect
+of the supplement depends on the dose. The cell means suggest it does:
+orange juice is ahead at the two lower doses, but not at 2 mg/day.</p>
+<p><code><a href="https://rdrr.io/pkg/MASS/man/Cars93.html" class="external-link">MASS::Cars93</a></code> lists 93 car models on sale in the US in
+1993. Their <code>Price</code> (in thousands of dollars) is positive and
+right-skewed, and within each <code>Type</code> of car the spread grows
+with the typical price:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">cars</span> <span class="op">&lt;-</span> <span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/Cars93.html" class="external-link">Cars93</a></span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Manufacturer"</span>, <span class="st">"Model"</span>, <span class="st">"Type"</span>, <span class="st">"Price"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">price</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/split.html" class="external-link">split</a></span><span class="op">(</span><span class="va">cars</span><span class="op">$</span><span class="va">Price</span>, <span class="va">cars</span><span class="op">$</span><span class="va">Type</span><span class="op">)</span></span>
+<span><span class="va">cs</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">price</span>, <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, median <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
+<span>                                    mean <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
+<span>                                    cv <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">cs</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="co">#&gt;          n median  mean    sd   cv</span></span>
+<span><span class="co">#&gt; Compact 16  16.15 18.21  6.69 0.37</span></span>
+<span><span class="co">#&gt; Large   11  20.90 24.30  6.34 0.26</span></span>
+<span><span class="co">#&gt; Midsize 22  26.20 27.22 12.26 0.45</span></span>
+<span><span class="co">#&gt; Small   21  10.00 10.17  1.95 0.19</span></span>
+<span><span class="co">#&gt; Sporty  14  16.80 19.39  7.97 0.41</span></span>
+<span><span class="co">#&gt; Van      9  19.10 19.10  1.88 0.10</span></span></code></pre></div>
+<p>A Gaussian model assumes the same standard deviation in every group,
+and here it ranges from 1.88 for vans to 12.26 for midsize cars. A Gamma
+family assumes instead that the standard deviation is proportional to
+the mean, a constant coefficient of variation (<code>cv</code>). The
+<code>cv</code> column fits that better, though not perfectly: vans are
+unusually uniform.</p>
 </div>
 <div class="section level2">
 <h2 id="fitting-the-model">Fitting the model<a class="anchor" aria-label="anchor" href="#fitting-the-model"></a>
@@ -146,7 +167,7 @@ not at 2 mg/day.</p>
 <code>interaction = TRUE</code> the model contains both factors and
 their interaction. Listing <code>dose</code> first puts it on the x axis
 of the marginal-means plot.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">tg</span>, <span class="st">"len"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dose"</span>, <span class="st">"supp"</span><span class="op">)</span>, interaction <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="va">fit</span></span>
 <span><span class="co">#&gt; Analysis of deviance (gaussian family, identity link, Type II) </span></span>
@@ -157,61 +178,68 @@ of the marginal-means plot.</p>
 <span><span class="co">#&gt; Omnibus test (Type II, F)</span></span>
 <span><span class="co">#&gt;        term sum_sq df statistic   p_value</span></span>
 <span><span class="co">#&gt; 1      dose   2426  2        92 &lt; 2.2e-16</span></span>
-<span><span class="co">#&gt; 2      supp  205.4  1     15.57 0.0002312</span></span>
+<span><span class="co">#&gt; 2      supp  205.3  1     15.57 0.0002312</span></span>
 <span><span class="co">#&gt; 3 dose:supp  108.3  2     4.107   0.02186</span></span>
 <span><span class="co">#&gt; 4 Residuals  712.1 54        NA        NA</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
-<p>Reading the printout from the top:</p>
-<ul>
-<li>The first line names the family, the link and the type of sums of
-squares. A Gaussian family with the identity link is an ordinary linear
-model.</li>
-<li>
-<code>Call:</code> records how the fit was made, and
-<code>Observations used: 60</code> says no rows were dropped.</li>
-<li>The heading <code>Omnibus test (Type II, F)</code> names the type of
-sums of squares and the test statistic. Both change what the numbers
-mean, and neither can be read off the table itself.</li>
-<li>There is no <code>Notes</code> block, because nothing needed saying.
-See <a href="#what-the-notes-say">What the notes say</a>.</li>
-<li>
+<p>The first line names the family, the link and the type of sums of
+squares; a Gaussian family with the identity link is an ordinary linear
+model. <code>Observations used: 60</code> says no rows were dropped. The
+heading <code>Omnibus test (Type II, F)</code> names the type of test
+and the statistic, which the table itself does not show. There is no
+<code>Notes</code> block because nothing needed saying, and
 <code>Plots available</code> lists the four plots in
-<code>$plots</code>.</li>
-</ul>
-<p><code>summary(fit)</code> adds the assumption checks (the dispersion
-and the coefficient table), the effect sizes, the marginal means and the
-pairwise comparisons.</p>
+<code>$plots</code>. <code>summary(fit)</code> adds the assumption
+checks, the effect sizes, the marginal means and the pairwise
+comparisons.</p>
+<p>For the car prices, a Gamma family with a log link makes the group
+effects multiplicative, so comparisons come out as ratios of means:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">gam</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">gam</span></span>
+<span><span class="co">#&gt; Analysis of deviance (Gamma family, log link, Type II) </span></span>
+<span><span class="co">#&gt; ------------------------------------------------------</span></span>
+<span><span class="co">#&gt; Call: anova_glm(data = cars, response = "Price", groups = "Type", family = Gamma(link = "log"))</span></span>
+<span><span class="co">#&gt; Observations used: 93</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Omnibus test (Type II, F)</span></span>
+<span><span class="co">#&gt;        term sum_sq df statistic   p_value</span></span>
+<span><span class="co">#&gt; 1      Type  10.65  5     18.56 1.663e-12</span></span>
+<span><span class="co">#&gt; 2 Residuals   9.98 87        NA        NA</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Notes</span></span>
+<span><span class="co">#&gt;   - McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
+<span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
+<p><code>family</code> accepts a family object, as here, a family
+function, or a name such as <code>"Gamma"</code>. The name alone gives
+the Gamma family’s default inverse link, which is rarely what you want
+for group comparisons (see <a href="#the-link-decides-what-a-comparison-is">below</a>). The note
+explains why one effect size is <code>NA</code>; <a href="#effect-sizes">Effect sizes</a> has the details.</p>
 </div>
 <div class="section level2">
 <h2 id="the-omnibus-test">The omnibus test<a class="anchor" aria-label="anchor" href="#the-omnibus-test"></a>
 </h2>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">anova</span></span>
 <span><span class="co">#&gt;        term   sum_sq df statistic      p_value</span></span>
 <span><span class="co">#&gt; 1      dose 2426.434  2 91.999965 4.046291e-18</span></span>
 <span><span class="co">#&gt; 2      supp  205.350  1 15.571979 2.311828e-04</span></span>
 <span><span class="co">#&gt; 3 dose:supp  108.319  2  4.106991 2.186027e-02</span></span>
 <span><span class="co">#&gt; 4 Residuals  712.106 54        NA           NA</span></span></code></pre></div>
-<ul>
-<li>
-<code>term</code> names the effect. <code>dose:supp</code> is the
-interaction.</li>
-<li>
-<code>sum_sq</code> and <code>df</code> are the sum of squares and
-degrees of freedom of each term. The <code>Residuals</code> row holds
-the error sum of squares and its degrees of freedom.</li>
-<li>
-<code>statistic</code> is the F statistic, the term’s mean square
-divided by the residual mean square.</li>
-<li>
-<code>p_value</code> is its p-value.</li>
-</ul>
+<p><code>term</code> names the effect, and <code>dose:supp</code> is the
+interaction. <code>sum_sq</code> and <code>df</code> are each term’s sum
+of squares and degrees of freedom; the <code>Residuals</code> row holds
+the error sum of squares. <code>statistic</code> is the F statistic, the
+term’s mean square over the residual mean square, and
+<code>p_value</code> its p-value.</p>
 <p>The interaction is significant (F = 4.11, p = 0.022): the supplement
-effect is not the same at every dose. When an interaction is present, a
-main-effect row averages over a pattern that changes, so read the cell
-means below rather than the main effects alone.</p>
+effect is not the same at every dose. A main-effect row averages over a
+pattern that changes, so read the cell means and comparisons below
+rather than the main effects alone.</p>
 <div class="section level3">
 <h3 id="type-ii-or-type-iii">Type II or Type III<a class="anchor" aria-label="anchor" href="#type-ii-or-type-iii"></a>
 </h3>
@@ -220,7 +248,7 @@ tested after the other main effect, but not after the interaction. With
 <code>type = "III"</code> every term is tested after every other,
 interaction included. In a balanced design like this one the two
 coincide:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit3</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">tg</span>, <span class="st">"len"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dose"</span>, <span class="st">"supp"</span><span class="op">)</span>, interaction <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>                  type <span class="op">=</span> <span class="st">"III"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">fit3</span><span class="op">$</span><span class="va">anova</span></span>
@@ -229,10 +257,10 @@ coincide:</p>
 <span><span class="co">#&gt; 2      supp  205.350  1 15.571979 2.311828e-04</span></span>
 <span><span class="co">#&gt; 3 dose:supp  108.319  2  4.106991 2.186027e-02</span></span>
 <span><span class="co">#&gt; 4 Residuals  712.106 54        NA           NA</span></span></code></pre></div>
-<p>They part company when the cells are unequal. Suppose four animals
-had been lost from the <code>VC</code>, 2 mg cell and two from the
+<p>They differ when the cells are unequal. Suppose four animals had been
+lost from the <code>VC</code>, 2 mg cell and two from the
 <code>OJ</code>, 0.5 mg cell:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">lost</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/which.html" class="external-link">which</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">supp</span> <span class="op">==</span> <span class="st">"VC"</span> <span class="op">&amp;</span> <span class="va">tg</span><span class="op">$</span><span class="va">dose</span> <span class="op">==</span> <span class="st">"2"</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span>,</span>
 <span>          <span class="fu"><a href="https://rdrr.io/r/base/which.html" class="external-link">which</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">supp</span> <span class="op">==</span> <span class="st">"OJ"</span> <span class="op">&amp;</span> <span class="va">tg</span><span class="op">$</span><span class="va">dose</span> <span class="op">==</span> <span class="st">"0.5"</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="va">tg_u</span> <span class="op">&lt;-</span> <span class="va">tg</span><span class="op">[</span><span class="op">-</span><span class="va">lost</span>, <span class="op">]</span></span>
@@ -256,26 +284,29 @@ had been lost from the <code>VC</code>, 2 mg cell and two from the
 <span><span class="co">#&gt; 3 dose:supp   93.14518  2   4.47351 1.653811e-02</span></span>
 <span><span class="co">#&gt; 4 Residuals  499.71600 48        NA           NA</span></span></code></pre></div>
 <p>The interaction row is the same in both, because it is adjusted for
-everything either way. The main-effect rows differ. Type II is the more
-powerful test of a main effect when there is no interaction. Type III
+everything either way; the main-effect rows differ. Type II has more
+power to detect a main effect when there is no interaction. Type III
 tests each main effect averaged over the levels of the other factor,
-weighting each cell equally. Some analysts prefer that when an
-interaction is present, since it does not depend on the cell sizes.</p>
-<p><strong>Why Type III is fitted under sum-to-zero contrasts.</strong>
-A Type III test of <code>supp</code> removes the columns that code
-<code>supp</code> while keeping the interaction. What that tests depends
-on how the factors are coded. Under R’s default treatment contrasts, the
-<code>supp</code> columns describe the supplement effect at the
-reference dose only, and the “Type III” row for <code>supp</code>
-becomes a test of the supplement at 0.5 mg/day. Under sum-to-zero
-contrasts it is the supplement effect averaged over the doses, which is
-what a main effect is supposed to be. So when you ask for
-<code>type = "III"</code>, <code><a href="../reference/anova_glm.html">anova_glm()</a></code> fits the model under
-<code>contr.sum</code>. Setting <code>options(contrasts = )</code>
-afterwards would not help, because the contrasts are stored on the
-fitted model. Here is what you would get by fitting with the defaults
-and asking <code><a href="https://rdrr.io/pkg/car/man/Anova.html" class="external-link">car::Anova()</a></code> for Type III:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+weighting each cell equally, which some analysts prefer when an
+interaction is present because it does not depend on the cell sizes.</p>
+</div>
+<div class="section level3">
+<h3 id="type-iii-is-fitted-under-sum-to-zero-contrasts">Type III is fitted under sum-to-zero contrasts<a class="anchor" aria-label="anchor" href="#type-iii-is-fitted-under-sum-to-zero-contrasts"></a>
+</h3>
+<p>A Type III test of <code>supp</code> removes the columns that code
+<code>supp</code> while keeping the interaction, and what that tests
+depends on how the factors are coded. Under R’s default treatment
+contrasts, the <code>supp</code> columns describe the supplement effect
+at the reference dose only, so the “Type III” row for <code>supp</code>
+tests the supplement at 0.5 mg/day. Under sum-to-zero contrasts it tests
+the supplement effect averaged over the doses, which is what a main
+effect means. So with <code>type = "III"</code>,
+<code><a href="../reference/anova_glm.html">anova_glm()</a></code> fits the model under <code>contr.sum</code>.
+Setting <code>options(contrasts = )</code> after fitting would not help,
+because the contrasts are stored on the fitted model. Here is what
+fitting with the defaults and asking <code><a href="https://rdrr.io/pkg/car/man/Anova.html" class="external-link">car::Anova()</a></code> for Type
+III gives:</p>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">naive</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm</a></span><span class="op">(</span><span class="va">len</span> <span class="op">~</span> <span class="va">dose</span> <span class="op">*</span> <span class="va">supp</span>, data <span class="op">=</span> <span class="va">tg</span><span class="op">)</span>    <span class="co"># treatment contrasts</span></span>
 <span><span class="va">naive_tab</span> <span class="op">&lt;-</span> <span class="fu">car</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/car/man/Anova.html" class="external-link">Anova</a></span><span class="op">(</span><span class="va">naive</span>, type <span class="op">=</span> <span class="fl">3</span>, test.statistic <span class="op">=</span> <span class="st">"F"</span><span class="op">)</span></span>
 <span><span class="va">naive_tab</span></span>
@@ -296,45 +327,101 @@ and asking <code><a href="https://rdrr.io/pkg/car/man/Anova.html" class="externa
 <span><span class="co">#&gt; "contr.sum" "contr.sum"</span></span></code></pre></div>
 <p>The <code>supp</code> row has F = 10.45, the test of the supplement
 at the reference dose, not the F = 15.57 of the averaged main effect.
-The data are the same, and the table carries the same label. The
-contrasts stored on <code>fit3$model</code> show how
-<code><a href="../reference/anova_glm.html">anova_glm()</a></code> avoids this.</p>
+The contrasts stored on <code>fit3$model</code> (<code>contr.sum</code>)
+are what make its Type III row a test of the averaged effect.</p>
+</div>
+<div class="section level3">
+<h3 id="choosing-the-test-statistic">Choosing the test statistic<a class="anchor" aria-label="anchor" href="#choosing-the-test-statistic"></a>
+</h3>
+<p><code>test_statistic = NULL</code> (the default) chooses the test
+after fitting. A family that estimates its dispersion, like the Gaussian
+and the Gamma, gets an F test, and a family whose dispersion is fixed at
+1 (binomial, Poisson) gets a likelihood-ratio test. In the F table of a
+non-Gaussian family the <code>sum_sq</code> column holds deviances: the
+<code>Type</code> row is the drop in deviance when <code>Type</code> is
+added, and the <code>Residuals</code> row is the Pearson chi-squared
+statistic, which divided by its degrees of freedom gives the dispersion.
+F is the ratio of the two per degree of freedom:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">a</span> <span class="op">&lt;-</span> <span class="va">gam</span><span class="op">$</span><span class="va">anova</span></span>
+<span><span class="va">a</span></span>
+<span><span class="co">#&gt;        term    sum_sq df statistic      p_value</span></span>
+<span><span class="co">#&gt; 1      Type 10.645956  5  18.56058 1.662501e-12</span></span>
+<span><span class="co">#&gt; 2 Residuals  9.980272 87        NA           NA</span></span>
+<span><span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="va">sum_sq</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span> <span class="op">/</span> <span class="va">a</span><span class="op">$</span><span class="va">df</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span> <span class="op">/</span> <span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="va">sum_sq</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span> <span class="op">/</span> <span class="va">a</span><span class="op">$</span><span class="va">df</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 18.56058</span></span></code></pre></div>
+<p><code>"LR"</code> and <code>"Wald"</code> give the other two
+statistics. The columns come in the same order whatever the statistic,
+and only an F table has <code>sum_sq</code> and a <code>Residuals</code>
+row:</p>
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw">for</span> <span class="op">(</span><span class="va">ts</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"LR"</span>, <span class="st">"Wald"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">g</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
+<span>                 test_statistic <span class="op">=</span> <span class="va">ts</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n"</span>, <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">g</span><span class="op">$</span><span class="va">anova</span>, <span class="st">"statistic"</span><span class="op">)</span>, <span class="st">"\n"</span>, sep <span class="op">=</span> <span class="st">""</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">g</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; scaled-deviance chi-square, estimated dispersion treated as known</span></span>
+<span><span class="co">#&gt;   term df statistic      p_value</span></span>
+<span><span class="co">#&gt; 1 Type  5   92.8029 1.730729e-18</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Wald chi-square</span></span>
+<span><span class="co">#&gt;   term df statistic      p_value</span></span>
+<span><span class="co">#&gt; 1 Type  5  101.7011 2.314394e-20</span></span></code></pre></div>
+<p>All three agree that the car types differ. For a family that
+estimates its dispersion, the “LR” statistic is not a true likelihood
+ratio. It is the deviance drop divided by the estimated dispersion,
+referred to a chi-squared distribution as though the dispersion were
+known, and the heading calls it a scaled-deviance chi-square. It ignores
+the uncertainty in the dispersion, which the F test allows for, so F is
+the better default there. A quasi family has no likelihood, so
+<code>test_statistic = "LR"</code> gives the F test, with a note. The
+Wald test is built from the coefficients and their covariance, and is
+the only one of the three that can use robust standard errors (see <a href="#options">Options</a>).</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="effect-sizes">Effect sizes<a class="anchor" aria-label="anchor" href="#effect-sizes"></a>
 </h2>
 <p>For a Gaussian model <code>$effect_sizes</code> holds partial eta
-squared and partial omega squared for each term, computed from the sums
-of squares of the table above:</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+squared and partial omega squared for each term, from the sums of
+squares of the F table:</p>
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span></span>
 <span><span class="co">#&gt;        term df   sum_sq partial_eta_sq partial_omega_sq</span></span>
 <span><span class="co">#&gt; 1      dose  2 2426.434      0.7731092       0.75206604</span></span>
 <span><span class="co">#&gt; 2      supp  1  205.350      0.2238254       0.19540824</span></span>
 <span><span class="co">#&gt; 3 dose:supp  2  108.319      0.1320279       0.09384698</span></span></code></pre></div>
-<ul>
-<li>
-<code>partial_eta_sq</code> is the term’s sum of squares divided by
-itself plus the residual sum of squares: the share of the variance not
+<p><code>partial_eta_sq</code> is the term’s sum of squares over itself
+plus the residual sum of squares: the share of the variance not
 explained by the other terms that this term explains. Dose accounts for
-77% of it.</li>
-<li>
-<code>partial_omega_sq</code> is the same idea with a correction for
-the upward bias of eta squared in samples, so it is a little smaller. A
-negative value is floored at 0, with a note.</li>
-</ul>
-<p>Both are <em>partial</em>: they do not add up to 1 across terms, and
-they should not be read as a partition of the total variance.</p>
+77% of it. <code>partial_omega_sq</code> corrects eta squared for its
+upward bias in samples, so it is a little smaller; a negative value is
+floored at 0, with a note. Both are partial, so they do not add up to 1
+across terms and are not a partition of the total variance.</p>
+<p>Any other family has no sums of squares, so the effect size is
+<code>deviance_explained</code>, 1 minus the residual deviance over the
+null deviance:</p>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">effect_sizes</span></span>
+<span><span class="co">#&gt;              measure estimate</span></span>
+<span><span class="co">#&gt; 1 deviance_explained 0.542735</span></span>
+<span><span class="co">#&gt; 2        mcfadden_r2       NA</span></span></code></pre></div>
+<p>Car type explains 54% of the deviance. McFadden’s pseudo R squared
+(<code>mcfadden_r2</code>) is reported only for the binomial, Poisson
+and negative binomial families. For a Gamma model it is <code>NA</code>,
+because the log-likelihood of a density shifts with the units of the
+response, and the note says so.</p>
 </div>
 <div class="section level2">
 <h2 id="marginal-means-and-comparisons">Marginal means and comparisons<a class="anchor" aria-label="anchor" href="#marginal-means-and-comparisons"></a>
 </h2>
-<p>Because the model contains the interaction, the estimated marginal
+<p>Because the ToothGrowth model contains the interaction, the marginal
 means are for the six cells. For a Gaussian model with the identity link
 they are the cell means, with intervals that use the pooled residual
 variance:</p>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">emmeans</span></span>
 <span><span class="co">#&gt;   dose supp estimate       se df  conf_low conf_high</span></span>
 <span><span class="co">#&gt; 1  0.5   OJ    13.23 1.148353 54 10.927691  15.53231</span></span>
@@ -346,7 +433,7 @@ variance:</p>
 <p><code>$posthoc</code> compares every pair of cells, 15 in all, with a
 Tukey adjustment by default. The three comparisons of the supplements at
 the same dose are:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">same_dose</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dose0.5 OJ - dose0.5 VC"</span>, <span class="st">"dose1 OJ - dose1 VC"</span>,</span>
 <span>               <span class="st">"dose2 OJ - dose2 VC"</span><span class="op">)</span></span>
 <span><span class="va">ph</span> <span class="op">&lt;-</span> <span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span></span>
@@ -367,13 +454,13 @@ juice gives longer odontoblasts than ascorbic acid at 0.5 and 1 mg/day,
 and the two are indistinguishable at 2 mg/day.</p>
 <p>If only those three comparisons interest you, adjusting for all 15 is
 more conservative than it needs to be. <code>$emmeans_object</code> is
-the <strong>emmeans</strong> grid, so you can ask for exactly the family
-you want. It carries <strong>emmeans</strong>’ own default level, so
-give <code>level =</code> explicitly:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+the emmeans grid, so you can ask for exactly the family of comparisons
+you want. It carries emmeans’ own default level, so give
+<code>level =</code> explicitly:</p>
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">by_dose</span> <span class="op">&lt;-</span> <span class="fu">emmeans</span><span class="fu">::</span><span class="fu"><a href="https://rvlenth.github.io/emmeans/reference/contrast.html" class="external-link">contrast</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">emmeans_object</span>, method <span class="op">=</span> <span class="st">"pairwise"</span>,</span>
 <span>                             by <span class="op">=</span> <span class="st">"dose"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">by_dose</span>, infer <span class="op">=</span> <span class="cn">TRUE</span>, level <span class="op">=</span> <span class="fl">0.95</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">by_dose</span>, infer <span class="op">=</span> <span class="cn">TRUE</span>, level <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">conf_level</span><span class="op">)</span></span>
 <span><span class="co">#&gt; dose = 0.5:</span></span>
 <span><span class="co">#&gt;  contrast estimate   SE df lower.CL upper.CL t.ratio p.value</span></span>
 <span><span class="co">#&gt;  OJ - VC      5.25 1.62 54     1.99     8.51   3.233  0.0021</span></span>
@@ -389,27 +476,69 @@ give <code>level =</code> explicitly:</p>
 <span><span class="co">#&gt; Degrees-of-freedom method: user-specified </span></span>
 <span><span class="co">#&gt; Confidence level used: 0.95</span></span></code></pre></div>
 <p>With one comparison per dose there is nothing to adjust within each
-family. The <a href="results.html">results article</a> covers
+family. <a href="results.html">Working with results</a> covers
 <code>$emmeans_object</code> further.</p>
+<div class="section level3">
+<h3 id="ratios-on-the-log-scale">Ratios on the log scale<a class="anchor" aria-label="anchor" href="#ratios-on-the-log-scale"></a>
+</h3>
+<p>The Gamma model’s marginal means are on the response scale, in
+thousands of dollars. In a one-factor model they are the group means.
+Their intervals are computed on the log scale and back-transformed, so
+they are not symmetric about the estimate:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">emmeans</span></span>
+<span><span class="co">#&gt;      Type estimate        se df  conf_low conf_high</span></span>
+<span><span class="co">#&gt; 1 Compact 18.21250 1.5421305 87 15.391399  21.55068</span></span>
+<span><span class="co">#&gt; 2   Large 24.30000 2.4815412 87 19.836025  29.76856</span></span>
+<span><span class="co">#&gt; 3 Midsize 27.21818 1.9654379 87 23.579061  31.41895</span></span>
+<span><span class="co">#&gt; 4   Small 10.16667 0.7514161 87  8.777667  11.77546</span></span>
+<span><span class="co">#&gt; 5  Sporty 19.39286 1.7554535 87 16.199579  23.21560</span></span>
+<span><span class="co">#&gt; 6     Van 19.10000 2.1563719 87 15.260827  23.90499</span></span></code></pre></div>
+<p>With a log link a pairwise comparison is a ratio of means, in a
+column called <code>ratio</code>, tested against 1. These are the
+comparisons that survive Tukey’s adjustment:</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">gph</span> <span class="op">&lt;-</span> <span class="va">gam</span><span class="op">$</span><span class="va">posthoc</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">gph</span><span class="op">[</span><span class="va">gph</span><span class="op">$</span><span class="va">p_adjusted</span> <span class="op">&lt;</span> <span class="fl">0.05</span>,</span>
+<span>          <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"ratio"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>, <span class="st">"p_adjusted"</span><span class="op">)</span><span class="op">]</span>,</span>
+<span>      digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="co">#&gt;             contrast ratio conf_low conf_high p_adjusted</span></span>
+<span><span class="co">#&gt; 2  Compact / Midsize 0.669    0.484     0.925   6.57e-03</span></span>
+<span><span class="co">#&gt; 3    Compact / Small 1.791    1.291     2.486   2.00e-05</span></span>
+<span><span class="co">#&gt; 7      Large / Small 2.390    1.655     3.451   1.16e-08</span></span>
+<span><span class="co">#&gt; 10   Midsize / Small 2.677    1.981     3.618   3.09e-10</span></span>
+<span><span class="co">#&gt; 11  Midsize / Sporty 1.404    1.002     1.967   4.83e-02</span></span>
+<span><span class="co">#&gt; 13    Small / Sporty 0.524    0.373     0.737   4.94e-06</span></span>
+<span><span class="co">#&gt; 14       Small / Van 0.532    0.359     0.789   1.53e-04</span></span></code></pre></div>
+<p>Midsize cars, for example, average 2.68 times the price of small
+ones.</p>
 </div>
-<div class="section level2">
-<h2 id="checking-assumptions">Checking assumptions<a class="anchor" aria-label="anchor" href="#checking-assumptions"></a>
-</h2>
-<p>A Gaussian model assumes independent observations, normally
-distributed errors and the same error variance in every cell.
-<code>$assumptions</code> holds two elements, and the residual plots in
-the next section do the rest.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
-<span><span class="co">#&gt; [1] 13.18715</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 3.631411</span></span></code></pre></div>
-<p><code>dispersion</code> is the Pearson dispersion: the sum of squared
-Pearson residuals divided by the residual degrees of freedom. For a
-Gaussian model that is the residual mean square, so its square root,
-3.63, is the residual standard deviation in the units of the
-response.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<div class="section level3">
+<h3 id="the-link-decides-what-a-comparison-is">The link decides what a comparison is<a class="anchor" aria-label="anchor" href="#the-link-decides-what-a-comparison-is"></a>
+</h3>
+<p>With the log link comparisons are ratios, and with the logit link
+they are odds ratios. With any other non-identity link they are
+differences between the means on the response scale, and
+<code>$notes</code> says so. The Gamma family’s default link is the
+inverse:</p>
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">inv</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="st">"Gamma"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="va">inv</span><span class="op">$</span><span class="va">method</span></span>
+<span><span class="co">#&gt; [1] "Analysis of deviance (Gamma family, inverse link, Type II)"</span></span>
+<span><span class="va">inv</span><span class="op">$</span><span class="va">notes</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grepl</a></span><span class="op">(</span><span class="st">"link"</span>, <span class="va">inv</span><span class="op">$</span><span class="va">notes</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt; [1] "With the inverse link the pairwise comparisons are differences between the marginal means on the response scale; only log and logit links give ratios."</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">inv</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"estimate"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span><span class="op">)</span><span class="op">]</span>, <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="co">#&gt;            contrast  estimate   conf_low conf_high</span></span>
+<span><span class="co">#&gt; 1   Compact - Large -6.087500 -14.601888  2.426888</span></span>
+<span><span class="co">#&gt; 2 Compact - Midsize -9.005682 -16.286022 -1.725342</span></span>
+<span><span class="co">#&gt; 3   Compact - Small  8.045833   3.046632 13.045035</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="the-coefficient-table">The coefficient table<a class="anchor" aria-label="anchor" href="#the-coefficient-table"></a>
+</h3>
+<p>The fitted coefficients are in
+<code>$assumptions$coefficients</code>:</p>
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">coefficients</span></span>
 <span><span class="co">#&gt;           term estimate       se  statistic      p_value distribution</span></span>
 <span><span class="co">#&gt; 1  (Intercept)    13.23 1.148353 11.5208468 3.602548e-16            t</span></span>
@@ -425,17 +554,17 @@ response.</p>
 <span><span class="co">#&gt; 4 -8.5059571 -1.994043   profile</span></span>
 <span><span class="co">#&gt; 5 -5.2846186  3.924619   profile</span></span>
 <span><span class="co">#&gt; 6  0.7253814  9.934619   profile</span></span></code></pre></div>
-<p><code>coefficients</code> is the coefficient table, with t statistics
-(the dispersion is estimated) and profile-likelihood intervals by
-default, which for a Gaussian model equal <code>confint(lm())</code>.
-Under the default treatment contrasts the intercept is the mean of the
-reference cell (0.5 mg/day, orange juice), and the other coefficients
-are differences from it. <code>fit3</code>, fitted under sum-to-zero
-contrasts, has different coefficients describing the same fitted values.
-There the intercept is the average of the six cell means,
-<code>dose1</code> is the average for 0.5 mg/day minus that grand mean,
-and <code>supp1</code> is the average for orange juice minus it:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<p>The table has t statistics (the dispersion is estimated) and
+profile-likelihood intervals by default, which for a Gaussian model
+equal <code>confint(lm())</code>. Under the default treatment contrasts
+the intercept is the mean of the reference cell (0.5 mg/day, orange
+juice), and the other coefficients are differences from it.
+<code>fit3</code>, fitted under sum-to-zero contrasts, has different
+coefficients for the same fitted values: the intercept is the average of
+the six cell means, <code>dose1</code> is the average for 0.5 mg/day
+minus that grand mean, and <code>supp1</code> the average for orange
+juice minus it.</p>
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit3</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">coefficients</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"term"</span>, <span class="st">"estimate"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;          term   estimate</span></span>
 <span><span class="co">#&gt; 1 (Intercept) 18.8133333</span></span>
@@ -446,182 +575,8 @@ and <code>supp1</code> is the average for orange juice minus it:</p>
 <span><span class="co">#&gt; 6 dose2:supp1  1.1150000</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">emmeans</span><span class="op">$</span><span class="va">estimate</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 18.81333</span></span></code></pre></div>
-<p>There is no formal normality test. Read the Q-Q plot below. For equal
-variances, compare the cell standard deviations:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">cell_sd</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">len</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">supp</span>, <span class="va">tg</span><span class="op">$</span><span class="va">dose</span><span class="op">)</span>, <span class="va">sd</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">cell_sd</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     0.5    1    2</span></span>
-<span><span class="co">#&gt; OJ 4.46 3.91 2.66</span></span>
-<span><span class="co">#&gt; VC 2.75 2.52 4.80</span></span></code></pre></div>
-<p>They range from 2.52 to 4.80, so the largest cell variance is 3.64
-times the smallest. With equal cell sizes of ten, a balanced design
-tolerates that well. If the variances differed badly, you could use
-heteroskedasticity-consistent standard errors (<code>vcov_type</code>,
-below) or, for a one-way design, <code><a href="../reference/anova_welch.html">anova_welch()</a></code>. The <a href="diagnostics.html">diagnostics article</a> covers the checks across
-the package.</p>
-</div>
-<div class="section level2">
-<h2 id="plots">Plots<a class="anchor" aria-label="anchor" href="#plots"></a>
-</h2>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"box"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/plot-box-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <code>box</code> plot shows the observed response in each cell,
-ordered by median and labelled with its size. Use it to see the raw data
-behind the means: spreads, skewness and outliers.</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/plot-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <code>emmeans</code> plot shows the estimated marginal means with
-their 95% intervals. The first grouping factor is on the x axis and the
-second sets the colour, one line per supplement. Lines that are not
-parallel are the interaction: the gap between the supplements closes at
-2 mg/day.</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"residuals"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/plot-residuals-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <code>residuals</code> plot shows deviance residuals (for a
-Gaussian model, ordinary residuals) against fitted values. The points
-fall in vertical stripes, one per cell mean. The two 2 mg/day cells have
-almost the same mean, so their stripes overlap at about 26. Look for
-stripes of clearly different heights (unequal variances) or a funnel
-that widens with the fitted value (a variance that grows with the mean,
-which suggests another family). Here the heights vary somewhat, as the
-cell standard deviations did, but there is no funnel.</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/plot-qq-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <code>qq</code> plot compares the deviance residuals with a
-normal distribution. Points close to the dashed line support the
-normal-errors assumption, and systematic curvature at the ends suggests
-skewness or heavy tails. Here the points follow the line well. The lower
-tail is a little shorter than a normal one, a mild departure for a
-balanced design with 60 observations.</p>
-<p>All four are <strong>ggplot2</strong> objects that you can modify
-with <code>+</code>. See <a href="visuals.html">Plots and visual
-customisation</a>.</p>
-</div>
-<div class="section level2">
-<h2 id="a-non-gaussian-family-gamma">A non-Gaussian family: Gamma<a class="anchor" aria-label="anchor" href="#a-non-gaussian-family-gamma"></a>
-</h2>
-<div class="section level3">
-<h3 id="the-data-1">The data<a class="anchor" aria-label="anchor" href="#the-data-1"></a>
-</h3>
-<p><code><a href="https://rdrr.io/pkg/MASS/man/Cars93.html" class="external-link">MASS::Cars93</a></code> lists 93 car models on sale in the US in
-1993. Their <code>Price</code> (in thousands of dollars) is positive and
-right-skewed, and within each <code>Type</code> of car the spread grows
-with the typical price:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">cars</span> <span class="op">&lt;-</span> <span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/Cars93.html" class="external-link">Cars93</a></span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Manufacturer"</span>, <span class="st">"Model"</span>, <span class="st">"Type"</span>, <span class="st">"Price"</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="va">price</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/split.html" class="external-link">split</a></span><span class="op">(</span><span class="va">cars</span><span class="op">$</span><span class="va">Price</span>, <span class="va">cars</span><span class="op">$</span><span class="va">Type</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="va">price</span>, <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, median <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
-<span>                                     mean <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, sd <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>,</span>
-<span>                                     cv <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="co">#&gt;          n median  mean    sd   cv</span></span>
-<span><span class="co">#&gt; Compact 16  16.15 18.21  6.69 0.37</span></span>
-<span><span class="co">#&gt; Large   11  20.90 24.30  6.34 0.26</span></span>
-<span><span class="co">#&gt; Midsize 22  26.20 27.22 12.26 0.45</span></span>
-<span><span class="co">#&gt; Small   21  10.00 10.17  1.95 0.19</span></span>
-<span><span class="co">#&gt; Sporty  14  16.80 19.39  7.97 0.41</span></span>
-<span><span class="co">#&gt; Van      9  19.10 19.10  1.88 0.10</span></span></code></pre></div>
-<p>A Gaussian model assumes the same standard deviation in every group.
-It is about 2 for small cars and about 12 for midsize ones. A Gamma
-family assumes instead that the standard deviation is proportional to
-the mean: a constant coefficient of variation (<code>cv</code>). The
-<code>cv</code> column shows that fits better, though not perfectly
-(vans are unusually uniform). A log link makes the group effects
-multiplicative, so comparisons come out as ratios of means.</p>
-</div>
-<div class="section level3">
-<h3 id="fitting-and-the-omnibus-test">Fitting and the omnibus test<a class="anchor" aria-label="anchor" href="#fitting-and-the-omnibus-test"></a>
-</h3>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gam</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">gam</span></span>
-<span><span class="co">#&gt; Analysis of deviance (Gamma family, log link, Type II) </span></span>
-<span><span class="co">#&gt; ------------------------------------------------------</span></span>
-<span><span class="co">#&gt; Call: anova_glm(data = cars, response = "Price", groups = "Type", family = Gamma(link = "log"))</span></span>
-<span><span class="co">#&gt; Observations used: 93</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Omnibus test (Type II, F)</span></span>
-<span><span class="co">#&gt;        term sum_sq df statistic   p_value</span></span>
-<span><span class="co">#&gt; 1      Type  10.65  5     18.56 1.663e-12</span></span>
-<span><span class="co">#&gt; 2 Residuals   9.98 87        NA        NA</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Notes</span></span>
-<span><span class="co">#&gt;   - McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead.</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
-<span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
-<p><code>family</code> accepts a family object, as here, a family
-function, or a name such as <code>"Gamma"</code>. The name alone gives
-the Gamma family’s default inverse link, which is rarely what you want
-for group comparisons (see <a href="#the-link-decides-what-a-comparison-is">below</a>).</p>
-<p><strong><code>test_statistic</code>.</strong> By default the test is
-chosen after fitting. A family that estimates its dispersion, like the
-Gaussian and the Gamma, gets an F test, and a family whose dispersion is
-fixed at 1 (binomial, Poisson) gets a likelihood-ratio test. In the F
-table of a non-Gaussian family the <code>sum_sq</code> column holds
-deviances, as the <code><a href="../reference/anova_glm.html">anova_glm()</a></code> help page explains. The
-<code>Type</code> row is the drop in deviance when <code>Type</code> is
-added. The <code>Residuals</code> row is the Pearson chi-squared
-statistic, and dividing it by its degrees of freedom gives the
-dispersion. F is the ratio of the two per degree of freedom:</p>
+<p>The Gamma coefficients are on the log scale:</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">a</span> <span class="op">&lt;-</span> <span class="va">gam</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="va">sum_sq</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span> <span class="op">/</span> <span class="va">a</span><span class="op">$</span><span class="va">df</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span> <span class="op">/</span> <span class="op">(</span><span class="va">a</span><span class="op">$</span><span class="va">sum_sq</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span> <span class="op">/</span> <span class="va">a</span><span class="op">$</span><span class="va">df</span><span class="op">[</span><span class="fl">2</span><span class="op">]</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 18.56058</span></span></code></pre></div>
-<p>You can ask for the likelihood-ratio or Wald statistic instead. The
-columns come in the same order whatever the statistic, and only an F
-table has <code>sum_sq</code> and a <code>Residuals</code> row:</p>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw">for</span> <span class="op">(</span><span class="va">ts</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"LR"</span>, <span class="st">"Wald"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">g</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
-<span>                 test_statistic <span class="op">=</span> <span class="va">ts</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="st">"\n"</span>, <span class="fu"><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr</a></span><span class="op">(</span><span class="va">g</span><span class="op">$</span><span class="va">anova</span>, <span class="st">"statistic"</span><span class="op">)</span>, <span class="st">"\n"</span>, sep <span class="op">=</span> <span class="st">""</span><span class="op">)</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">g</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
-<span><span class="op">}</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; scaled-deviance chi-square, estimated dispersion treated as known</span></span>
-<span><span class="co">#&gt;   term df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1 Type  5   92.8029 1.730729e-18</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Wald chi-square</span></span>
-<span><span class="co">#&gt;   term df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1 Type  5  101.7011 2.314394e-20</span></span></code></pre></div>
-<p>For a family that estimates its dispersion, the “LR” statistic is not
-a true likelihood ratio: it is the deviance drop divided by the
-estimated dispersion, referred to a chi-squared distribution as though
-the dispersion were known, and the table heading calls it a
-scaled-deviance chi-square. That ignores the uncertainty in the
-dispersion estimate, which the F test allows for, so for a family that
-estimates its dispersion F is the better default. A quasi family has no
-likelihood at all, so there <code>test_statistic = "LR"</code> gives the
-F test, with a note, as <code><a href="../reference/anova_count.html">anova_count()</a></code> does. The Wald test
-is built from the coefficients and their covariance matrix. It is the
-only one of the three that can use a robust covariance (see <a href="#vcov_type-robust-standard-errors"><code>vcov_type</code></a>).
-Here all three agree that the car types differ.</p>
-</div>
-<div class="section level3">
-<h3 id="effect-sizes-1">Effect sizes<a class="anchor" aria-label="anchor" href="#effect-sizes-1"></a>
-</h3>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">effect_sizes</span></span>
-<span><span class="co">#&gt;              measure estimate</span></span>
-<span><span class="co">#&gt; 1 deviance_explained 0.542735</span></span>
-<span><span class="co">#&gt; 2        mcfadden_r2       NA</span></span></code></pre></div>
-<p>For a non-Gaussian family there are no sums of squares, so the effect
-size is the <code>deviance_explained</code>: 1 minus the residual
-deviance over the null deviance. Car type explains 54% of the deviance.
-McFadden’s pseudo R squared is reported only for the binomial, Poisson
-and negative binomial families. For a Gamma model it is <code>NA</code>,
-and the note in the printout explains why.</p>
-</div>
-<div class="section level3">
-<h3 id="the-coefficient-table-and-ci_method">The coefficient table and <code>ci_method</code><a class="anchor" aria-label="anchor" href="#the-coefficient-table-and-ci_method"></a>
-</h3>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">co</span> <span class="op">&lt;-</span> <span class="va">gam</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">coefficients</span></span>
 <span><span class="va">co</span></span>
 <span><span class="co">#&gt;          term    estimate         se  statistic      p_value distribution</span></span>
@@ -638,20 +593,172 @@ and the note in the printout explains why.</p>
 <span><span class="co">#&gt; 4 -0.8077507 -0.3604911   profile</span></span>
 <span><span class="co">#&gt; 5 -0.1832054  0.3101515   profile</span></span>
 <span><span class="co">#&gt; 6 -0.2297083  0.3322378   profile</span></span></code></pre></div>
-<p>The coefficients are on the log scale. The intercept is the log of
-the mean price of the reference type, <code>Compact</code>, and each
-other coefficient is the log of a ratio to it: small cars cost
-exp(-0.583) = 0.56 times as much as compact ones on average. The
-<code>distribution</code> column says the tests use t, because the
-dispersion is estimated.</p>
-<p><code>ci_method = "profile"</code> (the default) gives
-profile-likelihood intervals, cut at the t quantiles the tests beside
-them use. The p-values are Wald p-values, though, so in a small sample a
-profile interval can exclude 0 while its p-value is above 0.05, or the
-reverse; <code>$notes</code> names any such row.
-<code>ci_method = "wald"</code> gives estimate ± t × SE, which always
-agrees with the p-value:</p>
+<p>The intercept is the log of the mean price of the reference type,
+<code>Compact</code>, and each other coefficient is the log of a ratio
+to it: small cars cost exp(-0.583) = 0.56 times as much as compact ones
+on average. The <code>distribution</code> column says the tests use t,
+because the dispersion is estimated.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="checking-assumptions">Checking assumptions<a class="anchor" aria-label="anchor" href="#checking-assumptions"></a>
+</h2>
+<p>A Gaussian model assumes independent observations, normally
+distributed errors and the same error variance in every cell.
+<code>$assumptions</code> holds the dispersion, and the plots in the
+next section cover normality.</p>
+<div class="section level3">
+<h3 id="dispersion">Dispersion<a class="anchor" aria-label="anchor" href="#dispersion"></a>
+</h3>
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
+<span><span class="co">#&gt; [1] 13.18715</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 3.631411</span></span></code></pre></div>
+<p><code>dispersion</code> is the Pearson dispersion: the sum of squared
+Pearson residuals divided by the residual degrees of freedom. For a
+Gaussian model that is the residual mean square, so its square root,
+3.63, is the residual standard deviation in the units of the response.
+There is no formal test of equal variances; compare the cell standard
+deviations:</p>
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">cell_sd</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">len</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">tg</span><span class="op">$</span><span class="va">supp</span>, <span class="va">tg</span><span class="op">$</span><span class="va">dose</span><span class="op">)</span>, <span class="va">sd</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">cell_sd</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="co">#&gt;     0.5    1    2</span></span>
+<span><span class="co">#&gt; OJ 4.46 3.91 2.66</span></span>
+<span><span class="co">#&gt; VC 2.75 2.52 4.80</span></span></code></pre></div>
+<p>They range from 2.52 to 4.80, so the largest cell variance is 3.64
+times the smallest. With ten animals in every cell, a balanced design
+tolerates that well. If the variances differed badly, use robust
+standard errors (<code>vcov_type</code>, under <a href="#options">Options</a>) or, for a one-way design,
+<code><a href="../reference/anova_welch.html">anova_welch()</a></code>.</p>
+<p>For a Gamma family the dispersion is the squared coefficient of
+variation:</p>
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
+<span><span class="co">#&gt; [1] 0.1147158</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 0.3386972</span></span></code></pre></div>
+<p>The model puts the standard deviation of prices at about 34% of the
+mean in every car type. The observed values in <a href="#the-data">the
+data</a> range from 10% (vans) to 45% (midsize cars), so the constant-CV
+assumption is only roughly true; the <code>vcov_type</code> option below
+protects the comparisons against that.</p>
+</div>
+<div class="section level3">
+<h3 id="is-gamma-the-right-family">Is Gamma the right family?<a class="anchor" aria-label="anchor" href="#is-gamma-the-right-family"></a>
+</h3>
+<p>The vans show that the Gamma variance function is not exact. To check
+that it still describes the prices better than the Gaussian, compare the
+two fits by AIC. <code>$model_stats</code> holds the AIC, BIC, null and
+residual deviances and residual degrees of freedom, and
+<code>$family</code> is the family object used. The Gaussian and Gamma
+fits are full likelihoods for the same response, so their AICs can be
+compared directly:</p>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">model_stats</span><span class="op">)</span></span>
+<span><span class="co">#&gt; List of 5</span></span>
+<span><span class="co">#&gt;  $ AIC              : num 595</span></span>
+<span><span class="co">#&gt;  $ BIC              : num 613</span></span>
+<span><span class="co">#&gt;  $ null_deviance    : num 19.6</span></span>
+<span><span class="co">#&gt;  $ residual_deviance: num 8.97</span></span>
+<span><span class="co">#&gt;  $ df_residual      : int 87</span></span>
+<span><span class="va">gau</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>gaussian <span class="op">=</span> <span class="va">gau</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">AIC</span>, gamma <span class="op">=</span> <span class="va">gam</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">AIC</span><span class="op">)</span></span>
+<span><span class="co">#&gt; gaussian    gamma </span></span>
+<span><span class="co">#&gt; 651.4658 594.8847</span></span></code></pre></div>
+<p>The Gamma model has the lower AIC by 57. The <a href="diagnostics.html">diagnostics guide</a> covers the checks across
+the package.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="plots">Plots<a class="anchor" aria-label="anchor" href="#plots"></a>
+</h2>
+<p><code>fit</code> has four plots. The <code>box</code> plot is the raw
+data behind the means: the observed lengths in each cell, ordered by
+median and labelled with the cell size.</p>
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"box"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/plot-box-1.png" class="r-plt" alt="" width="100%"></p>
+<p>In the <code>emmeans</code> plot the gap between the supplements
+closes at 2 mg/day. Dose, the first grouping factor, is on the x axis,
+and the supplement sets the colour, with one line per supplement, so
+lines that are not parallel are the interaction. The error bars are
+intervals for each mean at <code>conf_level</code>.</p>
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/plot-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
+<p>The <code>residuals</code> and <code>qq</code> plots check the
+Gaussian assumptions:</p>
+<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"residuals"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/plot-resid-qq-1.png" class="r-plt" alt="" width="50%"><img src="glm_files/figure-html/plot-resid-qq-2.png" class="r-plt" alt="" width="50%"></p>
+<p>On the left, the deviance residuals (for a Gaussian model, the
+ordinary residuals) are plotted against the fitted values. They fall in
+vertical stripes, one per cell mean. The two 2 mg/day cells have almost
+the same mean (26.06 and 26.14), so their stripes overlap. Stripes of
+clearly different heights mean unequal variances, and a funnel that
+widens with the fitted value means a variance that grows with the mean,
+which suggests another family. Here the heights vary somewhat, as the
+cell standard deviations did, but there is no funnel.</p>
+<p>On the right, the Q-Q plot compares the residuals with a normal
+distribution; systematic curvature at the ends would mean skewness or
+heavy tails. The points follow the line well. The lower tail is a little
+shorter than a normal one, a mild departure for a balanced design with
+60 observations.</p>
+<p>If the variance of a Gamma model really is proportional to the mean
+squared, its deviance residuals have roughly the same spread at every
+fitted value. For the car prices the stripes differ in height:</p>
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"residuals"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/gamma-residuals-1.png" class="r-plt" alt="" width="100%"></p>
+<p>In a one-factor model the fitted values are the group means. Two
+stripes sit side by side: vans (19.10) on the left and sporty cars
+(19.39) on the right. The vans’ stripe is by far the shortest, because
+their prices vary much less than the model assumes. The midsize stripe,
+at 27.22, is the tallest.</p>
+<p>The deviance residuals of a Gamma model are approximately normal when
+the model fits. Here the middle follows the line and the upper tail
+rises above it, so a few cars are dearer than a Gamma distribution with
+this dispersion would predict.</p>
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/gamma-qq-1.png" class="r-plt" alt="" width="100%"></p>
+<p><code>gam$model</code> is an ordinary <code>glm</code>, so you can
+find those cars directly:</p>
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">model</span>, type <span class="op">=</span> <span class="st">"deviance"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">cars</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">res</span>, decreasing <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="op">]</span>, <span class="fl">3</span><span class="op">)</span></span>
+<span><span class="co">#&gt;     Manufacturer    Model    Type Price</span></span>
+<span><span class="co">#&gt; 59 Mercedes-Benz     300E Midsize  61.9</span></span>
+<span><span class="co">#&gt; 19     Chevrolet Corvette  Sporty  38.0</span></span>
+<span><span class="co">#&gt; 48      Infiniti      Q45 Midsize  47.9</span></span></code></pre></div>
+<p>The Gamma <code>emmeans</code> plot shows the means on the response
+scale, with their asymmetric intervals. <code>Type</code> has no natural
+order, so the points are not joined by a line; lines appear only across
+a second grouping factor, as in the ToothGrowth plot. The fourth plot,
+<code>plot(gam, "box")</code>, shows the raw prices by type.</p>
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="glm_files/figure-html/gamma-emm-plot-1.png" class="r-plt" alt="" width="100%"></p>
+<p>All plots are ggplot2 objects that you can change with
+<code>+</code>; see <a href="visuals.html">Plots and themes</a>.</p>
+</div>
+<div class="section level2">
+<h2 id="options">Options<a class="anchor" aria-label="anchor" href="#options"></a>
+</h2>
+<div class="section level3">
+<h3 id="ci_method">
+<code>ci_method</code><a class="anchor" aria-label="anchor" href="#ci_method"></a>
+</h3>
+<p><code>ci_method = "profile"</code> (the default) cuts the profile
+likelihood at the t quantiles the tests beside it use. The p-values are
+Wald p-values, though, so in a small sample a profile interval can
+exclude 0 while its p-value is above 0.05, or the reverse;
+<code>$notes</code> names any such row. <code>ci_method = "wald"</code>
+gives estimate ± t × SE, which always agrees with the p-value:</p>
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wald</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
 <span>                  ci_method <span class="op">=</span> <span class="st">"wald"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">coefficients</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="va">co</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"term"</span>, <span class="st">"estimate"</span><span class="op">)</span><span class="op">]</span>,</span>
@@ -673,159 +780,19 @@ agrees with the p-value:</p>
 <span><span class="co">#&gt; 6      0.3280790</span></span></code></pre></div>
 <p>The two differ in the third decimal place here. Profile intervals
 follow the shape of the likelihood, which matters more in small samples
-or near a boundary. Wald intervals are symmetric on the log scale.
+or near a boundary; Wald intervals are symmetric on the log scale.
 Exponentiate either to get an interval for the ratio.</p>
 </div>
 <div class="section level3">
-<h3 id="dispersion">Dispersion<a class="anchor" aria-label="anchor" href="#dispersion"></a>
-</h3>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
-<span><span class="co">#&gt; [1] 0.1147158</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.3386972</span></span></code></pre></div>
-<p>For a Gamma family the dispersion is the squared coefficient of
-variation. The model therefore puts the standard deviation of prices at
-about 34% of the mean in every car type. The observed values above range
-from 10% (vans) to 45% (midsize cars), so the constant-CV assumption is
-only roughly true. The <a href="#vcov_type-robust-standard-errors"><code>vcov_type</code></a>
-section shows how to make the comparisons robust to that.</p>
-</div>
-<div class="section level3">
-<h3 id="model_stats-and-family">
-<code>$model_stats</code> and <code>$family</code><a class="anchor" aria-label="anchor" href="#model_stats-and-family"></a>
-</h3>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">model_stats</span><span class="op">)</span></span>
-<span><span class="co">#&gt; List of 5</span></span>
-<span><span class="co">#&gt;  $ AIC              : num 595</span></span>
-<span><span class="co">#&gt;  $ BIC              : num 613</span></span>
-<span><span class="co">#&gt;  $ null_deviance    : num 19.6</span></span>
-<span><span class="co">#&gt;  $ residual_deviance: num 8.97</span></span>
-<span><span class="co">#&gt;  $ df_residual      : int 87</span></span>
-<span><span class="va">gam</span><span class="op">$</span><span class="va">family</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Family: Gamma </span></span>
-<span><span class="co">#&gt; Link function: log</span></span></code></pre></div>
-<p><code>$model_stats</code> holds the AIC, BIC, null and residual
-deviances and residual degrees of freedom. <code>$family</code> is the
-family object actually used. Because the Gaussian and Gamma fits are
-full likelihoods for the same response, their AICs can be compared
-directly:</p>
-<div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gau</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>gaussian <span class="op">=</span> <span class="va">gau</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">AIC</span>, gamma <span class="op">=</span> <span class="va">gam</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">AIC</span><span class="op">)</span></span>
-<span><span class="co">#&gt; gaussian    gamma </span></span>
-<span><span class="co">#&gt; 651.4658 594.8847</span></span></code></pre></div>
-<p>The Gamma model is much better supported.</p>
-</div>
-<div class="section level3">
-<h3 id="marginal-means-on-the-response-scale">Marginal means on the response scale<a class="anchor" aria-label="anchor" href="#marginal-means-on-the-response-scale"></a>
-</h3>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gam</span><span class="op">$</span><span class="va">emmeans</span></span>
-<span><span class="co">#&gt;      Type estimate        se df  conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1 Compact 18.21250 1.5421305 87 15.391399  21.55068</span></span>
-<span><span class="co">#&gt; 2   Large 24.30000 2.4815412 87 19.836025  29.76856</span></span>
-<span><span class="co">#&gt; 3 Midsize 27.21818 1.9654379 87 23.579061  31.41895</span></span>
-<span><span class="co">#&gt; 4   Small 10.16667 0.7514161 87  8.777667  11.77546</span></span>
-<span><span class="co">#&gt; 5  Sporty 19.39286 1.7554535 87 16.199579  23.21560</span></span>
-<span><span class="co">#&gt; 6     Van 19.10000 2.1563719 87 15.260827  23.90499</span></span></code></pre></div>
-<p>The marginal means are on the response scale, in thousands of
-dollars. In a one-factor model they are the group means. Their intervals
-are computed on the log scale and back-transformed, so they are not
-symmetric about the estimate.</p>
-<p>With a log link, a pairwise comparison is a <strong>ratio</strong> of
-means, in a column called <code>ratio</code>, tested against a null
-value of 1:</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gph</span> <span class="op">&lt;-</span> <span class="va">gam</span><span class="op">$</span><span class="va">posthoc</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">gph</span><span class="op">[</span><span class="va">gph</span><span class="op">$</span><span class="va">p_adjusted</span> <span class="op">&lt;</span> <span class="fl">0.05</span>,</span>
-<span>          <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"ratio"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>, <span class="st">"p_adjusted"</span><span class="op">)</span><span class="op">]</span>,</span>
-<span>      digits <span class="op">=</span> <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;             contrast ratio conf_low conf_high p_adjusted</span></span>
-<span><span class="co">#&gt; 2  Compact / Midsize 0.669    0.484     0.925   6.57e-03</span></span>
-<span><span class="co">#&gt; 3    Compact / Small 1.791    1.291     2.486   2.00e-05</span></span>
-<span><span class="co">#&gt; 7      Large / Small 2.390    1.655     3.451   1.16e-08</span></span>
-<span><span class="co">#&gt; 10   Midsize / Small 2.677    1.981     3.618   3.09e-10</span></span>
-<span><span class="co">#&gt; 11  Midsize / Sporty 1.404    1.002     1.967   4.83e-02</span></span>
-<span><span class="co">#&gt; 13    Small / Sporty 0.524    0.373     0.737   4.94e-06</span></span>
-<span><span class="co">#&gt; 14       Small / Van 0.532    0.359     0.789   1.53e-04</span></span></code></pre></div>
-<p>Those are the comparisons that survive Tukey’s adjustment. Midsize
-cars, for example, average 2.68 times the price of small ones.</p>
-</div>
-<div class="section level3">
-<h3 id="the-link-decides-what-a-comparison-is">The link decides what a comparison is<a class="anchor" aria-label="anchor" href="#the-link-decides-what-a-comparison-is"></a>
-</h3>
-<p>With the log link comparisons are ratios, and with the logit link
-they are odds ratios. With any other non-identity link they are
-differences between the means on the response scale, and
-<code>$notes</code> says so. The Gamma family’s default link is the
-inverse:</p>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">inv</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="st">"Gamma"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">inv</span><span class="op">$</span><span class="va">method</span></span>
-<span><span class="co">#&gt; [1] "Analysis of deviance (Gamma family, inverse link, Type II)"</span></span>
-<span><span class="va">inv</span><span class="op">$</span><span class="va">notes</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grepl</a></span><span class="op">(</span><span class="st">"link"</span>, <span class="va">inv</span><span class="op">$</span><span class="va">notes</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt; [1] "With the inverse link the pairwise comparisons are differences between the marginal means on the response scale; only log and logit links give ratios."</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">inv</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"estimate"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span><span class="op">)</span><span class="op">]</span>, <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;            contrast  estimate   conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1   Compact - Large -6.087500 -14.601888  2.426888</span></span>
-<span><span class="co">#&gt; 2 Compact - Midsize -9.005682 -16.286022 -1.725342</span></span>
-<span><span class="co">#&gt; 3   Compact - Small  8.045833   3.046632 13.045035</span></span></code></pre></div>
-</div>
-<div class="section level3">
-<h3 id="plots-for-the-gamma-fit">Plots for the Gamma fit<a class="anchor" aria-label="anchor" href="#plots-for-the-gamma-fit"></a>
-</h3>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"residuals"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/gamma-residuals-1.png" class="r-plt" alt="" width="100%"></p>
-<p>If the variance really is proportional to the mean squared, the
-deviance residuals of a Gamma model have roughly the same spread at
-every fitted value. Here the stripes differ in height. Two sit side by
-side at about 19: vans (19.1) on the left and sporty cars (19.4) on the
-right. The vans’ stripe is by far the shortest, because their prices
-vary much less than the model assumes. The midsize stripe, at about 27,
-is the tallest.</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/gamma-qq-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The deviance residuals of a Gamma model are approximately normal when
-the model fits. Here the middle follows the line and the upper tail
-rises above it: a few cars are dearer than a Gamma distribution with
-this dispersion would suggest. <code>gam$model</code> is an ordinary
-<code>glm</code>, so you can find them directly:</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals</a></span><span class="op">(</span><span class="va">gam</span><span class="op">$</span><span class="va">model</span>, type <span class="op">=</span> <span class="st">"deviance"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">cars</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">res</span>, decreasing <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span>, <span class="op">]</span>, <span class="fl">3</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     Manufacturer    Model    Type Price</span></span>
-<span><span class="co">#&gt; 59 Mercedes-Benz     300E Midsize  61.9</span></span>
-<span><span class="co">#&gt; 19     Chevrolet Corvette  Sporty  38.0</span></span>
-<span><span class="co">#&gt; 48      Infiniti      Q45 Midsize  47.9</span></span></code></pre></div>
-<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">gam</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="glm_files/figure-html/gamma-emm-plot-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <code>emmeans</code> plot shows the means on the response scale,
-with their asymmetric intervals. <code>Type</code> has no natural order,
-so the points are not joined by a line. Lines appear only across a
-second grouping factor, as in the ToothGrowth plot, or along an ordered
-factor on the x axis. <code>plot(gam, "box")</code> shows the raw prices
-by type, as for the Gaussian fit.</p>
-</div>
-</div>
-<div class="section level2">
-<h2 id="options-worth-knowing">Options worth knowing<a class="anchor" aria-label="anchor" href="#options-worth-knowing"></a>
-</h2>
-<div class="section level3">
-<h3 id="vcov_type-robust-standard-errors">
-<code>vcov_type</code>: robust standard errors<a class="anchor" aria-label="anchor" href="#vcov_type-robust-standard-errors"></a>
+<h3 id="vcov_type">
+<code>vcov_type</code><a class="anchor" aria-label="anchor" href="#vcov_type"></a>
 </h3>
 <p><code>vcov_type</code> takes an HC type (<code>"HC0"</code> to
-<code>"HC4"</code>) from the <strong>sandwich</strong> package. The
-robust covariance does not rely on the family’s variance function, so it
-protects the marginal means and comparisons when that function is wrong,
-as the vans suggest it is here:</p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<code>"HC4"</code>) from the sandwich package. The robust covariance
+does not rely on the family’s variance function, so it protects the
+marginal means and comparisons when that function is wrong, as the vans
+suggest it is here:</p>
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">rob</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
 <span>                 vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind</a></span><span class="op">(</span><span class="va">rob</span><span class="op">$</span><span class="va">emmeans</span><span class="op">[</span>, <span class="st">"Type"</span>, drop <span class="op">=</span> <span class="cn">FALSE</span><span class="op">]</span>,</span>
@@ -837,47 +804,52 @@ as the vans suggest it is here:</p>
 <span><span class="co">#&gt; 4   Small 0.7514161 0.4367684</span></span>
 <span><span class="co">#&gt; 5  Sporty 1.7554535 2.2117883</span></span>
 <span><span class="co">#&gt; 6     Van 2.1563719 0.6640312</span></span>
-<span><span class="va">rob</span><span class="op">$</span><span class="va">notes</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/grep.html" class="external-link">grep</a></span><span class="op">(</span><span class="st">"omnibus|Robust"</span>, <span class="va">rob</span><span class="op">$</span><span class="va">notes</span>, value <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "The omnibus F test compares deviances scaled by a dispersion estimated from the Pearson residuals, so it uses the model's variance function, not the robust (HC3) covariance, which only the coefficient table, the marginal means and the comparisons use. For an omnibus test that uses it, set test_statistic = \"Wald\"."</span></span>
-<span><span class="co">#&gt; [2] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."                                                 </span></span>
-<span><span class="co">#&gt; [3] "Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance."</span></span></code></pre></div>
+<span><span class="co">#&gt; [2] "Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance."</span></span></code></pre></div>
 <p>The standard error for vans shrinks and the one for midsize cars
-grows: each now reflects that type’s own spread. The notes spell out
-where the robust covariance is used. It goes into the coefficient table
-(with Wald intervals, since profile intervals cannot use it), the
-marginal means and the comparisons. The omnibus F test compares
-deviances and cannot use it. To make the omnibus test robust too, set
-<code>test_statistic = "Wald"</code>:</p>
-<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
+grows: each now reflects that type’s own spread. The robust covariance
+reaches the coefficient table (with Wald intervals, since a profile
+likelihood cannot use it), the marginal means and the comparisons. The
+omnibus F test compares deviances and does not use it;
+<code>test_statistic = "Wald"</code> gives an omnibus test that
+does:</p>
+<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
 <span>          vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, test_statistic <span class="op">=</span> <span class="st">"Wald"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">anova</span></span>
 <span><span class="co">#&gt;   term df statistic      p_value</span></span>
 <span><span class="co">#&gt; 1 Type  5  195.7549 2.298221e-40</span></span></code></pre></div>
+<p><a href="weights.html">Weights and robust standard errors</a> covers
+<code>vcov_type</code> across the package, including when the function
+falls back to the model-based covariance.</p>
 </div>
 <div class="section level3">
 <h3 id="weights">
 <code>weights</code><a class="anchor" aria-label="anchor" href="#weights"></a>
 </h3>
-<p><code>weights</code> names a column of prior weights. It is given as
-a column name, not a vector, so the weights are subsetted with the data
-and cannot misalign when a row is dropped. A natural use with the Gamma
-family is a response that is itself an average. The mean of m prices has
-variance φμ²/m, so its prior weight is m. Suppose you had only the
-average price per manufacturer and type, with the number of models
-behind each average:</p>
-<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
+<p><code>weights</code> names a column of prior weights, and what a
+weight means depends on the family and the response. Whole numbers on a
+0/1 response or on counts (binomial, Poisson and negative binomial
+families) are frequency weights, and whole numbers on a binomial
+proportion are numbers of trials. Any other weights, including all
+weights in the Gaussian and Gamma families, are used as
+<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> uses them, with each row one unit. <a href="weights.html">Weights and robust standard errors</a> sets out the
+rules; this section shows one use.</p>
+<p>A response that is itself an average suits a Gamma model with
+weights. The mean of m prices has variance φμ²/m, so its prior weight is
+m. Suppose you had only the average price per manufacturer and type,
+with the number of models behind each:</p>
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">agg</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="va">Price</span> <span class="op">~</span> <span class="va">Manufacturer</span> <span class="op">+</span> <span class="va">Type</span>, data <span class="op">=</span> <span class="va">cars</span>, FUN <span class="op">=</span> <span class="va">mean</span><span class="op">)</span></span>
 <span><span class="va">agg</span><span class="op">$</span><span class="va">n_models</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="va">Price</span> <span class="op">~</span> <span class="va">Manufacturer</span> <span class="op">+</span> <span class="va">Type</span>, data <span class="op">=</span> <span class="va">cars</span>,</span>
 <span>                          FUN <span class="op">=</span> <span class="va">length</span><span class="op">)</span><span class="op">$</span><span class="va">Price</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">agg</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 81</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">agg</span><span class="op">$</span><span class="va">n_models</span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;  1  2 </span></span>
 <span><span class="co">#&gt; 69 12</span></span></code></pre></div>
-<p>Weighting each average by its count recovers the means of the full
-data exactly. Ignoring the counts does not:</p>
-<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
+<p>Weighting each average by its count recovers the marginal means of
+the full data exactly; ignoring the counts does not:</p>
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">w_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">agg</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
 <span>                   weights <span class="op">=</span> <span class="st">"n_models"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">u_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">agg</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
@@ -893,20 +865,9 @@ data exactly. Ignoring the counts does not:</p>
 <span><span class="co">#&gt; 5  Sporty  19.39286 19.39286   19.16667</span></span>
 <span><span class="co">#&gt; 6     Van  19.10000 19.10000   19.43125</span></span></code></pre></div>
 <p>The standard errors differ slightly from the full-data fit, because
-the dispersion is now estimated from 81 averages rather than 93
-cars.</p>
-<p>A row with a weight of zero contributes nothing to the fit, so it is
-dropped before fitting, counted in <code>$n_removed</code> and named in
-<code>$notes</code>:</p>
-<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">agg0</span> <span class="op">&lt;-</span> <span class="va">agg</span></span>
-<span><span class="va">agg0</span><span class="op">$</span><span class="va">n_models</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">0</span></span>
-<span><span class="va">z_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">agg0</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
-<span>                   weights <span class="op">=</span> <span class="st">"n_models"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">z_fit</span><span class="op">$</span><span class="va">n_removed</span></span>
-<span><span class="co">#&gt; [1] 1</span></span>
-<span><span class="va">z_fit</span><span class="op">$</span><span class="va">notes</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
-<span><span class="co">#&gt; [1] "Dropped 1 row(s) whose weight in `n_models` is zero: they contribute nothing to the fit, and keeping them would make row counts, robust standard errors and information criteria disagree with it."</span></span></code></pre></div>
+the dispersion is now estimated from 81 averages rather than 93 cars. A
+row with weight zero is dropped before fitting, counted in
+<code>$n_removed</code> and recorded in <code>$notes</code>.</p>
 </div>
 <div class="section level3">
 <h3 id="interaction">
@@ -917,7 +878,7 @@ factors additively. The marginal means and comparisons are then reported
 for each factor on its own, averaged over the others, with a
 <code>term</code> column saying which, and each factor’s comparisons
 form their own multiplicity family:</p>
-<div class="sourceCode" id="cb42"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">add</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">tg</span>, <span class="st">"len"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dose"</span>, <span class="st">"supp"</span><span class="op">)</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">add</span><span class="op">$</span><span class="va">emmeans</span></span>
 <span><span class="co">#&gt;   term dose supp estimate        se df  conf_low conf_high</span></span>
@@ -934,49 +895,52 @@ or more factors a whole number sets the highest order of interaction:
 the rest.</p>
 </div>
 <div class="section level3">
-<h3 id="adjust-and-conf_level">
-<code>adjust</code> and <code>conf_level</code><a class="anchor" aria-label="anchor" href="#adjust-and-conf_level"></a>
+<h3 id="adjust-conf_level-and-posthoc">
+<code>adjust</code>, <code>conf_level</code> and
+<code>posthoc</code><a class="anchor" aria-label="anchor" href="#adjust-conf_level-and-posthoc"></a>
 </h3>
-<p><code>adjust</code> is applied by <strong>emmeans</strong> and
-accepts <code>"tukey"</code> (the default), <code>"sidak"</code>,
+<p><code>adjust</code> is applied by emmeans and accepts
+<code>"tukey"</code> (the default), <code>"sidak"</code>,
 <code>"scheffe"</code>, <code>"dunnettx"</code>,
 <code>"bonferroni"</code>, <code>"holm"</code>, <code>"hochberg"</code>,
 <code>"hommel"</code>, <code>"BH"</code>, <code>"BY"</code>,
 <code>"fdr"</code> or <code>"none"</code>. A step-down method such as
-Holm cannot be turned into intervals, so <strong>emmeans</strong> uses
-Bonferroni intervals beside Holm p-values, and <code>$notes</code> says
-so:</p>
-<div class="sourceCode" id="cb43"><pre class="downlit sourceCode r">
+Holm cannot be turned into intervals, so emmeans gives Bonferroni
+intervals beside Holm p-values, and <code>$notes</code> says so:</p>
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">holm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">tg</span>, <span class="st">"len"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"dose"</span>, <span class="st">"supp"</span><span class="op">)</span>, interaction <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>                  adjust <span class="op">=</span> <span class="st">"holm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">holm</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "The comparison intervals use the bonferroni adjustment while the p-values use holm: emmeans cannot turn holm into intervals."</span></span></code></pre></div>
 <p><code>conf_level</code> sets the level of every interval: the
-coefficient table, the marginal means and the comparisons.</p>
+coefficient table, the marginal means and the comparisons.
+<code>posthoc = FALSE</code> skips the pairwise comparisons, of which
+there are <code>choose(k, 2)</code> for k cells (counted per factor in
+an additive model); <code>$notes</code> records that they were skipped
+and how many there would have been.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="what-the-notes-say">What the notes say<a class="anchor" aria-label="anchor" href="#what-the-notes-say"></a>
 </h2>
-<div class="sourceCode" id="cb44"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; character(0)</span></span>
 <span><span class="va">gam</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."</span></span></code></pre></div>
-<p>The ToothGrowth fit has no notes. No rows were dropped, the model is
+<p>The ToothGrowth fit has no notes: no rows were dropped, the model is
 far from saturated, nothing failed to compute, and the Gaussian family
 has partial eta squared to report. The Gamma fit has one, explaining why
-McFadden’s pseudo R squared is <code>NA</code>. Other notes you have
-seen above: the robust covariance and where it is used, the per-factor
+McFadden’s pseudo R squared is <code>NA</code>. Other notes in this
+walkthrough record where the robust covariance is used, the per-factor
 reporting of an additive model, Bonferroni intervals beside Holm
-p-values, and differences rather than ratios under the inverse link.
-Read <code>$notes</code> on every fit.</p>
+p-values, and differences rather than ratios under the inverse link.</p>
 </div>
 <div class="section level2">
 <h2 id="reporting-the-result">Reporting the result<a class="anchor" aria-label="anchor" href="#reporting-the-result"></a>
 </h2>
-<p>Write-ups built from the fits with inline R, so the numbers cannot
-drift from the analysis:</p>
+<p>These write-ups are built from the fits with inline R, so the numbers
+cannot drift from the analysis:</p>
 <blockquote>
 <p>A two-way analysis of variance (Type II) found that odontoblast
 length depended on the dose of vitamin C, F(2, 54) = 92.00, p &lt;
@@ -993,9 +957,9 @@ length depended on the dose of vitamin C, F(2, 54) = 92.00, p &lt;
 Midsize cars cost 2.68 times as much as small cars on average (95% CI
 1.98 to 3.62, Tukey-adjusted).</p>
 </blockquote>
-<p>For a model on a non-identity link, say which family and link you
-used, and report comparisons in the form they take on it: ratios for a
-log link.</p>
+<p>For a model on a non-identity link, name the family and link, and
+report comparisons in the form they take on it: ratios for a log
+link.</p>
 </div>
 <div class="section level2">
 <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a>
@@ -1012,12 +976,13 @@ to add a numeric covariate.</li>
 <code><a href="../reference/anova_welch.html">anova_welch()</a></code> (<a href="welch.html">walkthrough</a>)
 for a one-way comparison of means with unequal variances.</li>
 <li>
+<a href="weights.html">Weights and robust standard errors</a> for
+every kind of weight and for <code>vcov_type</code>.</li>
+<li>
 <a href="results.html">Working with results</a> for the fit object,
 <code>$emmeans_object</code> and reporting.</li>
 <li>
-<a href="diagnostics.html">Diagnostics across the package</a> and <a href="visuals.html">Plots and visual customisation</a>.</li>
-<li>The <a href="anovakit.html">Get Started vignette</a> for a tour of
-every function.</li>
+<a href="diagnostics.html">Diagnostics</a> and <a href="visuals.html">Plots and themes</a>.</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

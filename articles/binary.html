@@ -11,8 +11,8 @@
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Binary outcomes: logistic regression with anova_bin()">
-<meta name="description" content="A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, frequency weights and separation.">
-<meta property="og:description" content="A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, frequency weights and separation.">
+<meta name="description" content="A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, separation, frequency weights and robust standard errors.">
+<meta property="og:description" content="A walkthrough of anova_bin() on the Berkeley admissions data: analysis of deviance, odds ratios, marginal probabilities, separation, frequency weights and robust standard errors.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -32,19 +32,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -53,9 +54,11 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -94,13 +97,12 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://elkronos.github.io/anovakit/">anovakit</a></span><span class="op">)</span></span></code></pre></div>
 <p><code><a href="../reference/anova_bin.html">anova_bin()</a></code> fits a logistic regression of a two-level
 outcome (admitted or not, healed or not) on one or more grouping
-variables, and reports an analysis of deviance table, odds ratios,
+variables. It reports an analysis of deviance table, odds ratios,
 marginal probabilities and pairwise odds ratios. Use it when each
 observation is a yes/no outcome, or when you have a table of such
-outcomes with a count in each row. For counts of events use
-<code><a href="../reference/anova_count.html">anova_count()</a></code> (<a href="counts.html">walkthrough</a>); for
-other response distributions use <code><a href="../reference/anova_glm.html">anova_glm()</a></code> (<a href="glm.html">walkthrough</a>). The <a href="choosing.html">decision
-guide</a> covers the choice in more detail.</p>
+outcomes with a count in each row.</p>
+<p>For counts of events, use <code><a href="../reference/anova_count.html">anova_count()</a></code> (<a href="counts.html">walkthrough</a>); for other response distributions,
+<code><a href="../reference/anova_glm.html">anova_glm()</a></code> (<a href="glm.html">walkthrough</a>). <a href="choosing.html">Choose an analysis</a> sets out the choice.</p>
 <div class="section level2">
 <h2 id="the-data">The data<a class="anchor" aria-label="anchor" href="#the-data"></a>
 </h2>
@@ -121,8 +123,8 @@ turns it into one row per combination, with the number of applicants in
 <span><span class="co">#&gt; 6 Rejected   Male    B  207</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">ucb</span><span class="op">$</span><span class="va">Freq</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 4526</span></span></code></pre></div>
-<p>The famous feature of these data is that the overall admission rates
-and the department-level rates point in different directions:</p>
+<p>In these data the overall admission rates and the department-level
+rates point in different directions:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Overall admission rate by gender</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/proportions.html" class="external-link">prop.table</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/xtabs.html" class="external-link">xtabs</a></span><span class="op">(</span><span class="va">Freq</span> <span class="op">~</span> <span class="va">Gender</span> <span class="op">+</span> <span class="va">Admit</span>, data <span class="op">=</span> <span class="va">ucb</span><span class="op">)</span>, <span class="fl">1</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span></span>
@@ -152,14 +154,15 @@ and the department-level rates point in different directions:</p>
 <span><span class="co">#&gt;    D  417    375</span></span>
 <span><span class="co">#&gt;    E  191    393</span></span>
 <span><span class="co">#&gt;    F  373    341</span></span></code></pre></div>
-<p>Overall, 44.5% of men and 30.4% of women were admitted. Within
-departments the gap mostly disappears, and in department A it reverses.
-The explanation is in the last table: most women applied to departments
-C to F, which admitted a third or fewer of their applicants, while just
-over half of the men applied to A or B, which admitted most of theirs.
-Department is associated with both gender and admission, so a comparison
-of genders that ignores it is confounded. This is Simpson’s paradox, and
-a model with both variables is the way to separate the two.</p>
+<p>Across all departments, 44.5% of men and 30.4% of women were
+admitted. Within departments the gap mostly disappears, and in
+department A it reverses. The last table explains why: most women
+applied to departments C to F, which admitted a third or fewer of their
+applicants, while just over half of the men applied to A or B, which
+admitted most of theirs. Department is associated with both gender and
+admission, so a comparison of genders that ignores it is confounded.
+This is Simpson’s paradox, and a model with both variables separates the
+two.</p>
 <p>Each row of <code>ucb</code> stands for <code>Freq</code> identical
 applicants, so the counts go in as frequency weights. For later
 comparison, here is the same data with one row per applicant:</p>
@@ -173,25 +176,24 @@ comparison, here is the same data with one row per applicant:</p>
 <h2 id="fitting-the-model">Fitting the model<a class="anchor" aria-label="anchor" href="#fitting-the-model"></a>
 </h2>
 <div class="section level3">
-<h3 id="which-outcome-is-the-success">Which outcome is the success?<a class="anchor" aria-label="anchor" href="#which-outcome-is-the-success"></a>
+<h3 id="which-outcome-is-the-success">Which outcome is the success<a class="anchor" aria-label="anchor" href="#which-outcome-is-the-success"></a>
 </h3>
 <p>The response can be a factor with two observed levels, a logical, a
 numeric 0/1 column, or a character column with two values. The function
-models the probability of one level, the <em>success</em>, and by
-default that is the second level of the factor, which is what
-<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> does. For <code>Admit</code> the second level is
-<code>"Rejected"</code>:</p>
+models the probability of one level, the <em>success</em>. By default
+that is the second level of the factor, as in <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>. For
+<code>Admit</code> the second level is <code>"Rejected"</code>:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/levels.html" class="external-link">levels</a></span><span class="op">(</span><span class="va">ucb</span><span class="op">$</span><span class="va">Admit</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "Admitted" "Rejected"</span></span>
 <span><span class="va">default</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">ucb</span>, <span class="st">"Admit"</span>, <span class="st">"Gender"</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">default</span><span class="op">$</span><span class="va">notes</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span>
 <span><span class="co">#&gt; [1] "Modelling P(Admit = Rejected); the other level is the baseline."</span></span></code></pre></div>
-<p>That model is not wrong, but every odds ratio would be an odds ratio
-of <em>rejection</em>. Name the level you want with
-<code>success</code>. (A logical response models <code>TRUE</code>, a
-0/1 response models <code>1</code>, and a character response is sorted
-in the C locale, so the default does not depend on your session.)</p>
+<p>Every odds ratio from that model would be an odds ratio of
+<em>rejection</em>. Name the level you want with <code>success</code>. A
+logical response models <code>TRUE</code>, a 0/1 response models
+<code>1</code>, and a character response is sorted in the C locale, so
+the default does not depend on your session.</p>
 </div>
 <div class="section level3">
 <h3 id="the-fit">The fit<a class="anchor" aria-label="anchor" href="#the-fit"></a>
@@ -260,8 +262,7 @@ deal.</p>
 <span><span class="co">#&gt;     term df statistic      p_value</span></span>
 <span><span class="co">#&gt; 1 Gender  1  93.44941 4.167175e-22</span></span></code></pre></div>
 <p>Without department the gender statistic is 93.4 on 1 degree of
-freedom. The difference between the two tables is the paradox in
-numbers.</p>
+freedom. Adjusting for department brings it down to 1.53.</p>
 <div class="section level3">
 <h3 id="the-model-as-a-whole">The model as a whole<a class="anchor" aria-label="anchor" href="#the-model-as-a-whole"></a>
 </h3>
@@ -292,11 +293,10 @@ against one with no predictors (the null deviance minus the deviance, on
 squared, <code>1 - deviance / null deviance</code>: the model removes
 14.2% of the deviance. It is not a proportion of variance and runs lower
 than the R squared of a linear model, so judge it against other logistic
-models rather than against that. <code>success_level</code> repeats
-which level was modelled, so a saved result says what its odds ratios
-are odds of. <code>AIC</code>, <code>BIC</code> and <code>logLik</code>
-use the prior weights, and are there to compare models fitted to the
-same data.</p>
+models. <code>success_level</code> repeats which level was modelled, so
+a saved result says what its odds ratios are odds of. <code>AIC</code>,
+<code>BIC</code> and <code>logLik</code> use the prior weights, and are
+there to compare models fitted to the same data.</p>
 </div>
 </div>
 <div class="section level2">
@@ -321,9 +321,10 @@ the odds of admission for women divided by the odds for men, in the same
 department: 1.105, with an interval that comfortably includes 1. The
 department rows compare each department with A; in department F the odds
 of admission are 0.037 times those in A, whatever the applicant’s
-gender. (<code>term</code>, <code>se_log_or</code> and
-<code>statistic</code>, left out above, hold the coefficient’s name, its
-standard error on the log-odds scale and its Wald z statistic.)</p>
+gender. The columns left out above, <code>term</code>,
+<code>se_log_or</code> and <code>statistic</code>, hold the
+coefficient’s name, its standard error on the log-odds scale and its
+Wald z statistic.</p>
 <p>Put the adjusted odds ratio beside the one from the gender-only
 model:</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
@@ -369,8 +370,8 @@ two kinds agree closely:</p>
 where only the profile interval means anything (see <a href="#separation">Separation</a>).</p>
 <p>Profiling refits the model several times for each coefficient. The
 model has only grouping factors, so the refits run on the data collapsed
-to one weighted row per cell and outcome, which has the same likelihood:
-the number of rows does not add to the cost, but the number of
+to one weighted row per cell and outcome, which has the same likelihood.
+The number of rows therefore does not add to the cost, but the number of
 coefficients does. Left at its default, <code>ci_method</code> gives
 Wald intervals instead, with a note, when the model has more than 50
 coefficients. That holds under separation too, except that an odds ratio
@@ -399,8 +400,8 @@ every coefficient.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">flipped</span><span class="op">$</span><span class="va">anova</span>, <span class="va">fit</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 <p>The ratios are now men against women and each department against F.
-The omnibus table is unchanged: the reference level changes what the
-coefficients compare, not the fitted model.</p>
+The omnibus table is unchanged, because the reference level changes what
+the coefficients compare and leaves the fitted model as it was.</p>
 </div>
 </div>
 <div class="section level2">
@@ -424,8 +425,8 @@ back-transformed, so they stay between 0 and 1:</p>
 (the <code>term</code> column says which), averaged over the levels of
 the other. The averaging gives each department equal weight on the
 log-odds scale before transforming back, so the gender rows are not the
-raw admission rates of 0.445 and 0.304: they are the probabilities for a
-hypothetical applicant spread evenly over the six departments. That is
+raw admission rates of 0.445 and 0.304. They are the probabilities for a
+hypothetical applicant spread evenly over the six departments, which is
 the comparison the adjusted model makes.</p>
 <p><code>$posthoc</code> holds the pairwise comparisons, as odds
 ratios:</p>
@@ -482,10 +483,10 @@ adjustment of either kind, so there is no note about it.</p>
 <div class="section level2">
 <h2 id="checking-assumptions">Checking assumptions<a class="anchor" aria-label="anchor" href="#checking-assumptions"></a>
 </h2>
-<p>A logistic regression makes few distributional assumptions that can
-be checked from grouped data like these: the outcome is binary, the
+<p>From grouped data like these, a logistic regression has few
+distributional assumptions to check: the outcome is binary, the
 observations are independent, and the log-odds are additive in the
-factors (which the <code>interaction</code> option below tests).
+factors (the <code>interaction</code> option <a href="#interaction-and-type">below</a> tests that).
 <code>$assumptions</code> has two elements.</p>
 <div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
@@ -494,8 +495,8 @@ factors (which the <code>interaction</code> option below tests).
 why. For a 0/1 response the Pearson dispersion carries no information
 about overdispersion: in a model saturated in the cells it equals N / (N
 - k) whatever the data, and it changes when the same trials are grouped
-into weighted rows. You can see the second point by computing it on the
-two versions of this data set, which describe the same fit:</p>
+into weighted rows. Computing it on the two versions of this data set,
+which describe the same fit, shows the second point:</p>
 <div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pearson</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">m</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/stats/residuals.html" class="external-link">residuals</a></span><span class="op">(</span><span class="va">m</span>, type <span class="op">=</span> <span class="st">"pearson"</span><span class="op">)</span><span class="op">^</span><span class="fl">2</span><span class="op">)</span> <span class="op">/</span> <span class="fu"><a href="https://rdrr.io/r/stats/df.residual.html" class="external-link">df.residual</a></span><span class="op">(</span><span class="va">m</span><span class="op">)</span></span>
 <span><span class="va">one_row</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">applicants</span>, <span class="st">"Admit"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Gender"</span>, <span class="st">"Dept"</span><span class="op">)</span>,</span>
@@ -524,13 +525,14 @@ give the number of data rows behind them:</p>
 <span><span class="co">#&gt; 22 Female : E Admitted  94         393 0.23918575    1          2</span></span>
 <span><span class="co">#&gt; 23   Male : F Admitted  22         373 0.05898123    1          2</span></span>
 <span><span class="co">#&gt; 24 Female : F Admitted  24         341 0.07038123    1          2</span></span></code></pre></div>
-<p>This is the table to look at before trusting a model: it shows the
-raw material, and it shows cells with few observations. Department B had
-only 25 women applicants. When fewer than about 5 events or non-events
-are expected in a cell, <code>$notes</code> warns that the
-likelihood-ratio test is liberal; no cell here comes close, but the next
-example shows the note.</p>
-<p>More on the checks across the package is in the <a href="diagnostics.html">diagnostics article</a>.</p>
+<p>Look at this table before trusting the model. It shows the raw
+material and the cells with few observations: department B had only 25
+women applicants. When fewer than about 5 events or non-events are
+expected in a cell, <code>$notes</code> warns that the likelihood-ratio
+test is liberal. No cell here comes close; the separation example below
+shows the note.</p>
+<p>The <a href="diagnostics.html">diagnostics guide</a> covers the
+checks across the package.</p>
 <div class="section level3">
 <h3 id="separation">Separation<a class="anchor" aria-label="anchor" href="#separation"></a>
 </h3>
@@ -576,15 +578,16 @@ healed:</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: proportions, emmeans</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "proportions"))</span></span></code></pre></div>
-<p>The notes say what happened. The row with a count of zero was dropped
-(a zero-weight row contributes nothing, and it is counted in
-<code>$n_removed</code>, which is why the printout says 5 observations
-were used). Separation was detected in <code>arm = high</code>, and the
-profile interval for that odds ratio is open on one side. And the data
-are sparse: with 15 patients an arm, fewer than 5 non-events are
-expected in each arm if the arms do not differ, so the likelihood-ratio
-test in the table is liberal. The note names two tests that hold their
-level better, and both are one line of code:</p>
+<p>Besides the success level and the dispersion, the notes record four
+things. The row with a count of zero was dropped: a zero-weight row
+contributes nothing, and it is counted in <code>$n_removed</code>, which
+is why the printout says 5 observations were used. Separation was
+detected in <code>arm = high</code>. The profile interval for that odds
+ratio is open on one side. The data are also sparse: with 15 patients an
+arm, fewer than 5 non-events are expected in each arm if the arms do not
+differ, so the likelihood-ratio test in the table is liberal. The note
+names two tests that hold their level better, and both are one line of
+code:</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/stats/anova.html" class="external-link">anova</a></span><span class="op">(</span><span class="va">sep_fit</span><span class="op">$</span><span class="va">model</span>, test <span class="op">=</span> <span class="st">"Rao"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Analysis of Deviance Table</span></span>
@@ -622,11 +625,11 @@ though the conclusion stands.</p>
 <span><span class="co">#&gt; 1    arm  low vs control   3.00e+00    0.676      13.3   0.148      wald</span></span>
 <span><span class="co">#&gt; 2    arm high vs control   4.35e+08    0.000       Inf   0.994      wald</span></span></code></pre></div>
 <p>The point estimate for <code>high vs control</code> is meaningless,
-and so is its Wald p-value of 0.99. The profile interval is still
-informative: it runs from 8.8 to infinity, so the data rule out an odds
-ratio below about 9. The Wald interval, from 0 to infinity, says nothing
-at all. This is why <code>ci_method = "profile"</code> is the
-default.</p>
+and so is its Wald p-value of 0.99. The profile interval still carries
+information: it runs from 8.8 to infinity, so the data rule out an odds
+ratio below about 9. The Wald interval, from 0 to infinity, rules out
+nothing. That difference is the reason
+<code>ci_method = "profile"</code> is the default.</p>
 <p>The separation note also warns that the separated arm’s marginal
 probability and the comparisons involving it are affected. They are
 Wald-based, and as uninformative as the Wald odds ratio:</p>
@@ -650,15 +653,15 @@ gives finite estimates.</p>
 <div class="section level2">
 <h2 id="plots">Plots<a class="anchor" aria-label="anchor" href="#plots"></a>
 </h2>
-<p><code>fit$plots</code> holds two <strong>ggplot2</strong> objects.
-Neither is drawn until you ask for it, with
-<code>plot(fit, "name")</code> or <code>fit$plots$name</code>.</p>
+<p><code>fit$plots</code> holds two ggplot2 objects. Neither is drawn
+until you ask for it, with <code>plot(fit, "name")</code> or
+<code>fit$plots$name</code>.</p>
 <div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"proportions"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="binary_files/figure-html/plot-proportions-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The <code>proportions</code> plot stacks the observed share of each
 outcome in each cell (gender by department here), labelled with
-percentages. What to look for: cells whose proportions differ from their
+percentages. Look for cells whose proportions differ from their
 neighbours, cells near 0% or 100% (the warning sign of separation), and
 whether a pattern in one factor holds across the levels of the other.
 Here the within-department gender differences are small next to the
@@ -669,20 +672,18 @@ did clearly better.</p>
 <p><img src="binary_files/figure-html/plot-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The <code>emmeans</code> plot shows the estimated marginal
 probabilities with their intervals, one panel per factor because the
-model is additive. What to look for: intervals that do not overlap are
-clearly different; overlapping ones need the comparisons in
-<code>$posthoc</code>. Each is a ggplot, so it can be modified with
-<code>+</code>:</p>
+model is additive. Intervals that do not overlap are clearly different;
+for overlapping ones, read the comparisons in <code>$posthoc</code>.
+Each plot is a ggplot, so it can be modified with <code>+</code>:</p>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"emmeans"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu">ggplot2</span><span class="fu">::</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/coord_cartesian.html" class="external-link">coord_cartesian</a></span><span class="op">(</span>ylim <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu">ggplot2</span><span class="fu">::</span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs</a></span><span class="op">(</span>y <span class="op">=</span> <span class="st">"Probability of admission"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="binary_files/figure-html/plot-custom-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The <a href="visuals.html">plots article</a> covers customisation in
-more detail.</p>
+<p><a href="visuals.html">Plots and themes</a> covers customisation.</p>
 </div>
 <div class="section level2">
-<h2 id="options-worth-knowing">Options worth knowing<a class="anchor" aria-label="anchor" href="#options-worth-knowing"></a>
+<h2 id="options">Options<a class="anchor" aria-label="anchor" href="#options"></a>
 </h2>
 <div class="section level3">
 <h3 id="interaction-and-type">
@@ -735,13 +736,12 @@ which:</p>
 <span><span class="co">#&gt; 11 3.21e-02   profile</span></span></code></pre></div>
 <p>The <code>Gender</code> row is the gender odds ratio in department A,
 and each <code>Dept:Gender</code> row is the gender odds ratio in
-another department divided by the one in A. All of them are below 1:
+another department divided by the one in A. All of them are below 1, so
 department A is the odd one out.</p>
 <p><code>$emmeans</code> now has one row per cell, and
 <code>$posthoc</code> compares every pair of cells (66 comparisons, most
-of them not interesting). For the comparison that matters here, women
-against men within each department, pass <code>$emmeans_object</code> to
-<strong>emmeans</strong> directly:</p>
+of them of no interest). For women against men within each department,
+pass <code>$emmeans_object</code> to emmeans directly:</p>
 <div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">emmeans</span><span class="fu">::</span><span class="fu"><a href="https://rvlenth.github.io/emmeans/reference/contrast.html" class="external-link">contrast</a></span><span class="op">(</span><span class="va">fit_int</span><span class="op">$</span><span class="va">emmeans_object</span>, method <span class="op">=</span> <span class="st">"revpairwise"</span>, by <span class="op">=</span> <span class="st">"Dept"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Dept = A:</span></span>
@@ -769,15 +769,14 @@ against men within each department, pass <code>$emmeans_object</code> to
 <span><span class="co">#&gt;  Female / Male      1.208 0.369 Inf    1   0.619  0.5359</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Tests are performed on the log odds ratio scale</span></span></code></pre></div>
-<p>The grid carries <strong>emmeans</strong>’ own default confidence
-level rather than <code>conf_level</code>, so give <code>level =</code>
-when you summarise it.</p>
+<p>The grid carries emmeans’ own default confidence level rather than
+<code>conf_level</code>, so give <code>level =</code> when you summarise
+it.</p>
 <div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit_int</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="binary_files/figure-html/interaction-plot-1.png" class="r-plt" alt="" width="100%"></p>
-<p>With department on the x axis and one line per gender, the
-interaction is easy to see: the two lines lie almost on top of each
-other everywhere except in department A.</p>
+<p>With department on the x axis and one line per gender, the two lines
+lie almost on top of each other everywhere except in department A.</p>
 <p>With an interaction in the model, <code>type</code> matters. Type II
 tests each main effect assuming the interaction is absent; Type III
 (fitted under sum-to-zero contrasts) tests it averaged over the other
@@ -812,82 +811,41 @@ instead:</p>
 <span><span class="co">#&gt; 1 Gender  1   1.52598  2.167168e-01</span></span>
 <span><span class="co">#&gt; 2   Dept  5 534.70763 2.565315e-113</span></span></code></pre></div>
 <p>The two agree closely for gender and differ for department, whose
-effects are large. The likelihood-ratio test is the better default; the
-Wald test is there mainly because it is the one that can use a robust
-covariance (below).</p>
+effects are large. The likelihood-ratio test is the better default. The
+Wald test is there mainly because it can use a robust covariance (next
+section).</p>
 </div>
 <div class="section level3">
-<h3 id="frequency-weights-and-vcov_type">Frequency weights and <code>vcov_type</code><a class="anchor" aria-label="anchor" href="#frequency-weights-and-vcov_type"></a>
+<h3 id="weights-and-vcov_type">Weights and <code>vcov_type</code><a class="anchor" aria-label="anchor" href="#weights-and-vcov_type"></a>
 </h3>
-<p>Whole-number weights, some above 1, are frequency weights: a row with
-weight <code>w</code> counts as <code>w</code> identical observations.
-The weighted table therefore gives the same answers as one row per
-applicant. <code>one_row</code> was fitted above on the 4,526-row
-version:</p>
+<p><code>weights</code> names a column of prior weights. Whole-number
+weights, some above 1, are frequency weights: a row with weight
+<code>w</code> counts as <code>w</code> identical observations, so the
+24-row table <code>ucb</code> gives the same results as
+<code>applicants</code>, with one row per applicant.
+<code>one_row</code> was fitted on <code>applicants</code> <a href="#checking-assumptions">above</a>:</p>
 <div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/all.equal.html" class="external-link">all.equal</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">anova</span>, <span class="va">one_row</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>comparison <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">comparison</span>,</span>
-<span>           or_table <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">odds_ratio</span>,</span>
-<span>           or_applicants <span class="op">=</span> <span class="va">one_row</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">odds_ratio</span>,</span>
-<span>           se_table <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">se_log_or</span>,</span>
-<span>           se_applicants <span class="op">=</span> <span class="va">one_row</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">se_log_or</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       comparison   or_table or_applicants   se_table se_applicants</span></span>
-<span><span class="co">#&gt; 1 Female vs Male 1.10502735    1.10502735 0.08084646    0.08084644</span></span>
-<span><span class="co">#&gt; 2         B vs A 0.95753028    0.95753028 0.10983890    0.10983890</span></span>
-<span><span class="co">#&gt; 3         C vs A 0.28291804    0.28291804 0.10663289    0.10663288</span></span>
-<span><span class="co">#&gt; 4         D vs A 0.27400567    0.27400567 0.10582342    0.10582342</span></span>
-<span><span class="co">#&gt; 5         E vs A 0.17564230    0.17564230 0.12611350    0.12611349</span></span>
-<span><span class="co">#&gt; 6         F vs A 0.03664494    0.03664494 0.16998176    0.16998115</span></span></code></pre></div>
-<p>The standard errors agree to five or more significant figures (the
-rest is <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>’s convergence tolerance). The one statistic
-that differs is BIC, because R bases it on the number of rows:</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>table <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span>, applicants <span class="op">=</span> <span class="va">one_row</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>table <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span>, applicants <span class="op">=</span> <span class="va">one_row</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span><span class="op">)</span></span>
 <span><span class="co">#&gt;      table applicants </span></span>
 <span><span class="co">#&gt;   5246.412   5246.412</span></span></code></pre></div>
-<p><code>vcov_type</code> requests heteroskedasticity-consistent
-(sandwich) standard errors, <code>"HC0"</code> to <code>"HC4"</code>,
-which need the <strong>sandwich</strong> package. With frequency weights
-they are computed as they would be on the expanded data. A sandwich
-computed row by row on the table would treat each row as one unit, and
-overstate the standard errors badly:</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hc_table</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">ucb</span>, <span class="st">"Admit"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Gender"</span>, <span class="st">"Dept"</span><span class="op">)</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>,</span>
-<span>                      success <span class="op">=</span> <span class="st">"Admitted"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">hc_rows</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">applicants</span>, <span class="st">"Admit"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Gender"</span>, <span class="st">"Dept"</span><span class="op">)</span>,</span>
-<span>                     success <span class="op">=</span> <span class="st">"Admitted"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">naive</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/diag.html" class="external-link">diag</a></span><span class="op">(</span><span class="fu">sandwich</span><span class="fu">::</span><span class="fu"><a href="https://zeileis.codeberg.page/sandwich/reference/vcovHC.html" class="external-link">vcovHC</a></span><span class="op">(</span><span class="va">fit</span><span class="op">$</span><span class="va">model</span>, type <span class="op">=</span> <span class="st">"HC3"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span><span class="op">[</span><span class="op">-</span><span class="fl">1</span><span class="op">]</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>comparison <span class="op">=</span> <span class="va">hc_table</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">comparison</span>,</span>
-<span>           model_based <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">se_log_or</span>,</span>
-<span>           hc3_table <span class="op">=</span> <span class="va">hc_table</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">se_log_or</span>,</span>
-<span>           hc3_applicants <span class="op">=</span> <span class="va">hc_rows</span><span class="op">$</span><span class="va">effect_sizes</span><span class="op">$</span><span class="va">se_log_or</span>,</span>
-<span>           hc3_row_by_row <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/unname.html" class="external-link">unname</a></span><span class="op">(</span><span class="va">naive</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;       comparison model_based  hc3_table hc3_applicants hc3_row_by_row</span></span>
-<span><span class="co">#&gt; 1 Female vs Male  0.08084646 0.08045399     0.08045399       1.497407</span></span>
-<span><span class="co">#&gt; 2         B vs A  0.10983890 0.11002565     0.11002565       3.751704</span></span>
-<span><span class="co">#&gt; 3         C vs A  0.10663289 0.10631318     0.10631318       2.786957</span></span>
-<span><span class="co">#&gt; 4         D vs A  0.10582342 0.10528448     0.10528448       2.821575</span></span>
-<span><span class="co">#&gt; 5         E vs A  0.12611350 0.12648471     0.12648471       2.911143</span></span>
-<span><span class="co">#&gt; 6         F vs A  0.16998176 0.16944692     0.16944691       2.843432</span></span></code></pre></div>
-<p>The HC3 standard errors from the table and from one row per applicant
-are the same, and here both are close to the model-based ones. The last
-column, <code><a href="https://zeileis.codeberg.page/sandwich/reference/vcovHC.html" class="external-link">sandwich::vcovHC()</a></code> applied to the table directly,
-is wrong by a factor of 10 or more. The notes record what the robust
-covariance was used for:</p>
-<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">hc_table</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Modelling P(Admit = Admitted); the other level is the baseline."                                                                                                                                                                                                                             </span></span>
-<span><span class="co">#&gt; [2] "The robust covariance (HC3) treats each of the 4,526 observations the frequency weights represent as a unit, as it would on the data expanded to one row per observation; computed row by row it would count each row as one unit with an inflated score, and overstate the standard errors."</span></span>
-<span><span class="co">#&gt; [3] "The omnibus likelihood-ratio test compares deviances, so it rests on the model-based variance; the robust (HC3) covariance is used only by $effect_sizes, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\"."                          </span></span>
-<span><span class="co">#&gt; [4] "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance."                                                                                                                       </span></span>
-<span><span class="co">#&gt; [5] "The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `term`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead."             </span></span>
-<span><span class="co">#&gt; [6] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>
-<p>Robust standard errors reach the odds ratios, the marginal means and
-the comparisons, but not a likelihood-ratio omnibus test, which compares
-deviances; set <code>test_statistic = "Wald"</code> for an omnibus test
-that uses them. The odds-ratio intervals also become Wald intervals,
-since a profile likelihood cannot use a sandwich covariance.</p>
+<p>BIC is the same because its penalty uses the 4,526 observations the
+weights represent, not the 24 rows.</p>
+<p><code>vcov_type</code> (<code>"HC0"</code> to <code>"HC4"</code>)
+gives heteroscedasticity-consistent (sandwich) standard errors, which
+need the sandwich package, for the odds ratios, whose intervals then
+become Wald intervals, and for the marginal probabilities and the
+comparisons. The omnibus test uses them only with
+<code>test_statistic = "Wald"</code>. With frequency weights they are
+computed as on the expanded data. Weights that are not whole numbers are
+used as given, as <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> uses prior weights, so their scale
+matters; <code>$notes</code> says so when they do not average 1 (within
+about 10%). <code>AIC</code>, <code>BIC</code> and <code>logLik</code>
+are then <code>NA</code>, with a note. <a href="weights.html">Weights
+and robust standard errors</a> covers how frequency weights enter the
+sandwich, weights that are not whole numbers, and when the model-based
+covariance is used instead.</p>
 </div>
 <div class="section level3">
 <h3 id="conf_level-and-posthoc">
@@ -895,10 +853,10 @@ since a profile likelihood cannot use a sandwich covariance.</p>
 </h3>
 <p><code>conf_level</code> sets the level of every interval in the
 result: odds ratios, marginal probabilities and comparisons.
-<code>posthoc = FALSE</code> skips the pairwise comparisons, which is
-worth doing when there are many cells; <code>$notes</code> records how
-many were skipped, and <code>$effect_sizes</code> is still computed.</p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<code>posthoc = FALSE</code> skips the pairwise comparisons, which saves
+time when there are many cells; <code>$notes</code> records how many
+were skipped, and <code>$effect_sizes</code> is still computed.</p>
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">narrow</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">ucb</span>, <span class="st">"Admit"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Gender"</span>, <span class="st">"Dept"</span><span class="op">)</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>,</span>
 <span>                    success <span class="op">=</span> <span class="st">"Admitted"</span>, conf_level <span class="op">=</span> <span class="fl">0.90</span>, posthoc <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>                    plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
@@ -918,7 +876,7 @@ many were skipped, and <code>$effect_sizes</code> is still computed.</p>
 <div class="section level2">
 <h2 id="what-the-notes-say">What the notes say<a class="anchor" aria-label="anchor" href="#what-the-notes-say"></a>
 </h2>
-<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Modelling P(Admit = Admitted); the other level is the baseline."                                                                                                                                                                                                                </span></span>
 <span><span class="co">#&gt; [2] "The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `term`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead."</span></span>
@@ -936,8 +894,10 @@ family.</li>
 </ul>
 <p>Other fits in this article showed the notes you may meet elsewhere: a
 zero-weight row dropped, separation detected and an open-ended profile
-interval, and robust standard errors with frequency weights. The <a href="results.html">results article</a> explains how the notes fit with
-the rest of the object.</p>
+interval, sparse data, a step-down adjustment, and robust standard
+errors with frequency weights. <a href="results.html">Working with
+results</a> explains how <code>$notes</code> fits with the rest of the
+object.</p>
 </div>
 <div class="section level2">
 <h2 id="reporting-the-result">Reporting the result<a class="anchor" aria-label="anchor" href="#reporting-the-result"></a>
@@ -951,7 +911,7 @@ gender was not once department was taken into account (χ²(1) = 1.53, p =
 0.22; odds ratio for women against men 1.11, 95% profile-likelihood CI
 0.94 to 1.30). The unadjusted odds ratio of 0.54 is accounted for by the
 departments women applied to. The gender odds ratio varied between
-departments (χ²(5) = 20.2, p = 0.0011), being largest in department
+departments (χ²(5) = 20.2, p = 0.0011) and was largest in department
 A.</p>
 </blockquote>
 </div>
@@ -963,16 +923,18 @@ A.</p>
 <code><a href="../reference/anova_bin.html">?anova_bin</a></code> for every argument, and
 <code><a href="../reference/anovakit_fit.html">?anovakit_fit</a></code> for the returned object.</li>
 <li>
-<a href="counts.html">Counts and rates with
+<a href="counts.html">Counts and rates:
 <code>anova_count()</code></a>, the companion function for count
 responses.</li>
 <li>
-<a href="glm.html">Generalised linear models with
-<code>anova_glm()</code></a> for other families.</li>
+<a href="glm.html">Any GLM family: <code>anova_glm()</code></a> for
+other families.</li>
+<li>
+<a href="weights.html">Weights and robust standard errors</a>.</li>
 <li>
 <a href="results.html">Working with results</a> and <a href="diagnostics.html">Diagnostics</a>.</li>
 <li>
-<a href="visuals.html">Plots and visual customisation</a>.</li>
+<a href="visuals.html">Plots and themes</a>.</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

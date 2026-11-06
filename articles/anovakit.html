@@ -5,12 +5,16 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Getting started with anovakit • anovakit</title>
+<title>Get started with anovakit • anovakit</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Getting started with anovakit">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Get started with anovakit">
+<meta name="description" content="One analysis from start to finish (Welch's ANOVA on mtcars, then the same question with a covariate in anova_ancova()), and the arguments every function shares.
+">
+<meta property="og:description" content="One analysis from start to finish (Welch's ANOVA on mtcars, then the same question with a covariate in anova_ancova()), and the arguments every function shares.
+">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -30,19 +34,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="active nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -51,9 +56,11 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -79,7 +86,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Getting started with anovakit</h1>
+      <h1>Get started with anovakit</h1>
             
       
       <small class="dont-index">Source: <a href="https://github.com/elkronos/anovakit/blob/main/vignettes/anovakit.Rmd" class="external-link"><code>vignettes/anovakit.Rmd</code></a></small>
@@ -88,396 +95,355 @@
 
     
     
-<p>One dataset, run through the whole package. Every function names its
-columns as character strings and returns the same class, so once you
-have read one section you have read them all. Six take
-<code>data, response, groups</code>; <code><a href="../reference/anova_manova.html">anova_manova()</a></code> takes
-<code>responses</code> (plural) and <code><a href="../reference/anova_rm.html">anova_rm()</a></code> takes
-<code>subject</code>, <code>within</code> and <code>between</code>,
-because those designs need more than a grouping variable to describe
-them.</p>
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">2024</span><span class="op">)</span></span>
-<span><span class="va">n</span> <span class="op">&lt;-</span> <span class="fl">240</span></span>
-<span></span>
-<span><span class="va">trial</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
-<span>  arm      <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"placebo"</span>, <span class="st">"low"</span>, <span class="st">"high"</span><span class="op">)</span>, each <span class="op">=</span> <span class="va">n</span> <span class="op">/</span> <span class="fl">3</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  site     <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"north"</span>, <span class="st">"south"</span><span class="op">)</span>, times <span class="op">=</span> <span class="va">n</span> <span class="op">/</span> <span class="fl">2</span><span class="op">)</span><span class="op">)</span>,</span>
-<span>  baseline <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, mean <span class="op">=</span> <span class="fl">100</span>, sd <span class="op">=</span> <span class="fl">12</span><span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">effect</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>placebo <span class="op">=</span> <span class="fl">0</span>, low <span class="op">=</span> <span class="fl">3</span>, high <span class="op">=</span> <span class="fl">7</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">trial</span><span class="op">$</span><span class="va">arm</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="va">trial</span><span class="op">$</span><span class="va">score</span>    <span class="op">&lt;-</span> <span class="fl">0.6</span> <span class="op">*</span> <span class="va">trial</span><span class="op">$</span><span class="va">baseline</span> <span class="op">+</span> <span class="va">effect</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">0</span>, <span class="fl">6</span><span class="op">)</span></span>
-<span><span class="va">trial</span><span class="op">$</span><span class="va">improved</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Binomial.html" class="external-link">rbinom</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/stats/Logistic.html" class="external-link">plogis</a></span><span class="op">(</span><span class="op">-</span><span class="fl">1.2</span> <span class="op">+</span> <span class="fl">0.25</span> <span class="op">*</span> <span class="va">effect</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">trial</span><span class="op">$</span><span class="va">visits</span>   <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Poisson.html" class="external-link">rpois</a></span><span class="op">(</span><span class="va">n</span>, <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="fl">1.1</span> <span class="op">+</span> <span class="fl">0.06</span> <span class="op">*</span> <span class="va">effect</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">trial</span><span class="op">$</span><span class="va">weeks</span>    <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">4</span>, <span class="fl">12</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">trial</span><span class="op">)</span></span>
-<span><span class="co">#&gt; 'data.frame':    240 obs. of  7 variables:</span></span>
-<span><span class="co">#&gt;  $ arm     : Factor w/ 3 levels "high","low","placebo": 3 3 3 3 3 3 3 3 3 3 ...</span></span>
-<span><span class="co">#&gt;  $ site    : Factor w/ 2 levels "north","south": 1 2 1 2 1 2 1 2 1 2 ...</span></span>
-<span><span class="co">#&gt;  $ baseline: num  111.8 105.6 98.7 97.4 113.9 ...</span></span>
-<span><span class="co">#&gt;  $ score   : num  68.4 69.9 67.4 65.3 62.9 ...</span></span>
-<span><span class="co">#&gt;  $ improved: int  0 1 0 1 0 0 0 0 0 0 ...</span></span>
-<span><span class="co">#&gt;  $ visits  : int  0 1 5 4 4 5 3 4 3 6 ...</span></span>
-<span><span class="co">#&gt;  $ weeks   : num  10.44 4.79 5.03 8.29 6.21 ...</span></span></code></pre></div>
+<p>This page runs one analysis from start to finish, repeats it with a
+model that adjusts for a covariate, and lists the arguments every
+function shares. The other six functions return the same kind of object,
+with the same <code>$notes</code>, <code>$emmeans</code>,
+<code>$posthoc</code> and <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>.</p>
 <div class="section level2">
-<h2 id="comparing-means">Comparing means<a class="anchor" aria-label="anchor" href="#comparing-means"></a>
+<h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p><code><a href="../reference/anova_welch.html">anova_welch()</a></code> is the default choice for a one-way
-comparison. It does not assume equal variances, which costs almost
-nothing when they are equal and matters a great deal when they are
-not.</p>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"elkronos/anovakit"</span>, build_vignettes <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://elkronos.github.io/anovakit/">anovakit</a></span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="section level2">
+<h2 id="a-first-analysis">A first analysis<a class="anchor" aria-label="anchor" href="#a-first-analysis"></a>
+</h2>
+<p><code>mtcars</code> records the fuel economy (<code>mpg</code>) of 32
+cars with 4, 6 or 8 cylinders. The question is whether mean fuel economy
+differs by cylinder count.</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">mtcars</span><span class="op">$</span><span class="va">cyl</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;  4  6  8 </span></span>
+<span><span class="co">#&gt; 11  7 14</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tapply.html" class="external-link">tapply</a></span><span class="op">(</span><span class="va">mtcars</span><span class="op">$</span><span class="va">mpg</span>, <span class="va">mtcars</span><span class="op">$</span><span class="va">cyl</span>, <span class="va">sd</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span></span>
+<span><span class="co">#&gt;    4    6    8 </span></span>
+<span><span class="co">#&gt; 4.51 1.45 2.56</span></span></code></pre></div>
+<p>The 4-cylinder cars vary far more than the 6-cylinder ones, so the
+comparison should not assume equal variances. <code><a href="../reference/anova_welch.html">anova_welch()</a></code>
+does not.</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">mtcars</span>, <span class="st">"mpg"</span>, <span class="st">"cyl"</span><span class="op">)</span></span>
 <span><span class="va">fit</span></span>
 <span><span class="co">#&gt; Welch's analysis of variance </span></span>
 <span><span class="co">#&gt; ----------------------------</span></span>
-<span><span class="co">#&gt; Call: anova_welch(data = trial, response = "score", groups = "arm")</span></span>
-<span><span class="co">#&gt; Observations used: 240</span></span>
+<span><span class="co">#&gt; Call: anova_welch(data = mtcars, response = "mpg", groups = "cyl")</span></span>
+<span><span class="co">#&gt; Observations used: 32</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Omnibus test (Welch F)</span></span>
 <span><span class="co">#&gt;   term statistic num_df den_df   p_value</span></span>
-<span><span class="co">#&gt; 1  arm     17.98      2  157.9 9.223e-08</span></span>
+<span><span class="co">#&gt; 1  cyl     31.62      2  18.03 1.271e-06</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Notes</span></span>
+<span><span class="co">#&gt;   - Largest group variance is 9.63 times the smallest. Welch's test handles this; the classical F test would not.</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: means, box, qq</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "means"))</span></span></code></pre></div>
-<p><code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> shows the omnibus test and anything the function
-wants you to know. <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> adds the rest.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">emmeans</span></span>
-<span><span class="co">#&gt;     group  n     mean       sd       se conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1    high 80 69.08961 9.299895 1.039760 67.02002  71.15920</span></span>
-<span><span class="co">#&gt; 2     low 80 62.65075 9.890433 1.105784 60.44974  64.85175</span></span>
-<span><span class="co">#&gt; 3 placebo 80 60.41236 9.764209 1.091672 58.23944  62.58528</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"group1"</span>, <span class="st">"group2"</span>, <span class="st">"difference"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>,</span>
-<span>                <span class="st">"p_adjusted"</span><span class="op">)</span><span class="op">]</span></span>
-<span><span class="co">#&gt;   group1  group2 difference   conf_low conf_high   p_adjusted</span></span>
-<span><span class="co">#&gt; 1   high     low   6.438866  3.4408909  9.436840 7.533383e-05</span></span>
-<span><span class="co">#&gt; 2   high placebo   8.677255  5.6995585 11.654952 1.313025e-07</span></span>
-<span><span class="co">#&gt; 3    low placebo   2.238390 -0.8306466  5.307426 1.516972e-01</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">effect_sizes</span></span>
-<span><span class="co">#&gt;   group1  group2  hedges_g    conf_low conf_high magnitude</span></span>
-<span><span class="co">#&gt; 1   high     low 0.6675339  0.35110788 0.9883439    medium</span></span>
-<span><span class="co">#&gt; 2   high placebo 0.9057159  0.58299337 1.2344908     large</span></span>
-<span><span class="co">#&gt; 3    low placebo 0.2266841 -0.08350246 0.5383214     small</span></span>
-<span><span class="co">#&gt;              standardiser</span></span>
-<span><span class="co">#&gt; 1 sqrt((s1^2 + s2^2) / 2)</span></span>
-<span><span class="co">#&gt; 2 sqrt((s1^2 + s2^2) / 2)</span></span>
-<span><span class="co">#&gt; 3 sqrt((s1^2 + s2^2) / 2)</span></span></code></pre></div>
-<p>Assumption checks are chosen to suit the method. Because Welch’s test
-permits unequal variances, normality is assessed within each group
-rather than on pooled residuals:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">normality</span></span>
-<span><span class="co">#&gt;     group  n statistic    p_value note</span></span>
-<span><span class="co">#&gt; 1    high 80 0.9720104 0.07626062 &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 2     low 80 0.9930800 0.94857572 &lt;NA&gt;</span></span>
-<span><span class="co">#&gt; 3 placebo 80 0.9930686 0.94819393 &lt;NA&gt;</span></span>
-<span><span class="va">fit</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">variance_ratio</span></span>
-<span><span class="co">#&gt; [1] 1.131031</span></span></code></pre></div>
-<p>Plots are built and returned, never drawn:</p>
+<p><code>cyl</code> is numeric in <code>mtcars</code>; grouping columns
+are converted to factors.</p>
+<p>The printed result has four parts: the call and the number of rows
+used, the omnibus test, the notes, and the names of the plots that were
+built.</p>
+<div class="section level3">
+<h3 id="the-notes">The notes<a class="anchor" aria-label="anchor" href="#the-notes"></a>
+</h3>
+<p><code>$notes</code> records what the function decided on your behalf,
+what it could not compute, and anything that changes how a number should
+be read.</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
+<span><span class="co">#&gt; [1] "Largest group variance is 9.63 times the smallest. Welch's test handles this; the classical F test would not."</span></span></code></pre></div>
+<p>Here it reports the variance ratio, which is the reason to use
+Welch’s test. On other data it would say how many rows were dropped for
+missing values, or that a check could not run. Read it before you report
+anything from a fit.</p>
+</div>
+<div class="section level3">
+<h3 id="the-summary">The summary<a class="anchor" aria-label="anchor" href="#the-summary"></a>
+</h3>
+<p><code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> adds the assumption checks, effect sizes,
+group summaries and pairwise comparisons.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Welch's analysis of variance </span></span>
+<span><span class="co">#&gt; ----------------------------</span></span>
+<span><span class="co">#&gt; Call: anova_welch(data = mtcars, response = "mpg", groups = "cyl")</span></span>
+<span><span class="co">#&gt; Observations used: 32</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Omnibus test (Welch F)</span></span>
+<span><span class="co">#&gt;   term statistic num_df den_df   p_value</span></span>
+<span><span class="co">#&gt; 1  cyl     31.62      2  18.03 1.271e-06</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Notes</span></span>
+<span><span class="co">#&gt;   - Largest group variance is 9.63 times the smallest. Welch's test handles this; the classical F test would not.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Plots available: means, box, qq</span></span>
+<span><span class="co">#&gt;   (use plot(x, which = "means"))</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Assumption checks</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;   normality</span></span>
+<span><span class="co">#&gt;  group  n statistic p_value note</span></span>
+<span><span class="co">#&gt;      4 11    0.9124  0.2606 &lt;NA&gt;</span></span>
+<span><span class="co">#&gt;      6  7     0.899  0.3252 &lt;NA&gt;</span></span>
+<span><span class="co">#&gt;      8 14    0.9318  0.3229 &lt;NA&gt;</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;   variance_ratio</span></span>
+<span><span class="co">#&gt;     9.626</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Effect sizes</span></span>
+<span><span class="co">#&gt;  group1 group2 hedges_g conf_low conf_high magnitude            standardiser</span></span>
+<span><span class="co">#&gt;       4      6    1.933   0.8801     3.208     large sqrt((s1^2 + s2^2) / 2)</span></span>
+<span><span class="co">#&gt;       4      8    3.005    1.752     4.518     large sqrt((s1^2 + s2^2) / 2)</span></span>
+<span><span class="co">#&gt;       6      8    2.139    1.121     3.305     large sqrt((s1^2 + s2^2) / 2)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Group summaries (95% intervals)</span></span>
+<span><span class="co">#&gt;  group  n  mean    sd     se conf_low conf_high</span></span>
+<span><span class="co">#&gt;      4 11 26.66  4.51   1.36    23.63     29.69</span></span>
+<span><span class="co">#&gt;      6  7 19.74 1.454 0.5494     18.4     21.09</span></span>
+<span><span class="co">#&gt;      8 14  15.1  2.56 0.6842    13.62     16.58</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Pairwise comparisons</span></span>
+<span><span class="co">#&gt;  group1 group2 difference conf_low conf_high statistic    df   p_value</span></span>
+<span><span class="co">#&gt;       4      6      6.921    3.751     10.09     4.719 12.96 0.0004048</span></span>
+<span><span class="co">#&gt;       4      8      11.56    8.319     14.81     7.597 14.97 1.641e-06</span></span>
+<span><span class="co">#&gt;       6      8      4.643    2.803     6.483     5.291  18.5  4.54e-05</span></span>
+<span><span class="co">#&gt;  p_adjusted adjustment</span></span>
+<span><span class="co">#&gt;   0.0004048       holm</span></span>
+<span><span class="co">#&gt;   4.924e-06       holm</span></span>
+<span><span class="co">#&gt;   9.081e-05       holm</span></span></code></pre></div>
+<p>The assumption checks are the ones that fit the method. Welch’s test
+allows unequal variances, so normality is tested within each group, not
+on pooled residuals. The effect sizes are Hedges’ g on the average of
+the two group variances (the <code>standardiser</code> column gives the
+formula), with intervals. The pairwise comparisons are Welch t tests;
+<code>p_value</code> is unadjusted and <code>p_adjusted</code> uses
+Holm’s method, the default for <code><a href="../reference/anova_welch.html">anova_welch()</a></code>.</p>
+<p>Every table is a data frame you can use directly:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"group1"</span>, <span class="st">"group2"</span>, <span class="st">"difference"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>,</span>
+<span>                <span class="st">"p_adjusted"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;   group1 group2 difference conf_low conf_high   p_adjusted</span></span>
+<span><span class="co">#&gt; 1      4      6   6.920779 3.751376 10.090182 4.048495e-04</span></span>
+<span><span class="co">#&gt; 2      4      8  11.563636 8.318518 14.808755 4.924043e-06</span></span>
+<span><span class="co">#&gt; 3      6      8   4.642857 2.802925  6.482789 9.080709e-05</span></span></code></pre></div>
+</div>
+<div class="section level3">
+<h3 id="a-plot">A plot<a class="anchor" aria-label="anchor" href="#a-plot"></a>
+</h3>
+<p>Plots are built when you fit and returned as <code>ggplot2</code>
+objects. Nothing is drawn until you print one.</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"means"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="anovakit_files/figure-html/welch-plot-1.png" class="r-plt" alt="" width="576"></p>
 </div>
-<div class="section level2">
-<h2 id="adjusting-for-a-covariate">Adjusting for a covariate<a class="anchor" aria-label="anchor" href="#adjusting-for-a-covariate"></a>
-</h2>
-<p>Baseline score is a strong predictor here, so an ANCOVA is the better
-analysis.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">anc</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_ancova.html">anova_ancova</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, <span class="st">"baseline"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">anc</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;        term    sum_sq  df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1  baseline 13927.697   1 402.58717 6.335418e-53</span></span>
-<span><span class="co">#&gt; 2       arm  1867.370   2  26.98864 2.783996e-11</span></span>
-<span><span class="co">#&gt; 3 Residuals  8164.534 236        NA           NA</span></span>
-<span><span class="va">anc</span><span class="op">$</span><span class="va">emmeans</span></span>
-<span><span class="co">#&gt;       arm estimate        se  df conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1    high 67.79682 0.6607533 236 66.49509  69.09855</span></span>
-<span><span class="co">#&gt; 2     low 63.31584 0.6584393 236 62.01867  64.61301</span></span>
-<span><span class="co">#&gt; 3 placebo 61.04005 0.6583481 236 59.74306  62.33704</span></span></code></pre></div>
-<p>Note what <code>$notes</code> says:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">anc</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Covariate(s) mean-centred before fitting (baseline: 100.3), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way."                                                                                                                                                                                                                                                                                                                                                                                            </span></span>
-<span><span class="co">#&gt; [2] "Slopes are consistent with being equal across groups (p = 0.6908), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal. Setting force_interaction = TRUE in advance avoids the selection step."</span></span></code></pre></div>
-<p>Covariates are mean-centred by default. That matters as soon as the
-model contains a group-by-covariate term: under sum-to-zero contrasts
-the Type III row for <code>arm</code> then tests the group difference
-<em>at covariate = 0</em>, and <code>baseline</code> is distributed
-around 100, so an uncentred fit would be comparing the arms at a point
-nowhere near the data.</p>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">p_of</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">...</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">f</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_ancova.html">anova_ancova</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, <span class="st">"baseline"</span>, force_interaction <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>                    plots <span class="op">=</span> <span class="cn">FALSE</span>, <span class="va">...</span><span class="op">)</span></span>
-<span>  <span class="va">f</span><span class="op">$</span><span class="va">anova</span><span class="op">$</span><span class="va">p_value</span><span class="op">[</span><span class="va">f</span><span class="op">$</span><span class="va">anova</span><span class="op">$</span><span class="va">term</span> <span class="op">==</span> <span class="st">"arm"</span><span class="op">]</span></span>
-<span><span class="op">}</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>centred <span class="op">=</span> <span class="fu">p_of</span><span class="op">(</span><span class="op">)</span>, uncentred <span class="op">=</span> <span class="fu">p_of</span><span class="op">(</span>center_covariates <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;      centred    uncentred </span></span>
-<span><span class="co">#&gt; 6.526767e-11 9.960978e-01</span></span></code></pre></div>
-<p>The additive model fitted above is not affected — there the group row
-is the same either way. <code>$emmeans</code> are evaluated at the
-covariate mean whether or not it is centred; centring only moves the
-intercept there. Use <code>force_interaction</code> to fix the model in
-advance rather than letting a test on the same data choose it; for
-groups that were not randomised, <code>force_interaction = TRUE</code>
-is the safer choice, because a slope difference the test misses biases
-the adjusted comparisons when covariate means differ between the
-groups.</p>
 </div>
 <div class="section level2">
-<h2 id="a-binary-outcome">A binary outcome<a class="anchor" aria-label="anchor" href="#a-binary-outcome"></a>
+<h2 id="the-same-analysis-with-a-covariate">The same analysis with a covariate<a class="anchor" aria-label="anchor" href="#the-same-analysis-with-a-covariate"></a>
 </h2>
+<p>Heavier cars use more fuel, and the 8-cylinder cars are the heaviest.
+An ANCOVA compares the cylinder groups at the same weight
+(<code>wt</code>, in thousands of pounds).</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">bin</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"improved"</span>, <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">bin</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;   term df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1  arm  2  37.88557 5.932719e-09</span></span>
-<span><span class="va">bin</span><span class="op">$</span><span class="va">effect_sizes</span></span>
-<span><span class="co">#&gt;         term factor      comparison odds_ratio  conf_low conf_high se_log_or</span></span>
-<span><span class="co">#&gt; 1     armlow    arm     low vs high  0.4434783 0.2334472 0.8311080 0.3232402</span></span>
-<span><span class="co">#&gt; 2 armplacebo    arm placebo vs high  0.1164179 0.0534224 0.2396148 0.3810273</span></span>
-<span><span class="co">#&gt;   statistic      p_value ci_method</span></span>
-<span><span class="co">#&gt; 1 -2.515487 1.188681e-02   profile</span></span>
-<span><span class="co">#&gt; 2 -5.644134 1.660150e-08   profile</span></span>
-<span><span class="va">bin</span><span class="op">$</span><span class="va">emmeans</span></span>
-<span><span class="co">#&gt;       arm estimate         se  df   conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1    high   0.6250 0.05412659 Inf 0.51454373 0.7238140</span></span>
-<span><span class="co">#&gt; 2     low   0.4250 0.05526923 Inf 0.32179010 0.5351906</span></span>
-<span><span class="co">#&gt; 3 placebo   0.1625 0.04124526 Inf 0.09676128 0.2600427</span></span></code></pre></div>
-<p>Odds-ratio intervals are profile-likelihood by default (for a model
-with more than 50 coefficients, Wald intervals except where separation
-needs profiling, with a note); <code>ci_method = "wald"</code> switches
-them. Separation, which makes Wald intervals meaningless while
-<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> still reports convergence, is detected and named in
-<code>$notes</code>.</p>
+<code class="sourceCode R"><span><span class="va">anc</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_ancova.html">anova_ancova</a></span><span class="op">(</span><span class="va">mtcars</span>, <span class="st">"mpg"</span>, <span class="st">"cyl"</span>, <span class="st">"wt"</span><span class="op">)</span></span>
+<span><span class="va">anc</span></span>
+<span><span class="co">#&gt; Analysis of covariance (Type III) </span></span>
+<span><span class="co">#&gt; ---------------------------------</span></span>
+<span><span class="co">#&gt; Call: anova_ancova(data = mtcars, response = "mpg", groups = "cyl", covariates = "wt")</span></span>
+<span><span class="co">#&gt; Observations used: 32</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Omnibus test (Type III, F)</span></span>
+<span><span class="co">#&gt;        term sum_sq df statistic  p_value</span></span>
+<span><span class="co">#&gt; 1        wt  118.2  1     18.08 0.000213</span></span>
+<span><span class="co">#&gt; 2       cyl  95.26  2     7.286 0.002835</span></span>
+<span><span class="co">#&gt; 3 Residuals  183.1 28        NA       NA</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Notes</span></span>
+<span><span class="co">#&gt;   - Covariate(s) mean-centred before fitting (wt: 3.217), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way.</span></span>
+<span><span class="co">#&gt;   - Slopes are consistent with being equal across groups (p = 0.1239), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal. Setting force_interaction = TRUE in advance avoids the selection step.</span></span>
+<span><span class="co">#&gt;   - The covariate means differ between groups (largest difference: wt 2.72 pooled within-group SDs). With the slopes assumed equal, any real difference in slopes biases the adjusted comparisons by the slope difference times the covariate-mean difference, and the homogeneity-of-slopes test often lacks the power to detect a difference large enough to matter, so the group row and $posthoc can reject far more often than their nominal level. force_interaction = TRUE does not assume equal slopes.</span></span>
+<span><span class="co">#&gt;   - $emmeans are evaluated at the covariate mean, but wt = 3.217 lies outside the range observed in 4 [1.513, 3.19]. The adjusted means there are extrapolations along the fitted slope to covariate values none of those observations have, so they and the comparisons that involve them rest on the model's linearity rather than on data.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Plots available: residuals, qq, covariate, emmeans</span></span>
+<span><span class="co">#&gt;   (use plot(x, which = "residuals"))</span></span></code></pre></div>
+<p>The call has the same shape, with the covariate as the fourth
+argument. The notes record four things:</p>
+<ul>
+<li>
+<code>wt</code> was mean-centred at 3.217. The model is additive, so
+centring changes only the intercept, and <code>$emmeans</code> are
+evaluated at that mean weight either way. Centring matters when the
+model includes the group-by-covariate term.</li>
+<li>The homogeneity-of-slopes test gave p = 0.124, so the function
+fitted the additive model, and the p-values do not allow for that
+choice.</li>
+<li>The groups’ mean weights differ by up to 2.72 pooled within-group
+standard deviations, which makes the adjusted comparisons sensitive to a
+slope difference the test may have missed.</li>
+<li>The heaviest 4-cylinder car weighs 3.190, less than the average car,
+so the marginal mean for that group is an extrapolation.</li>
+</ul>
+<p>These are observational data, and the notes say how far the adjusted
+comparison leans on the model. The marginal means and comparisons are in
+the same places as before:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">sep</span> <span class="op">&lt;-</span> <span class="va">trial</span></span>
-<span><span class="va">sep</span><span class="op">$</span><span class="va">improved</span><span class="op">[</span><span class="va">sep</span><span class="op">$</span><span class="va">arm</span> <span class="op">==</span> <span class="st">"high"</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">1L</span></span>
-<span><span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">sep</span>, <span class="st">"improved"</span>, <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Modelling P(improved = 1); the other level is the baseline."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 </span></span>
-<span><span class="co">#&gt; [2] "Complete or quasi-complete separation detected: the fitted probability is numerically 0 or 1 in arm = high. The affected coefficient(s): armlow, armplacebo. An affected odds ratio is not identified: it will be enormous, its interval will be unbounded on one side, and its Wald p-value will be near 1 no matter how strong the association is; the same goes for that cell's marginal probability and the comparisons involving it. With events this sparse the likelihood-ratio omnibus test is also liberal. Consider a penalised fit such as logistf::logistf(), or collapsing the offending level."</span></span>
-<span><span class="co">#&gt; [3] "Separation drives the odds ratio(s) for armlow, armplacebo to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate."                                                                                                                                                                                                                                                                                   </span></span>
-<span><span class="co">#&gt; [4] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="a-count-outcome-with-exposure">A count outcome, with exposure<a class="anchor" aria-label="anchor" href="#a-count-outcome-with-exposure"></a>
-</h2>
-<p><code>weeks</code> is time at risk, so it belongs in the model as a
-log offset. It enters the formula rather than <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>’s
-<code>offset</code> argument, which is what lets
-<strong>emmeans</strong> see it: the marginal means below are rates per
-week.</p>
+<code class="sourceCode R"><span><span class="va">anc</span><span class="op">$</span><span class="va">emmeans</span></span>
+<span><span class="co">#&gt;   cyl estimate        se df conf_low conf_high</span></span>
+<span><span class="co">#&gt; 1   4 23.67753 1.0428474 28 21.54136  25.81371</span></span>
+<span><span class="co">#&gt; 2   6 19.42195 0.9693650 28 17.43630  21.40761</span></span>
+<span><span class="co">#&gt; 3   8 17.60668 0.9025074 28 15.75797  19.45538</span></span>
+<span><span class="va">anc</span><span class="op">$</span><span class="va">posthoc</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"contrast"</span>, <span class="st">"estimate"</span>, <span class="st">"conf_low"</span>, <span class="st">"conf_high"</span>,</span>
+<span>                <span class="st">"p_adjusted"</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="co">#&gt;      contrast estimate   conf_low conf_high  p_adjusted</span></span>
+<span><span class="co">#&gt; 1 cyl4 - cyl6 4.255582  0.8259527  7.685212 0.012696957</span></span>
+<span><span class="co">#&gt; 2 cyl4 - cyl8 6.070860  1.9825209 10.159199 0.002785371</span></span>
+<span><span class="co">#&gt; 3 cyl6 - cyl8 1.815277 -1.5439851  5.174540 0.387082329</span></span></code></pre></div>
+<p>The covariate plot draws the fitted model (solid lines, one common
+slope) and each group’s own least-squares line (dashed) over the data.
+The 4-cylinder cars (at most 3.190) and the 8-cylinder cars (at least
+3.170) barely overlap in weight.</p>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">cnt</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"visits"</span>, <span class="st">"arm"</span>, offset <span class="op">=</span> <span class="st">"weeks"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">cnt</span><span class="op">$</span><span class="va">model_type</span></span>
-<span><span class="co">#&gt; [1] "poisson"</span></span>
-<span><span class="va">cnt</span><span class="op">$</span><span class="va">dispersion</span>        <span class="co"># Pearson dispersion of the Poisson fit</span></span>
-<span><span class="co">#&gt; [1] 1.360784</span></span>
-<span><span class="va">cnt</span><span class="op">$</span><span class="va">model_dispersion</span>  <span class="co"># ... and of the model actually returned</span></span>
-<span><span class="co">#&gt; [1] 1.360784</span></span>
-<span><span class="va">cnt</span><span class="op">$</span><span class="va">emmeans</span></span>
-<span><span class="co">#&gt;       arm  estimate         se  df  conf_low conf_high</span></span>
-<span><span class="co">#&gt; 1    high 0.5963120 0.03095898 Inf 0.5386186 0.6601851</span></span>
-<span><span class="co">#&gt; 2     low 0.4011702 0.02445978 Inf 0.3559836 0.4520925</span></span>
-<span><span class="co">#&gt; 3 placebo 0.3650152 0.02396442 Inf 0.3209422 0.4151405</span></span></code></pre></div>
-<p>If the Pearson dispersion had exceeded the threshold, the function
-would have moved to a negative binomial model and said so in
-<code>$notes</code>. Set <code>model</code> to take that decision
-yourself.</p>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">anc</span>, <span class="st">"covariate"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="anovakit_files/figure-html/ancova-plot-1.png" class="r-plt" alt="" width="768"></p>
+<p>To fix the model in advance instead of letting the slopes test choose
+it, set <code>force_interaction = TRUE</code>. The <a href="articles/ancova.html">ANCOVA walkthrough</a> covers that choice,
+the slopes test and covariate centring.</p>
 </div>
 <div class="section level2">
-<h2 id="two-grouping-variables">Two grouping variables<a class="anchor" aria-label="anchor" href="#two-grouping-variables"></a>
+<h2 id="arguments-every-function-shares">Arguments every function shares<a class="anchor" aria-label="anchor" href="#arguments-every-function-shares"></a>
 </h2>
-<p>Every function accepts several grouping variables.
-<code><a href="../reference/anova_welch.html">anova_welch()</a></code> and <code><a href="../reference/anova_kw.html">anova_kw()</a></code> combine them into
-a single cell factor of the combinations that contain data. The
-model-based functions fit them as factors: with
-<code>interaction = TRUE</code> the marginal means and comparisons are
-for the cells (a combination with no data is left out, or named in
-<code>$notes</code> when the model estimates it by extrapolation), and
-in an additive model they are reported for each factor on its own.</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">tw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"arm"</span>, <span class="st">"site"</span><span class="op">)</span>, interaction <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>                type <span class="op">=</span> <span class="st">"III"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">tw</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;        term       sum_sq  df   statistic      p_value</span></span>
-<span><span class="co">#&gt; 1       arm  3247.043622   2 17.22824780 1.047146e-07</span></span>
-<span><span class="co">#&gt; 2      site    32.361210   1  0.34340589 5.584346e-01</span></span>
-<span><span class="co">#&gt; 3  arm:site     8.636735   2  0.04582501 9.552177e-01</span></span>
-<span><span class="co">#&gt; 4 Residuals 22051.232845 234          NA           NA</span></span></code></pre></div>
-<p>When you ask for <code>type = "III"</code> the model is
-<em>fitted</em> under sum-to-zero contrasts. Setting
-<code>options(contrasts = )</code> after a model exists does not change
-the contrasts stored on it, and the resulting table would be simple
-effects at the reference level wearing a Type III label.</p>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/unlist.html" class="external-link">unlist</a></span><span class="op">(</span><span class="va">tw</span><span class="op">$</span><span class="va">model</span><span class="op">$</span><span class="va">contrasts</span><span class="op">)</span></span>
-<span><span class="co">#&gt;         arm        site </span></span>
-<span><span class="co">#&gt; "contr.sum" "contr.sum"</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="several-outcomes-at-once">Several outcomes at once<a class="anchor" aria-label="anchor" href="#several-outcomes-at-once"></a>
-</h2>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">mv</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_manova.html">anova_manova</a></span><span class="op">(</span><span class="va">trial</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"score"</span>, <span class="st">"visits"</span><span class="op">)</span>, <span class="st">"arm"</span>,</span>
-<span>                   covariates <span class="op">=</span> <span class="st">"baseline"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">mv</span><span class="op">$</span><span class="va">multivariate</span></span>
-<span><span class="co">#&gt;       term df statistic  approx_f num_df den_df      p_value</span></span>
-<span><span class="co">#&gt; 1 baseline  1 0.6320296 201.81916      2    235 9.616440e-52</span></span>
-<span><span class="co">#&gt; 2      arm  2 0.2758904  18.88225      4    472 2.051096e-14</span></span>
-<span><span class="va">mv</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">mardia</span></span>
-<span><span class="co">#&gt;              test  statistic df     p_value</span></span>
-<span><span class="co">#&gt; 1 Mardia skewness 13.9293058  4 0.007524134</span></span>
-<span><span class="co">#&gt; 2 Mardia kurtosis  0.5355893 NA 0.592242440</span></span>
-<span><span class="va">mv</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">box_m</span></span>
-<span><span class="co">#&gt;   statistic df   p_value</span></span>
-<span><span class="co">#&gt; 1  7.294966  6 0.2944282</span></span>
-<span><span class="va">mv</span><span class="op">$</span><span class="va">canonical</span></span>
-<span><span class="co">#&gt;   axis   eigenvalue canonical_r prop_variance</span></span>
-<span><span class="co">#&gt; 1 Can1 0.3797103719  0.52460481    0.99821052</span></span>
-<span><span class="co">#&gt; 2 Can2 0.0006807021  0.02608139    0.00178948</span></span>
-<span><span class="va">mv</span><span class="op">$</span><span class="va">canonical_term</span></span>
-<span><span class="co">#&gt; [1] "arm"</span></span></code></pre></div>
-<p>Mardia’s tests, Box’s M and the canonical discriminant analysis are
-computed directly, so none of them adds a dependency. With covariates
-present they work in the space the multivariate test operates in:
-Mardia’s tests on the residuals of the multivariate model, Box’s M on
-the responses with the covariate effect removed, and the canonical
-scores on the responses with every other model term removed. The
-multivariate table is Type II or III, as <code>type</code> says, and
-with covariates <code>$slopes_test</code> checks that their slopes are
-the same in every group.</p>
-<p>The follow-up univariate analyses are kept individually as well as
-stacked, so each response has its own model and its own emmeans
-grid:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">mv</span><span class="op">$</span><span class="va">univariate</span><span class="op">$</span><span class="va">score</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;        term    sum_sq  df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1  baseline 13927.697   1 402.58717 6.335418e-53</span></span>
-<span><span class="co">#&gt; 2       arm  1867.370   2  26.98864 2.783996e-11</span></span>
-<span><span class="co">#&gt; 3 Residuals  8164.534 236        NA           NA</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="when-the-data-are-not-normal">When the data are not normal<a class="anchor" aria-label="anchor" href="#when-the-data-are-not-normal"></a>
-</h2>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">kw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_kw.html">anova_kw</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">kw</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;   term statistic df      p_value</span></span>
-<span><span class="co">#&gt; 1  arm  34.25658  2 3.641488e-08</span></span>
-<span><span class="va">kw</span><span class="op">$</span><span class="va">posthoc</span></span>
-<span><span class="co">#&gt;   group1  group2 mean_rank_diff        z      p_value   p_adjusted adjustment</span></span>
-<span><span class="co">#&gt; 1   high     low         45.525 4.147214 3.365457e-05 5.048185e-05         BH</span></span>
-<span><span class="co">#&gt; 2   high placebo         62.025 5.650323 1.601469e-08 4.804408e-08         BH</span></span>
-<span><span class="co">#&gt; 3    low placebo         16.500 1.503109 1.328110e-01 1.328110e-01         BH</span></span></code></pre></div>
-<p>Dunn’s test is computed from the rank sums with the standard tie
-correction, so any <code><a href="https://rdrr.io/r/stats/p.adjust.html" class="external-link">p.adjust()</a></code> method may be used and
-nothing is printed to the console. Kruskal-Wallis assumes no
-distribution, so no assumption check runs unless you ask for one with
-<code>diagnostics = TRUE</code>.</p>
-</div>
-<div class="section level2">
-<h2 id="repeated-measures">Repeated measures<a class="anchor" aria-label="anchor" href="#repeated-measures"></a>
-</h2>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">11</span><span class="op">)</span></span>
-<span><span class="va">long</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span>id <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">40</span><span class="op">)</span>, week <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"w0"</span>, <span class="st">"w4"</span>, <span class="st">"w8"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">long</span><span class="op">$</span><span class="va">arm</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"placebo"</span>, <span class="st">"active"</span><span class="op">)</span>, each <span class="op">=</span> <span class="fl">20</span><span class="op">)</span>, <span class="fl">3</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">long</span><span class="op">$</span><span class="va">score</span> <span class="op">&lt;-</span> <span class="fl">50</span> <span class="op">+</span> <span class="fl">3</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric</a></span><span class="op">(</span><span class="va">long</span><span class="op">$</span><span class="va">week</span><span class="op">)</span> <span class="op">+</span></span>
-<span>  <span class="fl">2</span> <span class="op">*</span> <span class="op">(</span><span class="va">long</span><span class="op">$</span><span class="va">arm</span> <span class="op">==</span> <span class="st">"active"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">long</span><span class="op">)</span>, <span class="fl">0</span>, <span class="fl">4</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">rm_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_rm.html">anova_rm</a></span><span class="op">(</span><span class="va">long</span>, <span class="st">"score"</span>, subject <span class="op">=</span> <span class="st">"id"</span>, within <span class="op">=</span> <span class="st">"week"</span>,</span>
-<span>                   between <span class="op">=</span> <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">rm_fit</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;       term   num_df   den_df      mse   statistic partial_eta_sq      p_value</span></span>
-<span><span class="co">#&gt; 1      arm 1.000000 38.00000 16.48565  8.08181921    0.175379778 7.155944e-03</span></span>
-<span><span class="co">#&gt; 2     week 1.999827 75.99341 12.55546 42.43795129    0.527586178 4.218864e-13</span></span>
-<span><span class="co">#&gt; 3 arm:week 1.999827 75.99341 12.55546  0.07873979    0.002067815 9.243425e-01</span></span>
-<span><span class="va">rm_fit</span><span class="op">$</span><span class="va">sphericity</span></span>
-<span><span class="co">#&gt;       term mauchly_w   p_value gg_epsilon hf_epsilon         p_gg         p_hf</span></span>
-<span><span class="co">#&gt; 1     week 0.9999133 0.9983974  0.9999133          1 4.218864e-13 4.209773e-13</span></span>
-<span><span class="co">#&gt; 2 arm:week 0.9999133 0.9983974  0.9999133          1 9.243425e-01 9.243557e-01</span></span>
-<span><span class="co">#&gt;   hf_epsilon_raw</span></span>
-<span><span class="co">#&gt; 1       1.055457</span></span>
-<span><span class="co">#&gt; 2       1.055457</span></span></code></pre></div>
-<p>Sphericity comes from the fitted model, along with the
-Greenhouse-Geisser and Huynh-Feldt corrections. Subjects missing a
-within-subject cell are removed before fitting and listed in
-<code>$subjects_dropped</code> — empty above, because that design is
-complete:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">gappy</span> <span class="op">&lt;-</span> <span class="va">long</span><span class="op">[</span><span class="op">!</span><span class="op">(</span><span class="va">long</span><span class="op">$</span><span class="va">id</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1"</span>, <span class="st">"2"</span><span class="op">)</span> <span class="op">&amp;</span> <span class="va">long</span><span class="op">$</span><span class="va">week</span> <span class="op">==</span> <span class="st">"w4"</span><span class="op">)</span>, <span class="op">]</span></span>
-<span><span class="va">gap_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_rm.html">anova_rm</a></span><span class="op">(</span><span class="va">gappy</span>, <span class="st">"score"</span>, subject <span class="op">=</span> <span class="st">"id"</span>, within <span class="op">=</span> <span class="st">"week"</span>,</span>
-<span>                    between <span class="op">=</span> <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="va">gap_fit</span><span class="op">$</span><span class="va">subjects_dropped</span></span>
-<span><span class="co">#&gt; [1] "1" "2"</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>used <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">gap_fit</span><span class="op">$</span><span class="va">data_used</span><span class="op">)</span>, removed <span class="op">=</span> <span class="va">gap_fit</span><span class="op">$</span><span class="va">n_removed</span>,</span>
-<span>  supplied <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">gappy</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt;     used  removed supplied </span></span>
-<span><span class="co">#&gt;      114        4      118</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="two-arguments-worth-knowing-about">Two arguments worth knowing about<a class="anchor" aria-label="anchor" href="#two-arguments-worth-knowing-about"></a>
-</h2>
-<p><code>vcov_type</code> gives heteroskedasticity-consistent standard
-errors, and they flow through to the marginal means and the comparisons
-rather than stopping at the coefficient table:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, vcov_type <span class="op">=</span> <span class="st">"HC3"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">emmeans</span><span class="op">$</span><span class="va">se</span></span>
-<span><span class="co">#&gt; [1] 1.046320 1.112761 1.098559</span></span>
-<span><span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">emmeans</span><span class="op">$</span><span class="va">se</span></span>
-<span><span class="co">#&gt; [1] 1.079445 1.079445 1.079445</span></span></code></pre></div>
-<p><code>weights</code> is a column name rather than a vector, so prior
-weights are subsetted along with the data and cannot misalign when a row
-is dropped:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">trial</span><span class="op">$</span><span class="va">wt</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Uniform.html" class="external-link">runif</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">0.5</span>, <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">trial</span>, <span class="st">"score"</span>, <span class="st">"arm"</span>, weights <span class="op">=</span> <span class="st">"wt"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">anova</span></span>
-<span><span class="co">#&gt;        term    sum_sq  df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1       arm  3982.405   2  16.83183 1.461266e-07</span></span>
-<span><span class="co">#&gt; 2 Residuals 28037.056 237        NA           NA</span></span></code></pre></div>
-</div>
-<div class="section level2">
-<h2 id="the-habit-worth-forming">The habit worth forming<a class="anchor" aria-label="anchor" href="#the-habit-worth-forming"></a>
-</h2>
-<p>Read <code>$notes</code> on every fit. It is where the package
-records what it decided on your behalf, what it could not compute, and
-what it thinks you should know before you quote a number.</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">cnt</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 1.36, at or below the threshold of 1.50, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 1.36 (Pearson test of overdispersion: p = 0.00018) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.17 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 9% of true null hypotheses, and one on 2 (the largest term here) roughly 11%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span>
-<span><span class="co">#&gt; [2] "Estimated marginal means are rates at weeks = 1 (one unit of exposure)."</span></span></code></pre></div>
+<p>Each function takes the data first and names columns as character
+strings. <code><a href="../reference/anova_manova.html">anova_manova()</a></code> takes <code>responses</code>
+(plural), and <code><a href="../reference/anova_rm.html">anova_rm()</a></code> takes <code>response</code> with
+<code>subject</code>, <code>within</code> and <code>between</code>.
+These arguments mean the same thing wherever they appear:</p>
+<table class="table">
+<colgroup>
+<col width="25%">
+<col width="25%">
+<col width="25%">
+<col width="25%">
+</colgroup>
+<thead><tr class="header">
+<th>Argument</th>
+<th>Accepted by</th>
+<th>Default</th>
+<th>What it does</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td><code>conf_level</code></td>
+<td>all eight</td>
+<td><code>0.95</code></td>
+<td>The level of every interval in the returned tables.</td>
+</tr>
+<tr class="even">
+<td><code>adjust</code></td>
+<td>all eight</td>
+<td>
+<code>"holm"</code> (welch), <code>"BH"</code> (kw),
+<code>"tukey"</code> (the rest)</td>
+<td>The multiplicity adjustment for the pairwise comparisons.</td>
+</tr>
+<tr class="odd">
+<td><code>posthoc</code></td>
+<td>all eight</td>
+<td><code>TRUE</code></td>
+<td>
+<code>FALSE</code> skips the pairwise comparisons, with a note (in
+<code><a href="../reference/anova_welch.html">anova_welch()</a></code> this also empties
+<code>$effect_sizes</code>). The six model-based functions also skip
+them, with a note, above 5000 comparisons.</td>
+</tr>
+<tr class="even">
+<td><code>plots</code></td>
+<td>all eight</td>
+<td><code>TRUE</code></td>
+<td>
+<code>FALSE</code> skips building the figures, which is faster.</td>
+</tr>
+<tr class="odd">
+<td><code>verbose</code></td>
+<td>all eight</td>
+<td><code>FALSE</code></td>
+<td>Progress messages through <code><a href="https://rdrr.io/r/base/message.html" class="external-link">message()</a></code>.</td>
+</tr>
+<tr class="even">
+<td><code>interaction</code></td>
+<td>ancova, manova, bin, count, glm</td>
+<td>
+<code>FALSE</code> (<code>TRUE</code> in ancova)</td>
+<td>Additive, full factorial, or interactions up to a given order.</td>
+</tr>
+<tr class="odd">
+<td><code>type</code></td>
+<td>ancova, rm (through <code>...</code>), manova, bin, count, glm</td>
+<td>
+<code>"II"</code> (<code>"III"</code> in ancova and rm)</td>
+<td>Type II or Type III tests; <code>"III"</code> fits the model under
+sum-to-zero contrasts.</td>
+</tr>
+<tr class="even">
+<td><code>covariates</code></td>
+<td>ancova, manova</td>
+<td>none in manova (required in ancova)</td>
+<td>Numeric columns to adjust for.</td>
+</tr>
+<tr class="odd">
+<td><code>vcov_type</code></td>
+<td>ancova, bin, count, glm</td>
+<td><code>"model"</code></td>
+<td>
+<code>"HC0"</code> to <code>"HC4"</code> gives sandwich standard
+errors.</td>
+</tr>
+<tr class="even">
+<td><code>weights</code></td>
+<td>bin, count, glm</td>
+<td><code>NULL</code></td>
+<td>Prior weights, named as a column.</td>
+</tr>
+</tbody>
+</table>
+<p><code><a href="../reference/anova_welch.html">anova_welch()</a></code> and <code><a href="../reference/anova_kw.html">anova_kw()</a></code> accept the
+<code><a href="https://rdrr.io/r/stats/p.adjust.html" class="external-link">p.adjust()</a></code> methods for <code>adjust</code>. The other six
+compare through emmeans and also accept <code>"tukey"</code>,
+<code>"sidak"</code>, <code>"scheffe"</code> and
+<code>"dunnettx"</code>. Arguments specific to one function are on its
+help page and in its walkthrough.</p>
 </div>
 <div class="section level2">
 <h2 id="where-to-go-next">Where to go next<a class="anchor" aria-label="anchor" href="#where-to-go-next"></a>
 </h2>
-<p>The package website, <a href="https://elkronos.github.io/anovakit/" class="uri">https://elkronos.github.io/anovakit/</a>, has a walkthrough
-for every function, guides to the diagnostics and the plots, and a guide
-to choosing between the functions.</p>
+<ul>
+<li>
+<a href="articles/choosing.html">Choose an analysis</a>: which of
+the eight functions fits your data.</li>
+<li>A walkthrough for each function: <a href="articles/welch.html">Welch</a>, <a href="articles/kruskal-wallis.html">Kruskal-Wallis</a>, <a href="articles/ancova.html">ANCOVA</a>, <a href="articles/repeated-measures.html">repeated measures</a>, <a href="articles/manova.html">MANOVA</a>, <a href="articles/binary.html">binary outcomes</a>, <a href="articles/counts.html">counts and rates</a> and <a href="articles/glm.html">other GLM families</a>.</li>
+<li>
+<a href="articles/results.html">Working with results</a>: every
+component of the returned object, the <code>emmeans</code> grid, tables
+for a report, many analyses at once.</li>
+<li>
+<a href="articles/diagnostics.html">Diagnostics</a>: what each
+assumption check computes and how to read it.</li>
+<li>
+<a href="articles/visuals.html">Plots and themes</a>: customising
+the figures.</li>
+<li>
+<a href="articles/weights.html">Weights and robust standard
+errors</a>: frequency, trial and sampling weights, and
+<code>vcov_type</code>.</li>
+<li>
+<a href="articles/design.html">Design choices</a>: why the defaults
+are what they are.</li>
+</ul>
 <p><code><a href="../reference/anovakit_fit.html">?anovakit_fit</a></code> documents every component of the returned
-object, including the ones each function adds for itself.
-<code>names(fit)</code> lists them for any fit you have in hand.</p>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">mv</span><span class="op">)</span></span>
-<span><span class="co">#&gt;  [1] "method"          "call"            "model"           "anova"          </span></span>
-<span><span class="co">#&gt;  [5] "effect_sizes"    "emmeans"         "emmeans_object"  "posthoc"        </span></span>
-<span><span class="co">#&gt;  [9] "assumptions"     "plots"           "data_used"       "n_removed"      </span></span>
-<span><span class="co">#&gt; [13] "conf_level"      "notes"           "univariate"      "multivariate"   </span></span>
-<span><span class="co">#&gt; [17] "canonical"       "canonical_term"  "slopes_test"     "covariate_means"</span></span>
-<span><span class="co">#&gt; [21] "test"</span></span></code></pre></div>
-<p>Each function’s own help page covers the arguments this vignette did
-not reach — <code>reference</code> and <code>success</code> on
-<code><a href="../reference/anova_bin.html">anova_bin()</a></code>, <code>model</code> and
-<code>overdispersion_threshold</code> on <code><a href="../reference/anova_count.html">anova_count()</a></code>,
-<code>correction</code> and <code>emm_specs</code> on
-<code><a href="../reference/anova_rm.html">anova_rm()</a></code>, <code>test</code> and <code>assumptions</code>
-on <code><a href="../reference/anova_manova.html">anova_manova()</a></code>. All of them are optional, and all of
-them have defaults the functions record in <code>$notes</code> when they
-matter.</p>
+object, and each function’s help page documents its own arguments.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

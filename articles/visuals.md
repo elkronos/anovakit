@@ -1,18 +1,19 @@
-# Plots: every figure anovakit returns, and how to customise them
+# Plots and themes
 
 ``` r
 
 library(anovakit)
 ```
 
-Every anovakit function builds its figures with **ggplot2** and returns
-them in `$plots`. Nothing is drawn as a side effect: a plot appears only
-when you print it, and until then it is an ordinary ggplot object that
-you can change with `+`, save, or throw away. This article shows every
-plot each function returns, grouped by what it shows, and then how to
-customise them. For the statistics behind the diagnostic plots, see the
-[diagnostics
-article](https://elkronos.github.io/anovakit/articles/diagnostics.md).
+Every anovakit function builds its figures with ggplot2 and returns them
+in `$plots`. Nothing is drawn as a side effect: a plot appears when you
+print it, and until then it is an ordinary ggplot object that you can
+change with `+`, save, or discard. The first half of this article shows
+the plots each function returns, grouped by what they show. The second
+half, [Customising](#customising), covers changing them, themes,
+building your own figures from the result tables, combining and saving.
+For the statistics behind the diagnostic plots, see
+[Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.md).
 
 ## The plots each function returns
 
@@ -132,14 +133,14 @@ plot(fits$count, "observed")
 
 ![](visuals_files/figure-html/boxes-2-1.png)![](visuals_files/figure-html/boxes-2-2.png)
 
-What to look for: boxes of very different heights (unequal spread, which
+Look for boxes of very different heights (unequal spread, which
 [`anova_welch()`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
 and robust standard errors allow for and a pooled-variance model does
 not), a median off-centre in its box or a long whisker on one side
 (skew), and points beyond the whiskers. In the insect counts on the
 right of the first pair, the sprays with low counts also have the
-smallest spread, as counts usually do: a hint that a count model suits
-them better than a comparison of means.
+smallest spread, as counts usually do, so a count model suits them
+better than a comparison of means.
 
 When
 [`anova_count()`](https://elkronos.github.io/anovakit/reference/anova_count.md)
@@ -147,7 +148,7 @@ has an exposure `offset`, counts from units observed for different
 lengths of time are not comparable, so its `observed` plot shows rates
 instead, count divided by exposure.
 [`MASS::Insurance`](https://rdrr.io/pkg/MASS/man/Insurance.html) records
-claims against the number of policy holders:
+claims against the number of policyholders:
 
 ``` r
 
@@ -202,8 +203,8 @@ plot(fits$ancova, "emmeans")
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
 with an interaction plots one line per level of the second factor, so
 lines that are not parallel are the interaction. In the tooth growth
-data the advantage of orange juice over vitamin C at the two lower doses
-has gone at the highest:
+data the advantage of orange juice over ascorbic acid at the two lower
+doses has gone at the highest:
 
 ``` r
 
@@ -267,6 +268,30 @@ plot(fits$bin, "emmeans")
 
 ![](visuals_files/figure-html/bin-emmeans-1.png)
 
+### `conf_level` sets every error bar
+
+Every interval a function returns, and so every error bar and band in
+its plots, uses `conf_level`. The titles and subtitles follow it:
+
+``` r
+
+w99 <- anova_welch(chickwts, "weight", "feed", conf_level = 0.99)
+plot(w99, "means")$labels$title
+#> [1] "Group means with 99% confidence intervals"
+a99 <- anova_ancova(MASS::anorexia, "Postwt", "Treat", "Prewt",
+                    conf_level = 0.99)
+plot(a99, "emmeans")$labels$subtitle
+#> [1] "Error bars are 99% confidence intervals"
+plot(a99, "covariate")$labels$subtitle
+#> [1] "Solid lines are the fitted model, with a slope for each group;\nbands are 99% confidence intervals for them"
+```
+
+The bars and bands are then wider by exactly the change in the critical
+value: for the casein group, the 99% interval for the mean is 1.41 times
+as wide as the 95% one. To show a different level, refit with
+`conf_level` rather than editing the plot: the intervals in the tables
+and the figures then agree.
+
 ## Residual diagnostics
 
 ### Q-Q plots
@@ -302,10 +327,18 @@ plot(fits$kw, "qq")
 
 ### Residuals against fitted values
 
-The model-based functions pair a Q-Q plot with a plot of residuals
-against fitted values. In a model with only grouping variables the
-fitted values take one value per cell, so the points line up in vertical
-strips; compare the strips’ spread.
+[`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md),
+[`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md),
+[`anova_rm()`](https://elkronos.github.io/anovakit/reference/anova_rm.md)
+and
+[`anova_manova()`](https://elkronos.github.io/anovakit/reference/anova_manova.md)
+pair a Q-Q plot with a plot of residuals against fitted values;
+[`anova_bin()`](https://elkronos.github.io/anovakit/reference/anova_bin.md)
+and
+[`anova_count()`](https://elkronos.github.io/anovakit/reference/anova_count.md)
+build neither. In a model with only grouping variables the fitted values
+take one value per cell, so the points line up in vertical strips;
+compare the strips’ spread.
 [`anova_glm()`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
 plots deviance residuals, which for a Gaussian model are the ordinary
 residuals:
@@ -318,12 +351,12 @@ plot(fits$glm, "qq")
 
 ![](visuals_files/figure-html/glm-resid-1.png)![](visuals_files/figure-html/glm-resid-2.png)
 
-What to look for: a funnel, with the spread growing with the fitted
-value, means the variance depends on the mean (use `vcov_type = "HC3"`,
-or a family or transformation that expects it); a curve means the model
-misses something systematic. The tooth-growth strips have similar
-spreads. With a covariate in the model the fitted values spread out
-continuously, as in
+A funnel, with the spread growing with the fitted value, means the
+variance depends on the mean (use `vcov_type = "HC3"`, or a family or
+transformation that expects it); a curve means the model misses
+something systematic. The tooth-growth strips have similar spreads. With
+a covariate in the model the fitted values spread out continuously, as
+in
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md):
 
 ``` r
@@ -346,12 +379,12 @@ plot(fits$manova, "qq_Petal.Width")
 
 ![](visuals_files/figure-html/manova-resid-1.png)![](visuals_files/figure-html/manova-resid-2.png)
 
-Petal width shows both patterns worth knowing. The strips widen from
-left to right, a funnel: the species with wider petals vary more
-(residual standard deviations of 0.11, 0.20, 0.27 for setosa, versicolor
-and virginica), which is part of what Box’s M detects. And the Q-Q plot
-moves in steps, because petal width is recorded to the nearest 0.1 cm,
-so many residuals are tied.
+Petal width shows both patterns. The strips widen from left to right, a
+funnel: the species with wider petals vary more (residual standard
+deviations of 0.11, 0.20, 0.27 for setosa, versicolor and virginica),
+which is part of what Box’s M detects. The Q-Q plot moves in steps
+because petal width is recorded to the nearest 0.1 cm, so many residuals
+are tied.
 
 ### Repeated measures: residuals, Q-Q and index
 
@@ -404,18 +437,20 @@ plot(fits$ancova, "covariate")
 
 ![](visuals_files/figure-html/ancova-covariate-1.png)
 
-The response against the covariate, one colour and one line of the
-fitted model per group, with a confidence band at `conf_level` for each
-line (when the additive model is used, those lines are parallel, and
-each group’s own least-squares line is added dashed). It shows the two
-things an ANCOVA rests on. The slopes: an ANCOVA with common slopes
-assumes parallel lines, and here the control group’s line is flat while
-both treatment lines rise, which is why the homogeneity-of-slopes test
-rejected and the fit kept the interaction (see `$slopes_test` and
-`$simple_slopes`). And the overlap: the adjusted means are read at the
-covariate mean, and a group whose points do not reach that value is
-being extrapolated along its line. The covariate is shown on its
-original scale even though the model is fitted on the centred covariate.
+The plot shows the response against the covariate, with one colour and
+one fitted line per group and a confidence band at `conf_level` for each
+line. When the additive model is used those lines are parallel, and each
+group’s own least-squares line is added dashed. The covariate is shown
+on its original scale even though the model is fitted on the centred
+covariate.
+
+The plot shows the two things an ANCOVA rests on. An ANCOVA with common
+slopes assumes parallel lines, and here the control group’s line is flat
+while both treatment lines rise, which is why the homogeneity-of-slopes
+test rejected and the fit kept the interaction (see `$slopes_test` and
+`$simple_slopes`). The marginal means are read at the covariate mean, so
+a group whose points do not reach that value is extrapolated along its
+line.
 
 ### The canonical plot: `anova_manova()`
 
@@ -509,43 +544,12 @@ library(ggplot2)
 ```
 
 Anything you can add to a ggplot you can add to these: labels, scales,
-themes, coordinates, facets, extra layers. The package’s plots use
-[`theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html)
-with a few adjustments: a bold title, the legend at the bottom, and x
-labels rotated by 45 degrees when there are more than six groups or any
-label is longer than eight characters. Adding a *complete* theme such as
-[`theme_bw()`](https://ggplot2.tidyverse.org/reference/ggtheme.html)
-replaces all of that; adding
-[`theme()`](https://ggplot2.tidyverse.org/reference/theme.html) changes
-only the elements you name.
-
-To change the base theme of *every* plot instead, set the
-`anovakit.theme` option once, for example in your `.Rprofile`. It takes
-a complete theme, or a function returning one;
-[`ggplot2::theme_get`](https://ggplot2.tidyverse.org/reference/get_theme.html)
-makes the plots follow whatever
-[`theme_set()`](https://ggplot2.tidyverse.org/reference/get_theme.html)
-says. The package’s own adjustments are still added on top, and no
-number in any fit changes.
-
-``` r
-
-old <- options(anovakit.theme = theme_classic(base_size = 12))
-plot(anova_welch(chickwts, "weight", "feed"), "means")
-```
-
-![](visuals_files/figure-html/theme-option-1.png)
-
-``` r
-
-options(old)
-```
-
-A horizontal layout often suits long group names.
+themes, coordinates, facets, extra layers. A horizontal layout often
+suits long group names.
 [`coord_flip()`](https://ggplot2.tidyverse.org/reference/coord_flip.html)
-moves the group labels to the vertical axis but leaves the rotation on
-the horizontal one, which is now the numeric axis, so undo it there.
-Note too that
+moves the group labels to the vertical axis but leaves the package’s
+label rotation on the horizontal one, which is now the numeric axis, so
+undo it there.
 [`labs()`](https://ggplot2.tidyverse.org/reference/labs.html) names
 aesthetics, not positions: after the flip, `x` is still the groups.
 
@@ -561,6 +565,60 @@ plot(fits$welch, "box") +
 ```
 
 ![](visuals_files/figure-html/modify-1.png)
+
+### Themes
+
+The package’s plots use
+[`theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html)
+with a bold title. Plots with groups on the x axis also put the legend
+at the bottom and rotate the x labels by 45 degrees when there are more
+than six groups or any label is longer than eight characters; the MANOVA
+marginal-means plot always rotates them. The covariate and canonical
+plots put the legend at the bottom, and the Q-Q, residual and index
+plots keep only the bold title. On one plot, adding a complete theme
+such as
+[`theme_bw()`](https://ggplot2.tidyverse.org/reference/ggtheme.html)
+replaces all of that, while adding
+[`theme()`](https://ggplot2.tidyverse.org/reference/theme.html) changes
+only the elements you name:
+
+``` r
+
+plot(fits$kw, "box") + theme_bw()
+plot(fits$kw, "box") + theme(panel.grid.minor = element_blank())
+```
+
+![](visuals_files/figure-html/theme-one-1.png)![](visuals_files/figure-html/theme-one-2.png)
+
+To change the base theme of every plot instead, set the `anovakit.theme`
+option once, for example in your `.Rprofile`. It takes a complete theme,
+or a function returning one;
+[`ggplot2::theme_get`](https://ggplot2.tidyverse.org/reference/get_theme.html)
+makes the plots follow whatever
+[`theme_set()`](https://ggplot2.tidyverse.org/reference/get_theme.html)
+says. The package’s adjustments are still added on top, and no number in
+any fit changes. The option is read when a fit builds its plots, so fits
+made before it was set keep theirs:
+
+``` r
+
+old <- options(anovakit.theme = theme_classic(base_size = 12))
+plot(anova_welch(chickwts, "weight", "feed"), "means")
+```
+
+![](visuals_files/figure-html/theme-option-1.png)
+
+``` r
+
+options(old)
+```
+
+`options(anovakit.theme = NULL)` goes back to
+[`theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html).
+Anything other than a theme or a function returning one is an error when
+the next fit builds its plots. The “Plot theme” section of
+[`?anovakit`](https://elkronos.github.io/anovakit/reference/anovakit-package.md)
+has the same details.
 
 ### Colour-blind-safe palettes
 
@@ -687,7 +745,7 @@ The same pattern works for incidence rate ratios (`IRR` in the
 `$effect_sizes` of
 [`anova_count()`](https://elkronos.github.io/anovakit/reference/anova_count.md))
 and for the `ratio` column of a `$posthoc` on the log or logit scale. If
-you summarise `$emmeans_object` yourself with **emmeans**, pass
+you summarise `$emmeans_object` yourself with emmeans, pass
 `level = fit$conf_level`: the grid carries emmeans’ own default level,
 not the fit’s.
 
@@ -716,8 +774,8 @@ ggplot(qq_data, aes(sample = value)) +
 ![](visuals_files/figure-html/combine-1.png)
 
 Placing *different* plots side by side is a job for a layout package.
-**patchwork** is the usual choice; it is not an anovakit dependency, so
-the chunk below is not run here:
+The patchwork package is the usual choice; it is not an anovakit
+dependency, so the chunk below is not run here:
 
 ``` r
 
@@ -766,30 +824,6 @@ PDF keeps lines and text sharp at any size, which suits print (so does
 SVG, for which
 [`ggsave()`](https://ggplot2.tidyverse.org/reference/ggsave.html) needs
 the svglite package); PNG at 300 dpi suits slides and documents.
-
-### `conf_level` sets every error bar
-
-Every interval a function returns, and so every error bar and band in
-its plots, uses `conf_level`. The titles and subtitles follow it:
-
-``` r
-
-w99 <- anova_welch(chickwts, "weight", "feed", conf_level = 0.99)
-plot(w99, "means")$labels$title
-#> [1] "Group means with 99% confidence intervals"
-a99 <- anova_ancova(MASS::anorexia, "Postwt", "Treat", "Prewt",
-                    conf_level = 0.99)
-plot(a99, "emmeans")$labels$subtitle
-#> [1] "Error bars are 99% confidence intervals"
-plot(a99, "covariate")$labels$subtitle
-#> [1] "Solid lines are the fitted model, with a slope for each group; bands are 99% confidence intervals for them"
-```
-
-The bars and bands are then wider by exactly the change in the critical
-value: for the casein group, the 99% interval for the mean is 1.41 times
-as wide as the 95% one. To show a different level, refit with
-`conf_level` rather than editing the plot: the intervals in the tables
-and the figures then agree.
 
 ## See also
 

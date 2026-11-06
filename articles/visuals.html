@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>Plots: every figure anovakit returns, and how to customise them • anovakit</title>
+<title>Plots and themes • anovakit</title>
 <script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Plots: every figure anovakit returns, and how to customise them">
-<meta name="description" content="A tour of every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, build your own from the result tables, combine and save them.">
-<meta property="og:description" content="A tour of every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, build your own from the result tables, combine and save them.">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Plots and themes">
+<meta name="description" content="Every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, set a theme for all of them, build your own from the result tables, combine and save them.">
+<meta property="og:description" content="Every ggplot2 figure the eight functions build, grouped by kind, with what to look for in each; then how to change them, set a theme for all of them, build your own from the result tables, combine and save them.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -32,19 +32,20 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../articles/anovakit.html">Get started</a></li>
+<li class="nav-item"><a class="nav-link" href="../articles/choosing.html">Choose an analysis</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-walkthroughs" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Walkthroughs</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-walkthroughs">
-<li><a class="dropdown-item" href="../articles/choosing.html">Which function?</a></li>
-    <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Comparing means</h6></li>
+<li><h6 class="dropdown-header" data-toc-skip>One outcome, independent groups</h6></li>
     <li><a class="dropdown-item" href="../articles/welch.html">Welch's ANOVA: anova_welch()</a></li>
     <li><a class="dropdown-item" href="../articles/kruskal-wallis.html">Kruskal-Wallis: anova_kw()</a></li>
     <li><a class="dropdown-item" href="../articles/ancova.html">ANCOVA: anova_ancova()</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Repeated measures and several outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/repeated-measures.html">Repeated measures: anova_rm()</a></li>
     <li><a class="dropdown-item" href="../articles/manova.html">MANOVA: anova_manova()</a></li>
     <li><hr class="dropdown-divider"></li>
-    <li><h6 class="dropdown-header" data-toc-skip>Other outcomes</h6></li>
+    <li><h6 class="dropdown-header" data-toc-skip>Binary, count and other outcomes</h6></li>
     <li><a class="dropdown-item" href="../articles/binary.html">Binary outcomes: anova_bin()</a></li>
     <li><a class="dropdown-item" href="../articles/counts.html">Counts and rates: anova_count()</a></li>
     <li><a class="dropdown-item" href="../articles/glm.html">Any GLM family: anova_glm()</a></li>
@@ -53,9 +54,11 @@
 <li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-guides" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Guides</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-guides">
-<li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
-    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and customisation</a></li>
-    <li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+<li><a class="dropdown-item" href="../articles/results.html">Working with results</a></li>
+    <li><a class="dropdown-item" href="../articles/diagnostics.html">Diagnostics</a></li>
+    <li><a class="dropdown-item" href="../articles/visuals.html">Plots and themes</a></li>
+    <li><a class="dropdown-item" href="../articles/weights.html">Weights and robust standard errors</a></li>
+    <li><a class="dropdown-item" href="../articles/design.html">Design choices</a></li>
     <li><hr class="dropdown-divider"></li>
     <li><a class="dropdown-item" href="../articles/index.html">All articles</a></li>
   </ul>
@@ -81,7 +84,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
-      <h1>Plots: every figure anovakit returns, and how to customise them</h1>
+      <h1>Plots and themes</h1>
             
       
       <small class="dont-index">Source: <a href="https://github.com/elkronos/anovakit/blob/main/vignettes/articles/visuals.Rmd" class="external-link"><code>vignettes/articles/visuals.Rmd</code></a></small>
@@ -92,14 +95,14 @@
     
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://elkronos.github.io/anovakit/">anovakit</a></span><span class="op">)</span></span></code></pre></div>
-<p>Every anovakit function builds its figures with
-<strong>ggplot2</strong> and returns them in <code>$plots</code>.
-Nothing is drawn as a side effect: a plot appears only when you print
-it, and until then it is an ordinary ggplot object that you can change
-with <code>+</code>, save, or throw away. This article shows every plot
-each function returns, grouped by what it shows, and then how to
-customise them. For the statistics behind the diagnostic plots, see the
-<a href="diagnostics.html">diagnostics article</a>.</p>
+<p>Every anovakit function builds its figures with ggplot2 and returns
+them in <code>$plots</code>. Nothing is drawn as a side effect: a plot
+appears when you print it, and until then it is an ordinary ggplot
+object that you can change with <code>+</code>, save, or discard. The
+first half of this article shows the plots each function returns,
+grouped by what they show. The second half, <a href="#customising">Customising</a>, covers changing them, themes,
+building your own figures from the result tables, combining and saving.
+For the statistics behind the diagnostic plots, see <a href="diagnostics.html">Diagnostics</a>.</p>
 <div class="section level2">
 <h2 id="the-plots-each-function-returns">The plots each function returns<a class="anchor" aria-label="anchor" href="#the-plots-each-function-returns"></a>
 </h2>
@@ -199,18 +202,18 @@ cells of their combinations:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">glm</span>, <span class="st">"box"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">count</span>, <span class="st">"observed"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/boxes-2-1.png" class="r-plt" alt="" width="50%"><img src="visuals_files/figure-html/boxes-2-2.png" class="r-plt" alt="" width="50%"></p>
-<p>What to look for: boxes of very different heights (unequal spread,
-which <code><a href="../reference/anova_welch.html">anova_welch()</a></code> and robust standard errors allow for
-and a pooled-variance model does not), a median off-centre in its box or
-a long whisker on one side (skew), and points beyond the whiskers. In
-the insect counts on the right of the first pair, the sprays with low
-counts also have the smallest spread, as counts usually do: a hint that
-a count model suits them better than a comparison of means.</p>
+<p>Look for boxes of very different heights (unequal spread, which
+<code><a href="../reference/anova_welch.html">anova_welch()</a></code> and robust standard errors allow for and a
+pooled-variance model does not), a median off-centre in its box or a
+long whisker on one side (skew), and points beyond the whiskers. In the
+insect counts on the right of the first pair, the sprays with low counts
+also have the smallest spread, as counts usually do, so a count model
+suits them better than a comparison of means.</p>
 <p>When <code><a href="../reference/anova_count.html">anova_count()</a></code> has an exposure <code>offset</code>,
 counts from units observed for different lengths of time are not
 comparable, so its <code>observed</code> plot shows rates instead, count
 divided by exposure. <code><a href="https://rdrr.io/pkg/MASS/man/Insurance.html" class="external-link">MASS::Insurance</a></code> records claims against
-the number of policy holders:</p>
+the number of policyholders:</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ins</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/Insurance.html" class="external-link">Insurance</a></span>, <span class="st">"Claims"</span>, <span class="st">"Age"</span>, offset <span class="op">=</span> <span class="st">"Holders"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">ins</span>, <span class="st">"observed"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"title"</span>, <span class="st">"y"</span><span class="op">)</span><span class="op">]</span></span>
@@ -255,7 +258,7 @@ grouping variable gives points and error bars only:</p>
 <p><code><a href="../reference/anova_glm.html">anova_glm()</a></code> with an interaction plots one line per level
 of the second factor, so lines that are not parallel are the
 interaction. In the tooth growth data the advantage of orange juice over
-vitamin C at the two lower doses has gone at the highest:</p>
+ascorbic acid at the two lower doses has gone at the highest:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">glm</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/glm-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
@@ -290,6 +293,29 @@ averaged over the others, and the plot has one panel per factor:</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">bin</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/bin-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
+<div class="section level3">
+<h3 id="conf_level-sets-every-error-bar">
+<code>conf_level</code> sets every error bar<a class="anchor" aria-label="anchor" href="#conf_level-sets-every-error-bar"></a>
+</h3>
+<p>Every interval a function returns, and so every error bar and band in
+its plots, uses <code>conf_level</code>. The titles and subtitles follow
+it:</p>
+<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">w99</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span>, conf_level <span class="op">=</span> <span class="fl">0.99</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">w99</span>, <span class="st">"means"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">title</span></span>
+<span><span class="co">#&gt; [1] "Group means with 99% confidence intervals"</span></span>
+<span><span class="va">a99</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_ancova.html">anova_ancova</a></span><span class="op">(</span><span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/anorexia.html" class="external-link">anorexia</a></span>, <span class="st">"Postwt"</span>, <span class="st">"Treat"</span>, <span class="st">"Prewt"</span>,</span>
+<span>                    conf_level <span class="op">=</span> <span class="fl">0.99</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"emmeans"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
+<span><span class="co">#&gt; [1] "Error bars are 99% confidence intervals"</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"covariate"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
+<span><span class="co">#&gt; [1] "Solid lines are the fitted model, with a slope for each group;\nbands are 99% confidence intervals for them"</span></span></code></pre></div>
+<p>The bars and bands are then wider by exactly the change in the
+critical value: for the casein group, the 99% interval for the mean is
+1.41 times as wide as the 95% one. To show a different level, refit with
+<code>conf_level</code> rather than editing the plot: the intervals in
+the tables and the figures then agree.</p>
+</div>
 </div>
 <div class="section level2">
 <h2 id="residual-diagnostics">Residual diagnostics<a class="anchor" aria-label="anchor" href="#residual-diagnostics"></a>
@@ -306,51 +332,52 @@ values. What goes into the plot differs by function.
 as Welch’s test allows each group its own variance;
 <code><a href="../reference/anova_kw.html">anova_kw()</a></code> does the same, as context only. The chick
 weights follow the line closely:</p>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">welch</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/welch-qq-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The insect counts rise above the line in the upper tail, the mark of
 right skew, and show short steps where counts are tied:</p>
-<div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">kw</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/kw-qq-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
 <h3 id="residuals-against-fitted-values">Residuals against fitted values<a class="anchor" aria-label="anchor" href="#residuals-against-fitted-values"></a>
 </h3>
-<p>The model-based functions pair a Q-Q plot with a plot of residuals
-against fitted values. In a model with only grouping variables the
-fitted values take one value per cell, so the points line up in vertical
-strips; compare the strips’ spread. <code><a href="../reference/anova_glm.html">anova_glm()</a></code> plots
-deviance residuals, which for a Gaussian model are the ordinary
-residuals:</p>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
+<p><code><a href="../reference/anova_ancova.html">anova_ancova()</a></code>, <code><a href="../reference/anova_glm.html">anova_glm()</a></code>,
+<code><a href="../reference/anova_rm.html">anova_rm()</a></code> and <code><a href="../reference/anova_manova.html">anova_manova()</a></code> pair a Q-Q plot
+with a plot of residuals against fitted values; <code><a href="../reference/anova_bin.html">anova_bin()</a></code>
+and <code><a href="../reference/anova_count.html">anova_count()</a></code> build neither. In a model with only
+grouping variables the fitted values take one value per cell, so the
+points line up in vertical strips; compare the strips’ spread.
+<code><a href="../reference/anova_glm.html">anova_glm()</a></code> plots deviance residuals, which for a Gaussian
+model are the ordinary residuals:</p>
+<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">glm</span>, <span class="st">"residuals"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">glm</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/glm-resid-1.png" class="r-plt" alt="" width="50%"><img src="visuals_files/figure-html/glm-resid-2.png" class="r-plt" alt="" width="50%"></p>
-<p>What to look for: a funnel, with the spread growing with the fitted
-value, means the variance depends on the mean (use
-<code>vcov_type = "HC3"</code>, or a family or transformation that
-expects it); a curve means the model misses something systematic. The
-tooth-growth strips have similar spreads. With a covariate in the model
-the fitted values spread out continuously, as in
-<code><a href="../reference/anova_ancova.html">anova_ancova()</a></code>:</p>
-<div class="sourceCode" id="cb17"><pre class="downlit sourceCode r">
+<p>A funnel, with the spread growing with the fitted value, means the
+variance depends on the mean (use <code>vcov_type = "HC3"</code>, or a
+family or transformation that expects it); a curve means the model
+misses something systematic. The tooth-growth strips have similar
+spreads. With a covariate in the model the fitted values spread out
+continuously, as in <code><a href="../reference/anova_ancova.html">anova_ancova()</a></code>:</p>
+<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"residuals"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/ancova-resid-1.png" class="r-plt" alt="" width="50%"><img src="visuals_files/figure-html/ancova-resid-2.png" class="r-plt" alt="" width="50%"></p>
 <p><code><a href="../reference/anova_manova.html">anova_manova()</a></code> gives both plots for each response, from
 that response’s univariate model:</p>
-<div class="sourceCode" id="cb18"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">manova</span>, <span class="st">"residuals_Petal.Width"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">manova</span>, <span class="st">"qq_Petal.Width"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/manova-resid-1.png" class="r-plt" alt="" width="50%"><img src="visuals_files/figure-html/manova-resid-2.png" class="r-plt" alt="" width="50%"></p>
-<p>Petal width shows both patterns worth knowing. The strips widen from
-left to right, a funnel: the species with wider petals vary more
-(residual standard deviations of 0.11, 0.20, 0.27 for setosa, versicolor
-and virginica), which is part of what Box’s M detects. And the Q-Q plot
-moves in steps, because petal width is recorded to the nearest 0.1 cm,
-so many residuals are tied.</p>
+<p>Petal width shows both patterns. The strips widen from left to right,
+a funnel: the species with wider petals vary more (residual standard
+deviations of 0.11, 0.20, 0.27 for setosa, versicolor and virginica),
+which is part of what Box’s M detects. The Q-Q plot moves in steps
+because petal width is recorded to the nearest 0.1 cm, so many residuals
+are tied.</p>
 </div>
 <div class="section level3">
 <h3 id="repeated-measures-residuals-q-q-and-index">Repeated measures: residuals, Q-Q and index<a class="anchor" aria-label="anchor" href="#repeated-measures-residuals-q-q-and-index"></a>
@@ -358,17 +385,17 @@ so many residuals are tied.</p>
 <p><code><a href="../reference/anova_rm.html">anova_rm()</a></code> plots the within-subject residuals, what is
 left of each value after its subject’s mean and its cell’s mean are
 removed, against the fitted values:</p>
-<div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">rm</span>, <span class="st">"residuals"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/rm-resid-1.png" class="r-plt" alt="" width="100%"></p>
 <p>Its Q-Q plot standardises them within each within-subject cell, as
 the normality tests in <code>$assumptions$normality</code> do:</p>
-<div class="sourceCode" id="cb20"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">rm</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/rm-qq-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The third plot shows the same residuals in the row order of
 <code>$data_used</code>:</p>
-<div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">rm</span>, <span class="st">"index"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/rm-index-1.png" class="r-plt" alt="" width="100%"></p>
 <p>It is only as informative as that order. <code>CO2</code> is sorted
@@ -384,28 +411,27 @@ a trend here would point to drift over time.</p>
 <div class="section level3">
 <h3 id="the-covariate-plot-anova_ancova">The covariate plot: <code>anova_ancova()</code><a class="anchor" aria-label="anchor" href="#the-covariate-plot-anova_ancova"></a>
 </h3>
-<div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"covariate"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/ancova-covariate-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The response against the covariate, one colour and one line of the
-fitted model per group, with a confidence band at
-<code>conf_level</code> for each line (when the additive model is used,
+<p>The plot shows the response against the covariate, with one colour
+and one fitted line per group and a confidence band at
+<code>conf_level</code> for each line. When the additive model is used
 those lines are parallel, and each group’s own least-squares line is
-added dashed). It shows the two things an ANCOVA rests on. The slopes:
-an ANCOVA with common slopes assumes parallel lines, and here the
-control group’s line is flat while both treatment lines rise, which is
-why the homogeneity-of-slopes test rejected and the fit kept the
-interaction (see <code>$slopes_test</code> and
-<code>$simple_slopes</code>). And the overlap: the adjusted means are
-read at the covariate mean, and a group whose points do not reach that
-value is being extrapolated along its line. The covariate is shown on
-its original scale even though the model is fitted on the centred
-covariate.</p>
+added dashed. The covariate is shown on its original scale even though
+the model is fitted on the centred covariate.</p>
+<p>The plot shows the two things an ANCOVA rests on. An ANCOVA with
+common slopes assumes parallel lines, and here the control group’s line
+is flat while both treatment lines rise, which is why the
+homogeneity-of-slopes test rejected and the fit kept the interaction
+(see <code>$slopes_test</code> and <code>$simple_slopes</code>). The
+marginal means are read at the covariate mean, so a group whose points
+do not reach that value is extrapolated along its line.</p>
 </div>
 <div class="section level3">
 <h3 id="the-canonical-plot-anova_manova">The canonical plot: <code>anova_manova()</code><a class="anchor" aria-label="anchor" href="#the-canonical-plot-anova_manova"></a>
 </h3>
-<div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">manova</span>, <span class="st">"canonical"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/manova-canonical-1.png" class="r-plt" alt="" width="100%"></p>
 <p>The canonical discriminant analysis finds the combinations of the
@@ -418,7 +444,7 @@ apart are well separated, as the three species are along
 the between-group variation, and
 <code>$assumptions$structure_coefficients</code> says which responses
 each axis is made of:</p>
-<div class="sourceCode" id="cb24"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">fits</span><span class="op">$</span><span class="va">manova</span><span class="op">$</span><span class="va">canonical</span></span>
 <span><span class="co">#&gt;   axis eigenvalue canonical_r prop_variance</span></span>
 <span><span class="co">#&gt; 1 Can1  32.191929   0.9848209   0.991212605</span></span>
@@ -445,7 +471,7 @@ single-degree-of-freedom term) the plot is a box plot of
 <code>fit$plots$name</code>; <code>plot(fit, 2)</code> takes the second
 by position, and <code>plot(fit)</code> the first. Asking for a name
 that does not exist lists the ones that do:</p>
-<div class="sourceCode" id="cb25"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">welch</span>, <span class="st">"means"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="va">p</span>, <span class="va">fits</span><span class="op">$</span><span class="va">welch</span><span class="op">$</span><span class="va">plots</span><span class="op">$</span><span class="va">means</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
@@ -458,7 +484,7 @@ that does not exist lists the ones that do:</p>
 <p>Building the plots takes time, and each plot carries its own copy of
 the data it draws. When you only want the numbers, in a simulation or a
 loop over many responses, turn them off:</p>
-<div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">quick</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_manova.html">anova_manova</a></span><span class="op">(</span><span class="va">iris</span>, <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">iris</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span>, <span class="st">"Species"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">quick</span><span class="op">$</span><span class="va">plots</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0</span></span>
@@ -479,35 +505,16 @@ return.</p>
 <h3 id="changing-a-plot-with">Changing a plot with <code>+</code><a class="anchor" aria-label="anchor" href="#changing-a-plot-with"></a>
 </h3>
 <p>The rest of this article attaches ggplot2:</p>
-<div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org" class="external-link">ggplot2</a></span><span class="op">)</span></span></code></pre></div>
 <p>Anything you can add to a ggplot you can add to these: labels,
-scales, themes, coordinates, facets, extra layers. The package’s plots
-use <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal()</a></code> with a few adjustments: a bold title,
-the legend at the bottom, and x labels rotated by 45 degrees when there
-are more than six groups or any label is longer than eight characters.
-Adding a <em>complete</em> theme such as <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_bw()</a></code>
-replaces all of that; adding <code><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme()</a></code> changes only the
-elements you name.</p>
-<p>To change the base theme of <em>every</em> plot instead, set the
-<code>anovakit.theme</code> option once, for example in your
-<code>.Rprofile</code>. It takes a complete theme, or a function
-returning one; <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">ggplot2::theme_get</a></code> makes the plots follow
-whatever <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">theme_set()</a></code> says. The package’s own adjustments
-are still added on top, and no number in any fit changes.</p>
-<div class="sourceCode" id="cb28"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">old</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>anovakit.theme <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_classic</a></span><span class="op">(</span>base_size <span class="op">=</span> <span class="fl">12</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span><span class="op">)</span>, <span class="st">"means"</span><span class="op">)</span></span></code></pre></div>
-<p><img src="visuals_files/figure-html/theme-option-1.png" class="r-plt" alt="" width="100%"></p>
+scales, themes, coordinates, facets, extra layers. A horizontal layout
+often suits long group names. <code><a href="https://ggplot2.tidyverse.org/reference/coord_flip.html" class="external-link">coord_flip()</a></code> moves the group
+labels to the vertical axis but leaves the package’s label rotation on
+the horizontal one, which is now the numeric axis, so undo it there.
+<code><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs()</a></code> names aesthetics, not positions: after the flip,
+<code>x</code> is still the groups.</p>
 <div class="sourceCode" id="cb29"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span><span class="va">old</span><span class="op">)</span></span></code></pre></div>
-<p>A horizontal layout often suits long group names.
-<code><a href="https://ggplot2.tidyverse.org/reference/coord_flip.html" class="external-link">coord_flip()</a></code> moves the group labels to the vertical axis
-but leaves the rotation on the horizontal one, which is now the numeric
-axis, so undo it there. Note too that <code><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">labs()</a></code> names
-aesthetics, not positions: after the flip, <code>x</code> is still the
-groups.</p>
-<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">welch</span>, <span class="st">"box"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/coord_flip.html" class="external-link">coord_flip</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/scale_continuous.html" class="external-link">scale_y_continuous</a></span><span class="op">(</span>breaks <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">450</span>, by <span class="op">=</span> <span class="fl">50</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
@@ -518,6 +525,41 @@ groups.</p>
 <p><img src="visuals_files/figure-html/modify-1.png" class="r-plt" alt="" width="100%"></p>
 </div>
 <div class="section level3">
+<h3 id="themes">Themes<a class="anchor" aria-label="anchor" href="#themes"></a>
+</h3>
+<p>The package’s plots use <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal()</a></code> with a bold
+title. Plots with groups on the x axis also put the legend at the bottom
+and rotate the x labels by 45 degrees when there are more than six
+groups or any label is longer than eight characters; the MANOVA
+marginal-means plot always rotates them. The covariate and canonical
+plots put the legend at the bottom, and the Q-Q, residual and index
+plots keep only the bold title. On one plot, adding a complete theme
+such as <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_bw()</a></code> replaces all of that, while adding
+<code><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme()</a></code> changes only the elements you name:</p>
+<div class="sourceCode" id="cb30"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">kw</span>, <span class="st">"box"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_bw</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">kw</span>, <span class="st">"box"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/theme.html" class="external-link">theme</a></span><span class="op">(</span>panel.grid.minor <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/element.html" class="external-link">element_blank</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p><img src="visuals_files/figure-html/theme-one-1.png" class="r-plt" alt="" width="50%"><img src="visuals_files/figure-html/theme-one-2.png" class="r-plt" alt="" width="50%"></p>
+<p>To change the base theme of every plot instead, set the
+<code>anovakit.theme</code> option once, for example in your
+<code>.Rprofile</code>. It takes a complete theme, or a function
+returning one; <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">ggplot2::theme_get</a></code> makes the plots follow
+whatever <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">theme_set()</a></code> says. The package’s adjustments are
+still added on top, and no number in any fit changes. The option is read
+when a fit builds its plots, so fits made before it was set keep
+theirs:</p>
+<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">old</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span>anovakit.theme <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_classic</a></span><span class="op">(</span>base_size <span class="op">=</span> <span class="fl">12</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span><span class="op">)</span>, <span class="st">"means"</span><span class="op">)</span></span></code></pre></div>
+<p><img src="visuals_files/figure-html/theme-option-1.png" class="r-plt" alt="" width="100%"></p>
+<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">options</a></span><span class="op">(</span><span class="va">old</span><span class="op">)</span></span></code></pre></div>
+<p><code>options(anovakit.theme = NULL)</code> goes back to
+<code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal()</a></code>. Anything other than a theme or a function
+returning one is an error when the next fit builds its plots. The “Plot
+theme” section of <code><a href="../reference/anovakit-package.html">?anovakit</a></code> has the same details.</p>
+</div>
+<div class="section level3">
 <h3 id="colour-blind-safe-palettes">Colour-blind-safe palettes<a class="anchor" aria-label="anchor" href="#colour-blind-safe-palettes"></a>
 </h3>
 <p>The default ggplot2 palette separates groups by hue at equal
@@ -526,7 +568,7 @@ tell apart. Two alternatives need nothing beyond R and ggplot2: the
 Okabe-Ito palette, which ships with R as <code><a href="https://rdrr.io/r/grDevices/palette.html" class="external-link">palette.colors()</a></code>,
 and the viridis scales built into ggplot2. Mapping a second channel,
 such as point shape, helps too, and survives greyscale printing:</p>
-<div class="sourceCode" id="cb31"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">okabe_ito</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/unname.html" class="external-link">unname</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/grDevices/palette.html" class="external-link">palette.colors</a></span><span class="op">(</span>palette <span class="op">=</span> <span class="st">"Okabe-Ito"</span><span class="op">)</span><span class="op">)</span><span class="op">[</span><span class="op">-</span><span class="fl">1</span><span class="op">]</span>  <span class="co"># drop black</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">glm</span>, <span class="st">"emmeans"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>shape <span class="op">=</span> <span class="va">.series</span><span class="op">)</span> <span class="op">+</span></span>
@@ -548,7 +590,7 @@ mapped to above.</p>
 </h3>
 <p>A plot can be split by any column of its data. The covariate plot’s
 group column is called <code>.cell</code>:</p>
-<div class="sourceCode" id="cb32"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">p</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"covariate"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">p</span><span class="op">$</span><span class="va">data</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "Postwt" "Prewt"  ".cell"</span></span>
@@ -560,7 +602,7 @@ covariate each group was observed over, are easier to compare.</p>
 panel per factor, by a column called <code>.term</code>. Adding a new
 <code><a href="https://ggplot2.tidyverse.org/reference/facet_wrap.html" class="external-link">facet_wrap()</a></code> replaces that faceting, which is how to change
 its layout or its strip labels:</p>
-<div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">bin</span>, <span class="st">"emmeans"</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/facet_wrap.html" class="external-link">facet_wrap</a></span><span class="op">(</span><span class="op">~</span> <span class="va">.term</span>, scales <span class="op">=</span> <span class="st">"free_x"</span>,</span>
 <span>             labeller <span class="op">=</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/as_labeller.html" class="external-link">as_labeller</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>race <span class="op">=</span> <span class="st">"Mother's race"</span>,</span>
@@ -578,7 +620,7 @@ package does not draw is a few lines away. A forest plot of every
 pairwise difference makes the comparisons, rather than the means, the
 thing you see. For the chick weights, from a Gaussian model, whose
 <code>$posthoc</code> intervals are Tukey-adjusted:</p>
-<div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cw</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">ph</span> <span class="op">&lt;-</span> <span class="va">cw</span><span class="op">$</span><span class="va">posthoc</span></span>
 <span><span class="va">ph</span><span class="op">$</span><span class="va">contrast</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/factor.html" class="external-link">factor</a></span><span class="op">(</span><span class="va">ph</span><span class="op">$</span><span class="va">contrast</span>, levels <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rev.html" class="external-link">rev</a></span><span class="op">(</span><span class="va">ph</span><span class="op">$</span><span class="va">contrast</span><span class="op">)</span><span class="op">)</span></span>
@@ -603,7 +645,7 @@ marginal-means plots draw.</p>
 are the same distance from 1. <code>$effect_sizes</code> of
 <code><a href="../reference/anova_bin.html">anova_bin()</a></code> holds each level’s odds ratio against the
 reference level, with profile-likelihood intervals:</p>
-<div class="sourceCode" id="cb35"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">or</span> <span class="op">&lt;-</span> <span class="va">fits</span><span class="op">$</span><span class="va">bin</span><span class="op">$</span><span class="va">effect_sizes</span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="va">or</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>x <span class="op">=</span> <span class="va">odds_ratio</span>, y <span class="op">=</span> <span class="va">comparison</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/geom_abline.html" class="external-link">geom_vline</a></span><span class="op">(</span>xintercept <span class="op">=</span> <span class="fl">1</span>, linetype <span class="op">=</span> <span class="st">"dashed"</span><span class="op">)</span> <span class="op">+</span></span>
@@ -618,8 +660,8 @@ reference level, with profile-likelihood intervals:</p>
 the <code>$effect_sizes</code> of <code><a href="../reference/anova_count.html">anova_count()</a></code>) and for
 the <code>ratio</code> column of a <code>$posthoc</code> on the log or
 logit scale. If you summarise <code>$emmeans_object</code> yourself with
-<strong>emmeans</strong>, pass <code>level = fit$conf_level</code>: the
-grid carries emmeans’ own default level, not the fit’s.</p>
+emmeans, pass <code>level = fit$conf_level</code>: the grid carries
+emmeans’ own default level, not the fit’s.</p>
 </div>
 <div class="section level3">
 <h3 id="combining-plots">Combining plots<a class="anchor" aria-label="anchor" href="#combining-plots"></a>
@@ -627,7 +669,7 @@ grid carries emmeans’ own default level, not the fit’s.</p>
 <p>Because each plot keeps its data, several plots of one kind can be
 combined into one faceted figure without any extra package. The four Q-Q
 plots of the MANOVA:</p>
-<div class="sourceCode" id="cb36"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">responses</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">iris</span><span class="op">)</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
 <span><span class="va">qq_data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span><span class="va">rbind</span>, <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">responses</span>, <span class="kw">function</span><span class="op">(</span><span class="va">r</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>response <span class="op">=</span> <span class="va">r</span>,</span>
@@ -642,9 +684,9 @@ plots of the MANOVA:</p>
 <span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/combine-1.png" class="r-plt" alt="" width="100%"></p>
 <p>Placing <em>different</em> plots side by side is a job for a layout
-package. <strong>patchwork</strong> is the usual choice; it is not an
+package. The patchwork package is the usual choice; it is not an
 anovakit dependency, so the chunk below is not run here:</p>
-<div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://patchwork.data-imaginist.com" class="external-link">patchwork</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"residuals"</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"qq"</span><span class="op">)</span></span></code></pre></div>
 <p>In a report built with knitr, a chunk with
@@ -658,14 +700,14 @@ pairs in this article were drawn.</p>
 <p><code><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave()</a></code> saves a ggplot to a file, with the format taken
 from the extension. Give the size in inches and, for raster formats, the
 resolution:</p>
-<div class="sourceCode" id="cb38"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"anorexia-covariate.png"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave</a></span><span class="op">(</span><span class="va">out</span>, <span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"covariate"</span><span class="op">)</span>, width <span class="op">=</span> <span class="fl">7</span>, height <span class="op">=</span> <span class="fl">4.5</span>,</span>
 <span>       dpi <span class="op">=</span> <span class="fl">300</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">out</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span></code></pre></div>
 <p>A loop saves every plot of a fit, named after it:</p>
-<div class="sourceCode" id="cb39"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb41"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"manova-plots"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.create</a></span><span class="op">(</span><span class="va">dir</span>, showWarnings <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="kw">for</span> <span class="op">(</span><span class="va">nm</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">manova</span><span class="op">$</span><span class="va">plots</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
@@ -681,29 +723,6 @@ resolution:</p>
 <p>PDF keeps lines and text sharp at any size, which suits print (so
 does SVG, for which <code><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave()</a></code> needs the svglite package);
 PNG at 300 dpi suits slides and documents.</p>
-</div>
-<div class="section level3">
-<h3 id="conf_level-sets-every-error-bar">
-<code>conf_level</code> sets every error bar<a class="anchor" aria-label="anchor" href="#conf_level-sets-every-error-bar"></a>
-</h3>
-<p>Every interval a function returns, and so every error bar and band in
-its plots, uses <code>conf_level</code>. The titles and subtitles follow
-it:</p>
-<div class="sourceCode" id="cb40"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">w99</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_welch.html">anova_welch</a></span><span class="op">(</span><span class="va">chickwts</span>, <span class="st">"weight"</span>, <span class="st">"feed"</span>, conf_level <span class="op">=</span> <span class="fl">0.99</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">w99</span>, <span class="st">"means"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">title</span></span>
-<span><span class="co">#&gt; [1] "Group means with 99% confidence intervals"</span></span>
-<span><span class="va">a99</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_ancova.html">anova_ancova</a></span><span class="op">(</span><span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/anorexia.html" class="external-link">anorexia</a></span>, <span class="st">"Postwt"</span>, <span class="st">"Treat"</span>, <span class="st">"Prewt"</span>,</span>
-<span>                    conf_level <span class="op">=</span> <span class="fl">0.99</span><span class="op">)</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"emmeans"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
-<span><span class="co">#&gt; [1] "Error bars are 99% confidence intervals"</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"covariate"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
-<span><span class="co">#&gt; [1] "Solid lines are the fitted model, with a slope for each group; bands are 99% confidence intervals for them"</span></span></code></pre></div>
-<p>The bars and bands are then wider by exactly the change in the
-critical value: for the casein group, the 99% interval for the mean is
-1.41 times as wide as the 95% one. To show a different level, refit with
-<code>conf_level</code> rather than editing the plot: the intervals in
-the tables and the figures then agree.</p>
 </div>
 </div>
 <div class="section level2">

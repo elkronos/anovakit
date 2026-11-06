@@ -62,9 +62,9 @@ validate their input the same way and return the same S3 class,
 - `verbose = FALSE` by default; progress goes through
   [`message`](https://rdrr.io/r/base/message.html), never
   [`cat`](https://rdrr.io/r/base/cat.html). No analysis function writes
-  to the console: warnings and messages raised by car,
-  [`glm`](https://rdrr.io/r/stats/glm.html) and afex are captured into
-  `$notes` instead.
+  to the console: warnings and messages raised by car, emmeans,
+  sandwich, afex and the stats model fits are captured into `$notes`
+  instead.
 
 - Rows with missing or infinite values in the analysed columns are
   dropped. The exception is the response of
