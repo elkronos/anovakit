@@ -593,7 +593,8 @@ anova_ancova <- function(data, response, groups, covariates,
         emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = "Covariate-adjusted marginal means",
-        ylab = sprintf("Adjusted %s", response))
+        ylab = sprintf("Adjusted %s", response),
+        ordered = is.ordered(data[[groups[1L]]]))
     }
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }

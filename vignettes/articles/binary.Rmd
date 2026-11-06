@@ -2,8 +2,8 @@
 title: "Binary outcomes: logistic regression with anova_bin()"
 description: >
   A walkthrough of anova_bin() on the Berkeley admissions data: analysis of
-  deviance, odds ratios, marginal probabilities, frequency weights and
-  separation.
+  deviance, odds ratios, marginal probabilities, separation, frequency
+  weights and robust standard errors.
 ---
 
 ```{r setup, include = FALSE}
@@ -16,13 +16,14 @@ library(anovakit)
 ```
 
 `anova_bin()` fits a logistic regression of a two-level outcome (admitted or
-not, healed or not) on one or more grouping variables, and reports an analysis
+not, healed or not) on one or more grouping variables. It reports an analysis
 of deviance table, odds ratios, marginal probabilities and pairwise odds
 ratios. Use it when each observation is a yes/no outcome, or when you have a
-table of such outcomes with a count in each row. For counts of events use
-`anova_count()` ([walkthrough](counts.html)); for other response distributions
-use `anova_glm()` ([walkthrough](glm.html)). The [decision guide](choosing.html)
-covers the choice in more detail.
+table of such outcomes with a count in each row.
+
+For counts of events, use `anova_count()` ([walkthrough](counts.html)); for
+other response distributions, `anova_glm()` ([walkthrough](glm.html)).
+[Choose an analysis](choosing.html) sets out the choice.
 
 ## The data
 
@@ -37,8 +38,8 @@ head(ucb)
 sum(ucb$Freq)
 ```
 
-The famous feature of these data is that the overall admission rates and the
-department-level rates point in different directions:
+In these data the overall admission rates and the department-level rates point
+in different directions:
 
 ```{r data-rates}
 # Overall admission rate by gender
@@ -55,15 +56,15 @@ applied
 rate <- prop.table(xtabs(Freq ~ Gender + Admit, data = ucb), 1)
 ```
 
-Overall, `r round(100 * rate["Male", "Admitted"], 1)`% of men and
-`r round(100 * rate["Female", "Admitted"], 1)`% of women were admitted. Within
-departments the gap mostly disappears, and in department A it reverses. The
-explanation is in the last table: most women applied to departments C to F,
-which admitted a third or fewer of their applicants, while just over half of the
-men applied to A or B, which admitted most of theirs. Department is associated
-with both gender and admission, so a comparison of genders that ignores it is
-confounded. This is Simpson's paradox, and a model with both variables is the
-way to separate the two.
+Across all departments, `r round(100 * rate["Male", "Admitted"], 1)`% of men
+and `r round(100 * rate["Female", "Admitted"], 1)`% of women were admitted.
+Within departments the gap mostly disappears, and in department A it reverses.
+The last table explains why: most women applied to departments C to F, which
+admitted a third or fewer of their applicants, while just over half of the men
+applied to A or B, which admitted most of theirs. Department is associated with
+both gender and admission, so a comparison of genders that ignores it is
+confounded. This is Simpson's paradox, and a model with both variables
+separates the two.
 
 Each row of `ucb` stands for `Freq` identical applicants, so the counts go in
 as frequency weights. For later comparison, here is the same data with one row
@@ -77,13 +78,12 @@ nrow(applicants)
 
 ## Fitting the model
 
-### Which outcome is the success?
+### Which outcome is the success
 
 The response can be a factor with two observed levels, a logical, a numeric
 0/1 column, or a character column with two values. The function models the
-probability of one level, the *success*, and by default that is the second
-level of the factor, which is what `glm()` does. For `Admit` the second level
-is `"Rejected"`:
+probability of one level, the *success*. By default that is the second level
+of the factor, as in `glm()`. For `Admit` the second level is `"Rejected"`:
 
 ```{r success-default}
 levels(ucb$Admit)
@@ -91,10 +91,10 @@ default <- anova_bin(ucb, "Admit", "Gender", weights = "Freq", plots = FALSE)
 default$notes[1]
 ```
 
-That model is not wrong, but every odds ratio would be an odds ratio of
-*rejection*. Name the level you want with `success`. (A logical response
-models `TRUE`, a 0/1 response models `1`, and a character response is sorted
-in the C locale, so the default does not depend on your session.)
+Every odds ratio from that model would be an odds ratio of *rejection*. Name
+the level you want with `success`. A logical response models `TRUE`, a 0/1
+response models `1`, and a character response is sorted in the C locale, so
+the default does not depend on your session.
 
 ### The fit
 
@@ -109,8 +109,8 @@ fit
 Reading the printout from the top:
 
 - The method and the call.
-- `Observations used: 24`. This counts *rows* of `$data_used`, not applicants:
-  each row carries its weight, and the weights add up to
+- `Observations used: 24`. This counts *rows* of `$data_used`, not
+  applicants: each row carries its weight, and the weights add up to
   `r format(sum(fit$data_used$Freq), big.mark = ",")`.
 - The omnibus table, with a heading that says what it holds: Type II tests,
   likelihood-ratio chi-square statistics.
@@ -145,8 +145,8 @@ alone$anova
 ```
 
 Without department the gender statistic is
-`r round(alone$anova$statistic, 1)` on 1 degree of freedom. The difference
-between the two tables is the paradox in numbers.
+`r round(alone$anova$statistic, 1)` on 1 degree of freedom. Adjusting for
+department brings it down to `r round(fit$anova$statistic[1], 2)`.
 
 ### The model as a whole
 
@@ -162,10 +162,10 @@ predictors (the null deviance minus the deviance, on
 McFadden's pseudo R squared, `1 - deviance / null deviance`: the model removes
 `r round(100 * fit$model_stats$mcfadden_r2, 1)`% of the deviance. It is not a
 proportion of variance and runs lower than the R squared of a linear model, so
-judge it against other logistic models rather than against that.
-`success_level` repeats which level was modelled, so a saved result says what
-its odds ratios are odds of. `AIC`, `BIC` and `logLik` use the prior weights,
-and are there to compare models fitted to the same data.
+judge it against other logistic models. `success_level` repeats which level
+was modelled, so a saved result says what its odds ratios are odds of. `AIC`,
+`BIC` and `logLik` use the prior weights, and are there to compare models
+fitted to the same data.
 
 ## Effect sizes
 
@@ -184,9 +184,9 @@ for men, in the same department: `r round(fit$effect_sizes$odds_ratio[1], 3)`,
 with an interval that comfortably includes 1. The department rows compare each
 department with A; in department F the odds of admission are
 `r round(fit$effect_sizes$odds_ratio[6], 3)` times those in A, whatever the
-applicant's gender. (`term`, `se_log_or` and `statistic`, left out above, hold
-the coefficient's name, its standard error on the log-odds scale and its Wald
-z statistic.)
+applicant's gender. The columns left out above, `term`, `se_log_or` and
+`statistic`, hold the coefficient's name, its standard error on the log-odds
+scale and its Wald z statistic.
 
 Put the adjusted odds ratio beside the one from the gender-only model:
 
@@ -224,13 +224,14 @@ only the profile interval means anything (see [Separation](#separation)).
 
 Profiling refits the model several times for each coefficient. The model
 has only grouping factors, so the refits run on the data collapsed to one
-weighted row per cell and outcome, which has the same likelihood: the number
-of rows does not add to the cost, but the number of coefficients does. Left at
-its default, `ci_method` gives Wald intervals instead, with a note, when the
-model has more than 50 coefficients. That holds under separation too, except
-that an odds ratio separation drives to infinity or to zero still gets its
-profile interval, since a Wald interval means nothing there.
-`ci_method = "profile"` given explicitly always profiles every coefficient.
+weighted row per cell and outcome, which has the same likelihood. The number
+of rows therefore does not add to the cost, but the number of coefficients
+does. Left at its default, `ci_method` gives Wald intervals instead, with a
+note, when the model has more than 50 coefficients. That holds under
+separation too, except that an odds ratio separation drives to infinity or to
+zero still gets its profile interval, since a Wald interval means nothing
+there. `ci_method = "profile"` given explicitly always profiles every
+coefficient.
 
 ### Choosing the reference level
 
@@ -246,8 +247,8 @@ all.equal(flipped$anova, fit$anova)
 ```
 
 The ratios are now men against women and each department against F. The
-omnibus table is unchanged: the reference level changes what the coefficients
-compare, not the fitted model.
+omnibus table is unchanged, because the reference level changes what the
+coefficients compare and leaves the fitted model as it was.
 
 ## Marginal means and comparisons
 
@@ -264,8 +265,8 @@ column says which), averaged over the levels of the other. The averaging gives
 each department equal weight on the log-odds scale before transforming back,
 so the gender rows are not the raw admission rates of
 `r round(rate["Male", "Admitted"], 3)` and
-`r round(rate["Female", "Admitted"], 3)`: they are the probabilities for a
-hypothetical applicant spread evenly over the six departments. That is the
+`r round(rate["Female", "Admitted"], 3)`. They are the probabilities for a
+hypothetical applicant spread evenly over the six departments, which is the
 comparison the adjusted model makes.
 
 `$posthoc` holds the pairwise comparisons, as odds ratios:
@@ -304,10 +305,10 @@ either kind, so there is no note about it.
 
 ## Checking assumptions
 
-A logistic regression makes few distributional assumptions that can be checked
-from grouped data like these: the outcome is binary, the observations are
-independent, and the log-odds are additive in the factors (which the
-`interaction` option below tests). `$assumptions` has two elements.
+From grouped data like these, a logistic regression has few distributional
+assumptions to check: the outcome is binary, the observations are independent,
+and the log-odds are additive in the factors (the `interaction` option
+[below](#interaction-and-type) tests that). `$assumptions` has two elements.
 
 ```{r assumptions-dispersion}
 fit$assumptions$dispersion
@@ -316,9 +317,9 @@ fit$assumptions$dispersion
 `dispersion` is always `NA`, and a note says why. For a 0/1 response the
 Pearson dispersion carries no information about overdispersion: in a model
 saturated in the cells it equals N / (N - k) whatever the data, and it changes
-when the same trials are grouped into weighted rows. You can see the second
-point by computing it on the two versions of this data set, which describe the
-same fit:
+when the same trials are grouped into weighted rows. Computing it on the two
+versions of this data set, which describe the same fit, shows the second
+point:
 
 ```{r assumptions-pearson}
 pearson <- function(m) sum(residuals(m, type = "pearson")^2) / df.residual(m)
@@ -337,15 +338,15 @@ props <- fit$assumptions$proportions
 props[props$Admit == "Admitted", ]
 ```
 
-This is the table to look at before trusting a model: it shows the raw
-material, and it shows cells with few observations. Department B had only
+Look at this table before trusting the model. It shows the raw material and
+the cells with few observations: department B had only
 `r props$group_total[props$.cell == "Female : B" & props$Admit == "Admitted"]`
 women applicants. When fewer than about 5 events or non-events are expected in
-a cell, `$notes` warns that the likelihood-ratio test is liberal; no cell here
-comes close, but the next example shows the note.
+a cell, `$notes` warns that the likelihood-ratio test is liberal. No cell here
+comes close; the separation example below shows the note.
 
-More on the checks across the package is in the
-[diagnostics article](diagnostics.html).
+The [diagnostics article](diagnostics.html) covers the checks across the
+package.
 
 ### Separation
 
@@ -366,11 +367,12 @@ sep_fit <- anova_bin(healing, "healed", "arm", weights = "n")
 sep_fit
 ```
 
-The notes say what happened. The row with a count of zero was dropped (a
+Besides the success level and the dispersion, the notes record four things.
+The row with a count of zero was dropped: a
 zero-weight row contributes nothing, and it is counted in `$n_removed`, which
-is why the printout says 5 observations were used). Separation was detected in
-`arm = high`, and the profile interval for that odds ratio is open on one side.
-And the data are sparse: with 15 patients an arm, fewer than 5 non-events are
+is why the printout says 5 observations were used. Separation was detected in
+`arm = high`. The profile interval for that odds ratio is open on one side.
+The data are also sparse: with 15 patients an arm, fewer than 5 non-events are
 expected in each arm if the arms do not differ, so the likelihood-ratio test in
 the table is liberal. The note names two tests that hold their level better,
 and both are one line of code:
@@ -393,11 +395,11 @@ print(sep_wald$effect_sizes[, es_cols], digits = 3)
 
 The point estimate for `high vs control` is meaningless, and so is its Wald
 p-value of `r round(sep_fit$effect_sizes$p_value[2], 2)`. The profile interval
-is still informative: it runs from
+still carries information: it runs from
 `r round(sep_fit$effect_sizes$conf_low[2], 1)` to infinity, so the data rule
 out an odds ratio below about `r round(sep_fit$effect_sizes$conf_low[2])`. The
-Wald interval, from 0 to infinity, says nothing at all. This is why
-`ci_method = "profile"` is the default.
+Wald interval, from 0 to infinity, rules out nothing. That difference is the
+reason `ci_method = "profile"` is the default.
 
 The separation note also warns that the separated arm's marginal probability
 and the comparisons involving it are affected. They are Wald-based, and as
@@ -415,7 +417,7 @@ estimates.
 
 ## Plots
 
-`fit$plots` holds two **ggplot2** objects. Neither is drawn until you ask for
+`fit$plots` holds two ggplot2 objects. Neither is drawn until you ask for
 it, with `plot(fit, "name")` or `fit$plots$name`.
 
 ```{r plot-proportions}
@@ -423,22 +425,22 @@ plot(fit, "proportions")
 ```
 
 The `proportions` plot stacks the observed share of each outcome in each cell
-(gender by department here), labelled with percentages. What to look for:
-cells whose proportions differ from their neighbours, cells near 0% or 100%
-(the warning sign of separation), and whether a pattern in one factor holds
-across the levels of the other. Here the within-department gender differences
-are small next to the differences between departments, and department A is
-the one where women did clearly better.
+(gender by department here), labelled with percentages. Look for cells whose
+proportions differ from their neighbours, cells near 0% or 100% (the warning
+sign of separation), and whether a pattern in one factor holds across the
+levels of the other. Here the within-department gender differences are small
+next to the differences between departments, and department A is the one
+where women did clearly better.
 
 ```{r plot-emmeans}
 plot(fit, "emmeans")
 ```
 
 The `emmeans` plot shows the estimated marginal probabilities with their
-intervals, one panel per factor because the model is additive. What to look
-for: intervals that do not overlap are clearly different; overlapping ones
-need the comparisons in `$posthoc`. Each is a ggplot, so it can be modified
-with `+`:
+intervals, one panel per factor because the model is additive. Intervals that
+do not overlap are clearly different; for overlapping ones, read the
+comparisons in `$posthoc`. Each plot is a ggplot, so it can be modified with
+`+`:
 
 ```{r plot-custom}
 plot(fit, "emmeans") +
@@ -446,9 +448,9 @@ plot(fit, "emmeans") +
   ggplot2::labs(y = "Probability of admission")
 ```
 
-The [plots article](visuals.html) covers customisation in more detail.
+[Plots and themes](visuals.html) covers customisation.
 
-## Options worth knowing
+## Options
 
 ### `interaction` and `type`
 
@@ -476,27 +478,26 @@ print(fit_int$effect_sizes[, es_cols], digits = 3)
 
 The `Gender` row is the gender odds ratio in department A, and each
 `Dept:Gender` row is the gender odds ratio in another department divided by
-the one in A. All of them are below 1: department A is the odd one out.
+the one in A. All of them are below 1, so department A is the odd one out.
 
 `$emmeans` now has one row per cell, and `$posthoc` compares every pair of
-cells (`r nrow(fit_int$posthoc)` comparisons, most of them not interesting).
-For the comparison that matters here, women against men within each
-department, pass `$emmeans_object` to **emmeans** directly:
+cells (`r nrow(fit_int$posthoc)` comparisons, most of them of no interest).
+For women against men within each department, pass `$emmeans_object` to
+emmeans directly:
 
 ```{r interaction-contrast}
 emmeans::contrast(fit_int$emmeans_object, method = "revpairwise", by = "Dept")
 ```
 
-The grid carries **emmeans**' own default confidence level rather than
+The grid carries emmeans' own default confidence level rather than
 `conf_level`, so give `level =` when you summarise it.
 
 ```{r interaction-plot}
 plot(fit_int, "emmeans")
 ```
 
-With department on the x axis and one line per gender, the interaction is easy
-to see: the two lines lie almost on top of each other everywhere except in
-department A.
+With department on the x axis and one line per gender, the two lines lie
+almost on top of each other everywhere except in department A.
 
 With an interaction in the model, `type` matters. Type II tests each main
 effect assuming the interaction is absent; Type III (fitted under sum-to-zero
@@ -526,73 +527,78 @@ anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
 ```
 
 The two agree closely for gender and differ for department, whose effects are
-large. The likelihood-ratio test is the better default; the Wald test is there
-mainly because it is the one that can use a robust covariance (below).
+large. The likelihood-ratio test is the better default. The Wald test is there
+mainly because it can use a robust covariance (next section).
 
-### Frequency weights and `vcov_type`
+### Weights and `vcov_type`
 
-Whole-number weights, some above 1, are frequency weights: a row with weight
-`w` counts as `w` identical observations. The weighted table therefore gives
-the same answers as one row per applicant. `one_row` was fitted above on the
-`r format(nrow(applicants), big.mark = ",")`-row version:
-
-```{r weights-equal}
-all.equal(fit$anova, one_row$anova)
-data.frame(comparison = fit$effect_sizes$comparison,
-           or_table = fit$effect_sizes$odds_ratio,
-           or_applicants = one_row$effect_sizes$odds_ratio,
-           se_table = fit$effect_sizes$se_log_or,
-           se_applicants = one_row$effect_sizes$se_log_or)
-```
-
-The standard errors agree to five or more significant figures (the rest is
-`glm()`'s convergence tolerance). The one statistic that differs is BIC,
-because R bases it on the number of rows:
-
-```{r weights-bic}
-c(table = fit$model_stats$BIC, applicants = one_row$model_stats$BIC)
-```
-
-`vcov_type` requests heteroskedasticity-consistent (sandwich) standard errors,
-`"HC0"` to `"HC4"`, which need the **sandwich** package. With frequency
-weights they are computed as they would be on the expanded data. A sandwich
-computed row by row on the table would treat each row as one unit, and
-overstate the standard errors badly:
+`weights` names a column of prior weights. Whole-number weights, some above 1,
+are frequency weights: a row with weight `w` counts as `w` identical
+observations, so the 24-row table `ucb` gives the same results as
+`applicants`, with one row per applicant. `vcov_type` asks for
+heteroskedasticity-consistent (sandwich) standard errors, `"HC0"` to `"HC4"`,
+which need the sandwich package. With frequency weights they too are
+computed as they would be on the expanded data. `one_row` was fitted on
+`applicants` [above](#checking-assumptions):
 
 ```{r weights-hc3}
 hc_table <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
                       success = "Admitted", vcov_type = "HC3", plots = FALSE)
 hc_rows <- anova_bin(applicants, "Admit", c("Gender", "Dept"),
                      success = "Admitted", vcov_type = "HC3", plots = FALSE)
-naive <- sqrt(diag(sandwich::vcovHC(fit$model, type = "HC3")))[-1]
-data.frame(comparison = hc_table$effect_sizes$comparison,
-           model_based = fit$effect_sizes$se_log_or,
+all.equal(fit$anova, one_row$anova)
+c(table = fit$model_stats$BIC, applicants = one_row$model_stats$BIC)
+data.frame(comparison = fit$effect_sizes$comparison,
+           se_table = fit$effect_sizes$se_log_or,
+           se_applicants = one_row$effect_sizes$se_log_or,
            hc3_table = hc_table$effect_sizes$se_log_or,
-           hc3_applicants = hc_rows$effect_sizes$se_log_or,
-           hc3_row_by_row = unname(naive))
+           hc3_applicants = hc_rows$effect_sizes$se_log_or)
 ```
 
-The HC3 standard errors from the table and from one row per applicant are the
-same, and here both are close to the model-based ones. The last column,
-`sandwich::vcovHC()` applied to the table directly, is wrong by a factor of 10
-or more. The notes record what the robust covariance was used for:
+```{r weights-naive, include = FALSE}
+naive <- sqrt(diag(sandwich::vcovHC(fit$model, type = "HC3")))[-1]
+naive_ratio <- unname(naive / hc_table$effect_sizes$se_log_or)
+```
+
+The model-based standard errors agree to five or more significant figures (the
+rest is `glm()`'s convergence tolerance), and BIC is the same because its
+penalty uses the `r format(sum(ucb$Freq), big.mark = ",")` observations the
+weights represent, not the 24 rows. The HC3 standard errors from the table
+and from one row per applicant are the same, and close to the model-based
+ones. `sandwich::vcovHC()` applied to the weighted table directly would treat
+each row as one unit, and here gives standard errors
+`r floor(min(naive_ratio))` to `r ceiling(max(naive_ratio))` times too large.
+
+The notes record what the robust covariance was used for:
 
 ```{r weights-hc3-notes}
-hc_table$notes
+grep("robust", hc_table$notes, value = TRUE, ignore.case = TRUE)
 ```
 
 Robust standard errors reach the odds ratios, the marginal means and the
-comparisons, but not a likelihood-ratio omnibus test, which compares
-deviances; set `test_statistic = "Wald"` for an omnibus test that uses them.
-The odds-ratio intervals also become Wald intervals, since a profile
-likelihood cannot use a sandwich covariance.
+comparisons. The likelihood-ratio omnibus test compares deviances and does
+not use them; set `test_statistic = "Wald"` for an omnibus test that does. The
+odds-ratio intervals become Wald intervals, since a profile likelihood cannot
+use a sandwich covariance.
+
+Weights that are not whole numbers are not frequencies. They are used as
+given, as `glm()` uses prior weights, so their scale matters, and `$notes`
+says so. `AIC`, `BIC` and `logLik` in `$model_stats` are then `NA`, with a
+note, because R's binomial log-likelihood rounds the weights; McFadden's R
+squared and `lr_vs_null` come from the deviances and are still reported.
+Unequal weights of this kind also inflate the likelihood-ratio statistics. A
+further note estimates by how much and recommends `vcov_type = "HC3"`. Two
+more notes pass on the "non-integer #successes" warnings from `glm()` and
+`car::Anova()`.
+[Weights and robust standard errors](weights.html) sets out the rules for
+every kind of weight and for `vcov_type` across the package.
 
 ### `conf_level` and `posthoc`
 
 `conf_level` sets the level of every interval in the result: odds ratios,
 marginal probabilities and comparisons. `posthoc = FALSE` skips the pairwise
-comparisons, which is worth doing when there are many cells; `$notes` records
-how many were skipped, and `$effect_sizes` is still computed.
+comparisons, which saves time when there are many cells; `$notes` records how
+many were skipped, and `$effect_sizes` is still computed.
 
 ```{r conf-level}
 narrow <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
@@ -619,9 +625,9 @@ fit$notes
 
 Other fits in this article showed the notes you may meet elsewhere: a
 zero-weight row dropped, separation detected and an open-ended profile
-interval, and robust standard errors with frequency weights. The
-[results article](results.html) explains how the notes fit with the rest of
-the object.
+interval, sparse data, a step-down adjustment, and robust standard errors with
+frequency weights. [Working with results](results.html) explains how
+`$notes` fits with the rest of the object.
 
 ## Reporting the result
 
@@ -646,7 +652,7 @@ A write-up of the adjusted analysis might read:
 > the departments women applied to. The gender odds ratio varied between
 > departments (χ²(`r fit_int$anova$df[3]`) =
 > `r round(fit_int$anova$statistic[3], 1)`, p
-> `r fmt_p(fit_int$anova$p_value[3])`), being largest in department A.
+> `r fmt_p(fit_int$anova$p_value[3])`) and was largest in department A.
 
 ## See also
 
@@ -655,5 +661,6 @@ A write-up of the adjusted analysis might read:
 - [Counts and rates with `anova_count()`](counts.html), the companion function
   for count responses.
 - [Generalised linear models with `anova_glm()`](glm.html) for other families.
+- [Weights and robust standard errors](weights.html).
 - [Working with results](results.html) and [Diagnostics](diagnostics.html).
-- [Plots and visual customisation](visuals.html).
+- [Plots and themes](visuals.html).

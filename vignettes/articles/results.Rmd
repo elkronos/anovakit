@@ -15,10 +15,9 @@ library(anovakit)
 ```
 
 Every anovakit function returns an object of class `anovakit_fit`. It is a
-plain named list: every table is a data frame, every figure a **ggplot2**
-object, and nothing is hidden behind accessor functions. This article shows
-what is in it and how to use it. The examples use `chickwts`, the weights of
-71 chicks raised on six feed supplements.
+plain named list: every table is a data frame, every figure a ggplot2
+object, and nothing is hidden behind accessor functions. The examples use
+`chickwts`, the weights of 71 chicks raised on six feed supplements.
 
 ```{r data}
 table(chickwts$feed)
@@ -28,9 +27,10 @@ table(chickwts$feed)
 fit <- anova_glm(chickwts, "weight", "feed")
 ```
 
-`anova_glm()` with its default Gaussian family is a classical one-way ANOVA,
-which is a convenient model-based example. Everything below applies to all
-eight functions; where one differs, it says so.
+`anova_glm()` with its default Gaussian family is a classical one-way ANOVA.
+Everything below applies to all eight functions; where one differs, the text
+says so. [Design choices](design.html) explains the rules behind what a fit
+contains.
 
 ## What is in a fit
 
@@ -49,11 +49,11 @@ The first fourteen components are the same for every function:
 | `anova` | The omnibus test table. |
 | `effect_sizes` | The method's effect sizes, with intervals where they exist. |
 | `emmeans` | Estimated marginal means (group summaries for Welch and Kruskal-Wallis). |
-| `emmeans_object` | The **emmeans** grid behind `$emmeans`, for further contrasts. |
+| `emmeans_object` | The emmeans grid behind `$emmeans`, for further contrasts. |
 | `posthoc` | Pairwise comparisons. |
 | `assumptions` | The assumption checks this method needs. |
 | `plots` | Named list of ggplot2 figures. |
-| `data_used` | The rows and columns the analysis actually used. |
+| `data_used` | The rows and columns the analysis used. |
 | `n_removed` | How many input rows are not in `data_used`. |
 | `conf_level` | The level of every interval in the fit. |
 | `notes` | Everything the function decided or could not compute. |
@@ -71,8 +71,9 @@ walkthrough describes its own, and `?anovakit_fit` lists them all.
 fit
 ```
 
-`summary()` shows the rest: effect sizes, marginal means, comparisons and the
-assumption checks. It returns an object, so you can keep it and print it later
+`summary()` shows the rest: the assumption checks (for `anova_glm()` these
+include the coefficient table), effect sizes, marginal means, comparisons and,
+where the function computes them, model-fit statistics. It returns an object, so you can keep it and print it later
 with different `digits`.
 
 ```{r summary}
@@ -81,7 +82,7 @@ class(s)
 s
 ```
 
-Both use `digits` for display only; the numbers stored in the fit are never
+`digits` changes the display only; the numbers stored in the fit are never
 rounded.
 
 ## The tables are ordinary data frames
@@ -102,7 +103,7 @@ attributes(fit$anova)[c("ss_type", "statistic")]
 
 The pairwise comparisons have one row per pair. `p_value` is the *unadjusted*
 p-value, `p_adjusted` the adjusted one, and `adjustment` names the method, so
-nothing about the adjustment has to be remembered from the call:
+the table records its own adjustment:
 
 ```{r posthoc}
 names(fit$posthoc)
@@ -122,8 +123,8 @@ sig[order(-abs(sig$estimate)), ]
 The intervals in `$posthoc` from the model-based functions are simultaneous.
 With a single-step method such as Tukey's they use the same adjustment as
 `p_adjusted`, so an interval that excludes zero agrees with an adjusted p-value
-below `1 - conf_level`. Step-down methods such as Holm's cannot be turned into
-intervals; **emmeans** then uses Bonferroni intervals, and `$notes` says so.
+below `1 - conf_level`. For step-down methods such as Holm's, see
+[Design choices](design.html#multiplicity-adjustments-depend-on-the-method).
 
 Writing a table out is one line:
 
@@ -131,13 +132,14 @@ Writing a table out is one line:
 write.csv(fit$posthoc, "comparisons.csv", row.names = FALSE)
 ```
 
-## Read the notes
+## The notes
 
 `$notes` is a character vector. It records every decision the function made on
 your behalf (which model it chose, which rows it dropped, which correction it
-applied), everything it could not compute and why, and anything **car**,
-**emmeans**, **stats** or **afex** said while fitting. None of it is printed to
-the console as a warning, so this is the one place to look.
+applied), everything it could not compute and why, and every warning or
+message raised while fitting ([Design choices](design.html#nothing-prints)
+lists whose). None of it is printed to the console, so `$notes` is the one
+place to look.
 
 This simple fit needed no decisions, so its notes are empty:
 
@@ -145,8 +147,8 @@ This simple fit needed no decisions, so its notes are empty:
 fit$notes
 ```
 
-Ask for heteroscedasticity-consistent standard errors and there is more to
-say: which parts of the output use them, and what they cannot do.
+With heteroscedasticity-consistent standard errors, the notes say which parts
+of the output use them and what they cannot do.
 
 ```{r notes}
 robust <- anova_glm(chickwts, "weight", "feed", vcov_type = "HC3",
@@ -154,9 +156,9 @@ robust <- anova_glm(chickwts, "weight", "feed", vcov_type = "HC3",
 writeLines(robust$notes)
 ```
 
-Treat the notes as a checklist to read before you quote a number. They are
-plain text, so you can also search them, for example to flag which fits in a
-batch used robust standard errors:
+Read them before you quote a number. They are plain text, so you can also
+search them, for example to flag which fits in a batch used robust standard
+errors:
 
 ```{r notes-search}
 fits <- list(
@@ -195,7 +197,7 @@ str(g$data_used)
 
 `$emmeans` and `$posthoc` cover the usual questions: the mean of each group,
 and every pairwise difference. For anything else, `$emmeans_object` is the
-**emmeans** reference grid the tables were built from.
+emmeans reference grid the tables were built from.
 
 ```{r emm-object}
 grid <- fit$emmeans_object
@@ -210,6 +212,9 @@ ct <- emmeans::contrast(grid, "trt.vs.ctrl", ref = "horsebean")
 confint(ct, level = fit$conf_level)
 ```
 
+The grid carries emmeans' default level, so pass `level = fit$conf_level` as
+here (see [Design choices](design.html#conf_level-sets-every-interval)).
+
 Or a custom contrast: the four plant-based feeds against the two animal-based
 ones. The coefficients follow the order of the factor levels.
 
@@ -222,16 +227,11 @@ plant_vs_animal <- list(
 confint(emmeans::contrast(grid, plant_vs_animal), level = fit$conf_level)
 ```
 
-Two things to keep in mind:
-
-- The grid carries **emmeans**' default confidence level, not the fit's
-  `conf_level`. Pass `level = fit$conf_level` (as above) when you want the two
-  to agree.
-- When grouping factors enter a model additively, the means are reported per
-  factor and `$emmeans_object` is a named list with one grid per factor. In
-  `anova_manova()` there is one grid per response, under
-  `fit$univariate[[response]]$emmeans_object`. `anova_welch()` and `anova_kw()`
-  fit no model **emmeans** can use, so theirs is `NULL`.
+When grouping factors enter a model additively, the means are reported per
+factor and `$emmeans_object` is a named list with one grid per factor. In
+`anova_manova()` there is one grid per response, under
+`fit$univariate[[response]]$emmeans_object`. For Welch and Kruskal-Wallis
+fits it is `NULL` (see the next section).
 
 ## Going further with the model
 
@@ -271,7 +271,7 @@ customise it. When you are fitting many models and do not need the figures,
 
 ## Many analyses at once
 
-Because every function has the same signature and returns the same structure,
+Every function takes its columns by name and returns the same structure, so
 running one analysis over several outcomes or subsets is a loop. Here the
 built-in `ToothGrowth` data compare the two vitamin C supplements separately at
 each dose:
@@ -333,3 +333,13 @@ fit$call
 
 Fits made with `plots = FALSE` are much smaller, which matters when you store
 many of them.
+
+## See also
+
+- [Design choices](design.html): what a function decides on your behalf, and
+  which settings can change a result.
+- [Plots and themes](visuals.html): every figure and how to customise it.
+- [Diagnostics](diagnostics.html): the contents of `$assumptions`.
+- [Weights and robust standard errors](weights.html): what `vcov_type` and
+  `weights` change in the tables.
+- `?anovakit_fit`: every component, including those specific to one function.

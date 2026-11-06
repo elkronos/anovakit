@@ -161,10 +161,14 @@
 #'   displaced it the real column is \code{emm_estimate}, so both are tried:
 #'   reading the wrong one would plot the factor codes and say nothing.
 #' @param lower,upper names of the interval columns, or \code{NULL}.
+#' @param ordered whether the factor on the x axis is ordered in the data. The
+#'   marginal-means table holds plain factors, so the caller says; an ordered
+#'   factor's means are joined by a line.
 #' @noRd
 .plot_emmeans <- function(emm, factors, estimate = "estimate",
                           lower = "conf_low", upper = "conf_high",
-                          conf_level = 0.95, title = NULL, ylab = NULL) {
+                          conf_level = 0.95, title = NULL, ylab = NULL,
+                          ordered = FALSE) {
   term_col <- attr(emm, "term_col")
   df <- as.data.frame(emm)
   factors <- intersect(factors, names(df))
@@ -219,7 +223,7 @@
   # Lines connect the levels of the other factors, which is what shows an
   # interaction; for a single unordered factor they would suggest a trend
   # between categories that have no order, so only the points are drawn.
-  if (length(factors) > 1L || is.ordered(emm[[xvar]])) {
+  if (length(factors) > 1L || isTRUE(ordered) || is.ordered(emm[[xvar]])) {
     p <- p + ggplot2::geom_line(linewidth = 0.7)
   }
   p <- p + ggplot2::geom_point(size = 2.5)
@@ -333,7 +337,10 @@
   }
   p +
     ggplot2::labs(title = sprintf("%s against %s by group", response, covariate),
-                  subtitle = subtitle,
+                  # One clause per line: as one line the subtitle runs off
+                  # the right edge at ordinary figure widths.
+                  subtitle = if (is.null(subtitle)) NULL
+                             else gsub("; ", ";\n", subtitle, fixed = TRUE),
                   x = xlab, y = response, colour = "Group") +
     .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),

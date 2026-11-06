@@ -1,0 +1,344 @@
+---
+title: "Design choices"
+description: >
+  Why the defaults are what they are, which decisions a function makes for
+  you and where it records them, and which settings can and cannot change a
+  result.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+Every anovakit function follows the same rules about what it prints, which
+settings can change a result, and what it decides for you. Each is shown below
+on a small example; for the object itself see [Working with
+results](results.html).
+
+## Nothing prints
+
+No analysis function writes to the console, and no plot is drawn as a side
+effect. Warnings and messages raised while fitting by car, emmeans,
+sandwich, afex and base R's model functions are captured and recorded in
+`$notes` instead of reaching the console. Here a logistic regression with
+separation in one group prints nothing, and the second of its notes
+describes the problem:
+
+```{r silent}
+sep <- data.frame(
+  group = rep(c("a", "b", "c"), each = 10),
+  y     = c(rep(0, 10), rep(c(0, 1), 5), rep(c(0, 1, 1, 1, 1), 2))
+)
+out <- capture.output(fit_sep <- anova_bin(sep, "y", "group", plots = FALSE))
+length(out)
+writeLines(strwrap(fit_sep$notes[2], 72))
+```
+
+`verbose = TRUE` reports progress through `message()`, so
+`suppressMessages()` silences it. Plots are built and stored in `$plots`; they
+appear only when you print one.
+
+## `conf_level` sets every interval
+
+One argument sets the level of every interval in the tables a function
+returns: group and marginal means, pairwise differences, effect sizes, odds and
+rate ratios, simple slopes and the error bars in the plots.
+
+```{r conf-level}
+fit90 <- anova_glm(chickwts, "weight", "feed", conf_level = 0.90,
+                   plots = FALSE)
+fit90$conf_level
+head(fit90$posthoc[, c("contrast", "estimate", "conf_low", "conf_high")], 3)
+```
+
+It does not reach `$emmeans_object`. That is emmeans' own reference grid,
+and it carries emmeans' default level of 0.95. Pass the level to the function
+that summarises the grid, such as `confint()`; given to `contrast()` it has no
+effect on the intervals:
+
+```{r conf-level-grid}
+ctl <- emmeans::contrast(fit90$emmeans_object, "trt.vs.ctrl")
+confint(ctl, level = fit90$conf_level)
+```
+
+## Type II by default, and what Type III means
+
+`anova_manova()`, `anova_bin()`, `anova_count()` and `anova_glm()` report
+Type II tests by default. Each main effect is tested after the other main
+effects, and the result does not depend on how the factors are coded.
+`anova_ancova()` and `anova_rm()` default to Type III; the
+[ANCOVA](ancova.html) and [repeated measures](repeated-measures.html)
+walkthroughs explain their tables. The type used is printed in the heading and
+stored in `attr(fit$anova, "ss_type")`.
+
+When you ask for `type = "III"`, the model is fitted under sum-to-zero
+contrasts. In a model with an interaction, a Type III main-effect row tests
+the main effect only under those contrasts. Under R's default treatment
+contrasts, `car::Anova(type = 3)` tests the simple effect of each factor at the
+reference level of the other, and still labels the table Type III.
+
+The `warpbreaks` data with the first five rows removed make an unbalanced
+two-way design:
+
+```{r type-3}
+wb <- warpbreaks[-(1:5), ]
+t3 <- anova_glm(wb, "breaks", c("wool", "tension"), interaction = TRUE,
+                type = "III", plots = FALSE)
+unlist(t3$model$contrasts)
+t3$anova
+```
+
+The same model fitted with treatment contrasts and passed to car gives a
+different `wool` row, which is the effect of wool at `tension = "L"` only:
+
+```{r type-3-car}
+car::Anova(lm(breaks ~ wool * tension, data = wb), type = 3)["wool", ]
+```
+
+A model with aliased coefficients, such as one with an empty cell, has no
+Type III tests. The function then computes Type II tests, and the heading,
+`$method` and `$notes` say so.
+
+## Covariates are centred
+
+`anova_ancova()` mean-centres every covariate before fitting
+(`center_covariates = TRUE`), and `anova_manova()` centres its covariates too.
+Centring always moves the intercept to the covariate mean. When the model
+contains a group-by-covariate term and `type = "III"`, it also moves the group
+row, because that row then tests the groups at covariate = 0. On a baseline
+score distributed around 100, zero is far from the data:
+
+```{r centring}
+set.seed(2024)
+n <- 240
+trial <- data.frame(
+  arm      = factor(rep(c("placebo", "low", "high"), each = n / 3)),
+  baseline = rnorm(n, mean = 100, sd = 12)
+)
+effect <- c(placebo = 0, low = 3, high = 7)[as.character(trial$arm)]
+trial$score <- 0.6 * trial$baseline + effect + rnorm(n, 0, 6)
+
+centred <- anova_ancova(trial, "score", "arm", "baseline",
+                        force_interaction = TRUE, plots = FALSE)
+uncentred <- anova_ancova(trial, "score", "arm", "baseline",
+                          force_interaction = TRUE,
+                          center_covariates = FALSE, plots = FALSE)
+data.frame(term        = centred$anova$term,
+           p_centred   = signif(centred$anova$p_value, 3),
+           p_uncentred = signif(uncentred$anova$p_value, 3))
+all.equal(centred$emmeans, uncentred$emmeans)
+```
+
+On the same rows, the `arm` row has p =
+`r format(signif(centred$anova$p_value[2], 2))` centred and p =
+`r sprintf("%.3f", uncentred$anova$p_value[2])` uncentred. The other rows and the
+marginal means are the same, because `$emmeans`, `$posthoc` and
+`$simple_slopes` are always evaluated with every covariate at its mean (a 0/1
+covariate included). In the additive model, and under Type II, centring does
+not change the group row. The means subtracted are in `$covariate_means`.
+
+## The ANCOVA model is chosen by a test unless you fix it
+
+By default `anova_ancova()` chooses between the additive and the
+separate-slopes model with a homogeneity-of-slopes test on the same data, and
+records the choice in `$notes`. The p-values that follow do not allow for that
+selection. If the test misses a real slope difference, the group row and
+`$posthoc` reject more often than their nominal level: somewhat so when the
+groups were randomised, and far more so when the groups' covariate means
+differ, which `$notes` points out. `force_interaction = TRUE` fixes the
+separate-slopes model in advance and avoids the selection step. With several
+grouping factors, `anova_ancova()` fits their interaction by default
+(`interaction = TRUE`), as a factorial ANCOVA does. The [ANCOVA
+walkthrough](ancova.html) covers both choices in detail.
+
+## Comparisons follow the model
+
+When grouping factors enter a model additively (`interaction = FALSE`, the
+default except in `anova_ancova()`), `$emmeans` and `$posthoc` are reported for
+each factor on its own, averaged over the others, with a `term` column and one
+multiplicity family per factor. Comparing every cell would repeat each
+main-effect difference once per level of the other factors, and adjust for
+comparisons that carry no extra information.
+
+```{r additive}
+additive <- anova_glm(warpbreaks, "breaks", c("wool", "tension"),
+                      plots = FALSE)
+additive$emmeans[, c("term", "wool", "tension", "estimate")]
+additive$posthoc[, c("term", "contrast", "p_adjusted")]
+```
+
+When the model contains the interaction, the cells are compared:
+
+```{r interaction}
+cells <- anova_glm(warpbreaks, "breaks", c("wool", "tension"),
+                   interaction = TRUE, plots = FALSE)
+nrow(cells$emmeans)
+nrow(cells$posthoc)
+```
+
+A level combination with no data is left out when the model cannot estimate
+it, and named in `$notes` when the model estimates it by extrapolation (as an
+additive model does). With no model to follow, `anova_welch()` and
+`anova_kw()` combine the grouping columns into one factor of the cells that
+contain data and compare those.
+
+## Every argument is named
+
+No modelling function has a `...` argument except `anova_rm()`, and that one
+accepts only `fun_aggregate`, `observed`, `type` and
+`anova_table = list(p_adjust_method = )`, passed to `afex::aov_ez()`. Anything
+else is refused by name rather than ignored:
+
+```{r dots}
+rm_data <- data.frame(id = rep(1:6, each = 2), time = rep(c("pre", "post"), 6),
+                      y = c(5, 7, 4, 6, 6, 9, 5, 5, 7, 8, 4, 7))
+try(anova_rm(rm_data, "y", "id", "time", es = "pes"))
+```
+
+Every argument that reaches a fitting call is named, so nothing can be passed
+through that overrides a decision the function has made. A `contrasts =`
+argument, for example, would defeat `type = "III"` while the table still said
+Type III, so it is an unused argument:
+
+```{r contrasts}
+try(anova_glm(warpbreaks, "breaks", "tension", contrasts = list()))
+```
+
+A column may play only one role (response, group, covariate, weights, offset
+or subject):
+
+```{r roles}
+try(anova_glm(warpbreaks, "breaks", "tension", weights = "breaks"))
+```
+
+Prior weights are given as a column name rather than a vector, so they are
+subsetted with the data and stay aligned when a row is dropped. Rows with a
+weight of zero contribute nothing to the fit. They are dropped and counted in
+`$n_removed`, so that row counts, robust standard errors and information
+criteria agree with the fit:
+
+```{r zero-weights}
+w <- warpbreaks
+w$wt <- 1
+w$wt[1:3] <- 0
+anova_glm(w, "breaks", "tension", weights = "wt", plots = FALSE)$n_removed
+```
+
+## Global settings do not change results
+
+Options set for some other analysis in the same session do not change a fit's
+results. `afex::afex_options()` cannot change an `anova_rm()` fit, because
+the type, the contrasts and the emmeans model are all set explicitly. The
+`emmeans::emm_options()` settings that change a result (adjustment, sidedness,
+null, degrees of freedom, scale) are cleared for the duration of the fit; only
+computational limits such as `rg.limit` are kept, so you can still let a large
+grid through.
+
+The
+global `contrasts` option can change how a Type II model's coefficients are
+coded, but not its tests, marginal means or comparisons; `type = "III"` always
+fits under sum-to-zero contrasts, and odds and rate ratios always come from a
+treatment-coded fit. Here an `emm_options()` setting that turns off every
+adjustment leaves the Tukey adjustment in place:
+
+```{r emm-options}
+emmeans::emm_options(contrast = list(adjust = "none"))
+tension <- anova_glm(warpbreaks, "breaks", "tension", plots = FALSE)
+tension$posthoc[, c("contrast", "p_value", "p_adjusted", "adjustment")]
+emmeans::emm_options(contrast = NULL)
+```
+
+The only option of its own that anovakit reads is `anovakit.theme`, which
+sets the base theme of every plot and changes no result; the [plots
+guide](visuals.html) shows how to use it.
+
+## Assumption checks match the method
+
+Each function checks the assumptions its own method makes. `anova_welch()`
+tests normality within each group rather than on pooled residuals. Pooling
+groups with different variances produces a mixture that can fail a normality
+test when every group is normal, which would argue against the method being
+used. For the same reason `anova_rm()` tests the within-subject residuals in
+each within-subject cell.
+
+```{r welch-normality}
+welch <- anova_welch(chickwts, "weight", "feed", plots = FALSE)
+welch$assumptions$normality[, c("group", "n", "statistic", "p_value")]
+```
+
+`anova_kw()` assumes no distribution, so it runs no checks unless you ask
+with `diagnostics = TRUE`:
+
+```{r kw-checks}
+length(anova_kw(chickwts, "weight", "feed", plots = FALSE)$assumptions)
+names(anova_kw(chickwts, "weight", "feed", plots = FALSE,
+               diagnostics = TRUE)$assumptions)
+```
+
+The [diagnostics guide](diagnostics.html) lists every check by function and
+what to do when one fails.
+
+## Robust standard errors
+
+`vcov_type = "HC0"` to `"HC4"` on `anova_ancova()`, `anova_bin()`,
+`anova_count()` and `anova_glm()` changes the standard errors in the
+coefficient table and in the marginal means and comparisons. In
+`anova_ancova()` it also reaches the F tests (as robust Wald F tests) and the
+simple slopes, and in the other three the omnibus table when
+`test_statistic = "Wald"`. Likelihood-ratio tests rest on the model. Where
+fitted values sit on the boundary (separation, an all-zero group) or a cell has
+one observation, the model-based covariance is used, with a note. [Weights and
+robust standard errors](weights.html) gives the rules, including how
+whole-number weights are treated as frequency weights.
+
+## Multiplicity adjustments depend on the method
+
+`anova_welch()` and `anova_kw()` compare groups directly and accept the
+`p.adjust()` methods, defaulting to `"holm"` and `"BH"`. The other six take
+their comparisons from emmeans, which also offers `"tukey"` (their
+default), `"sidak"`, `"scheffe"` and `"dunnettx"`. Every `$posthoc` table
+reports the unadjusted p-value in `p_value`, the adjusted one in `p_adjusted`
+and the method in `adjustment`, as the table above shows.
+
+The intervals in `$posthoc` from the emmeans-based functions are
+simultaneous. emmeans cannot turn a step-down method such as Holm's into
+intervals and uses Bonferroni intervals instead; `$notes` says when that
+happens. `anova_welch()` reports a per-comparison interval for each pair.
+
+## Notes record every decision
+
+Whenever a function chooses something on your behalf, it says so in `$notes`:
+the model chosen by a slopes test or a dispersion statistic, a centred
+covariate, dropped rows or subjects, a fallback from Type III to Type II, an
+odds ratio that is not identified. The ANCOVA above, fitted without
+`force_interaction`, records two decisions:
+
+```{r decisions}
+writeLines(anova_ancova(trial, "score", "arm", "baseline", plots = FALSE)$notes)
+```
+
+Missing optional packages are recorded the same way. Without MASS,
+`anova_count(model = "auto")` fits a quasi-Poisson model where it would have
+chosen a negative binomial, and without sandwich a `vcov_type` request falls
+back to model-based standard errors; each records the fallback in `$notes`.
+`anova_rm()` without afex, and `anova_count(model = "negbin")` without
+MASS, stop with an error instead.
+
+[Working with results](results.html#the-notes) shows how to read and search
+the notes, and how `$data_used` and `$n_removed` account for every row you
+supplied.
+
+## See also
+
+- [Working with results](results.html): the object every function returns.
+- [Weights and robust standard errors](weights.html).
+- [Diagnostics](diagnostics.html): the assumption checks and what to do when
+  one fails.
+- [Choose an analysis](choosing.html): which function fits which design.
+- `?anovakit` lists the shared conventions, and `?anovakit_fit` the
+  components of a fit.

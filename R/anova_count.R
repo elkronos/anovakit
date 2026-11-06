@@ -603,7 +603,8 @@ anova_count <- function(data, response, groups,
         emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = sprintf("Estimated %s rate by group", response),
-        ylab = sprintf("Estimated %s", response))
+        ylab = sprintf("Estimated %s", response),
+        ordered = is.ordered(data[[groups[1L]]]))
     }
     added <- .add_cell(d, groups)
     obs <- added$data

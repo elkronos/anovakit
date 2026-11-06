@@ -1,0 +1,519 @@
+---
+title: "Weights and robust standard errors"
+description: >
+  How anova_bin(), anova_count() and anova_glm() read prior weights as
+  frequencies, trials or sampling weights, what happens to zero weights, and
+  where vcov_type's robust covariance reaches and when it is not used.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7,
+                      fig.height = 4, dpi = 96, out.width = "100%")
+```
+
+```{r libs}
+library(anovakit)
+```
+
+Three functions take prior weights and four take a robust covariance.
+
+## Which functions take weights
+
+| Function | `weights` | `vcov_type` |
+|---|---|---|
+| `anova_bin()` | yes | yes |
+| `anova_count()` | yes | yes |
+| `anova_glm()` | yes | yes |
+| `anova_ancova()` | no | yes |
+
+`weights` names a numeric column of the data, not a vector. The weights are
+then subsetted with the rows, so they stay aligned when a row is dropped for a
+missing value; a vector evaluated against the original data would not. The
+column must be numeric and non-negative, and it cannot also be the response, a
+grouping column or the offset. A missing or infinite weight is treated like a
+missing value in any other analysed column: the row is dropped and counted in
+`$n_removed`.
+
+## How the weights are read
+
+What a weight means depends on the weights and on the response. The package
+decides which reading applies and says so in `$notes` when the reading
+changes a result: the Pearson dispersion in `anova_count()`, the robust
+covariance, and weights that are not whole numbers.
+
+| The weights are | On | Read as | Each row is |
+|---|---|---|---|
+| whole numbers, some above 1 | a 0/1 response (binomial, quasi-binomial) or counts (Poisson, quasi-Poisson, negative binomial) | frequency weights | that many identical observations |
+| whole numbers | a proportion (binomial) | numbers of trials | one binomial observation |
+| not all whole numbers, or any weights in another family | any response | weights used as given, as `glm()` uses them | one unit |
+
+`anova_bin()` always has a 0/1 response and `anova_count()` always has
+counts, so in those two functions whole-number weights are always
+frequencies. `anova_glm()` also takes proportions, where whole-number
+weights are trials, and the Gaussian, Gamma, inverse Gaussian and `quasi()`
+families, where they are precision weights. In both cases each row stays one
+unit.
+
+## Frequency weights
+
+A frequency weight says how many identical observations a row stands for.
+`UCBAdmissions` is a table of 4,526 applications to graduate school at
+Berkeley in 1973, by gender, department and outcome. As a data frame it has
+one row per cell and the count in `Freq`:
+
+```{r ucb}
+ucb <- as.data.frame(UCBAdmissions)
+head(ucb)
+c(rows = nrow(ucb), applicants = sum(ucb$Freq))
+```
+
+For comparison, here is the same data with one row per applicant:
+
+```{r applicants}
+applicants <- ucb[rep(seq_len(nrow(ucb)), ucb$Freq),
+                  c("Admit", "Gender", "Dept")]
+row.names(applicants) <- NULL
+nrow(applicants)
+```
+
+The 24-row table with `weights = "Freq"` and the 4,526 rows without weights
+give the same analysis:
+
+```{r ucb-fits}
+from_table <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
+                        success = "Admitted", plots = FALSE)
+from_rows <- anova_bin(applicants, "Admit", c("Gender", "Dept"),
+                       success = "Admitted", plots = FALSE)
+all.equal(from_table$anova, from_rows$anova)
+data.frame(comparison = from_table$effect_sizes$comparison,
+           or_table = from_table$effect_sizes$odds_ratio,
+           or_rows = from_rows$effect_sizes$odds_ratio,
+           se_table = from_table$effect_sizes$se_log_or,
+           se_rows = from_rows$effect_sizes$se_log_or)
+c(table = from_table$model_stats$BIC, rows = from_rows$model_stats$BIC)
+```
+
+The odds ratios and standard errors agree to about six significant figures;
+the rest is `glm()`'s convergence tolerance. BIC agrees too, because with
+frequency weights its penalty uses the `r format(sum(ucb$Freq), big.mark = ",")`
+observations the weights represent, not the `r nrow(ucb)` rows. The marginal
+means, the comparisons and the observed proportions in
+`$assumptions$proportions` match in the same way.
+
+Counts work the same way in `anova_count()`. `InsectSprays` has 72 insect
+counts, 12 for each of six sprays. Tabulated, it becomes one row per spray and
+count, with the frequency in `Freq`:
+
+```{r spray-table}
+spray_tab <- as.data.frame(table(spray = InsectSprays$spray,
+                                 count = InsectSprays$count),
+                           stringsAsFactors = FALSE)
+spray_tab$count <- as.numeric(spray_tab$count)
+c(rows = nrow(spray_tab), nonzero_rows = sum(spray_tab$Freq > 0),
+  observations = sum(spray_tab$Freq))
+```
+
+```{r spray-fits}
+spray_rows <- anova_count(InsectSprays, "count", "spray", plots = FALSE)
+spray_freq <- anova_count(spray_tab, "count", "spray", weights = "Freq",
+                          plots = FALSE)
+c(rows = spray_rows$model_type, table = spray_freq$model_type)
+c(rows = spray_rows$dispersion, table = spray_freq$dispersion)
+all.equal(spray_rows$anova, spray_freq$anova)
+all.equal(spray_rows$effect_sizes, spray_freq$effect_sizes)
+all.equal(spray_rows$emmeans, spray_freq$emmeans)
+grep("frequency weights", spray_freq$notes, value = TRUE)
+```
+
+The Pearson dispersion, on which `model = "auto"` chooses between Poisson and
+negative binomial, divides by the observations minus the parameters. Divided
+by the rows of the table instead, it would be larger, and could switch the
+model for no reason in the data. In `anova_glm()` the residual degrees of
+freedom are counted in observations in the same way, so a quasi-Poisson or
+quasi-binomial fit, an F test and a t interval on a frequency table equal
+those of the expanded data. `$model` is still the `glm` that `stats::glm()`
+fitted to the rows, and `$notes` says when its own `summary()` would
+differ.
+
+The [counts walkthrough](counts.html) shows the
+`$assumptions$cell_counts` table and the `observed` plot for a frequency
+table.
+
+## Zero weights
+
+`spray_tab` above still holds the combinations of spray and count that never
+occurred, with a frequency of zero. A row with weight zero contributes nothing
+to the fit, so it is dropped before fitting and counted in `$n_removed`:
+
+```{r zero}
+c(supplied = nrow(spray_tab), used = nrow(spray_freq$data_used),
+  removed = spray_freq$n_removed)
+grep("zero", spray_freq$notes, value = TRUE)
+```
+
+Keeping those rows would make the row counts, the robust standard errors and
+the information criteria disagree with the fit. As for every function,
+`nrow($data_used) + $n_removed` is the number of rows supplied.
+
+A group whose weights are all zero is dropped from the analysis, and the note
+names it:
+
+```{r zero-group}
+no_f <- spray_tab
+no_f$Freq[no_f$spray == "F"] <- 0
+grep("Level", anova_count(no_f, "count", "spray", weights = "Freq",
+                          plots = FALSE)$notes, value = TRUE)
+```
+
+When every weight is zero, or only one row has a non-zero weight, the function
+stops with an error.
+
+## Trials behind proportions
+
+A binomial response can be given as a proportion, with the number of trials
+behind each proportion as the weight. That form is for `anova_glm()`:
+`anova_bin()` takes a 0/1 response only. `esoph` is a case-control study of
+oesophageal cancer, with the numbers of cases and controls in each of 88
+combinations of age group, alcohol and tobacco consumption:
+
+```{r esoph}
+es <- esoph
+es$agegp <- factor(es$agegp, ordered = FALSE)
+es$alcgp <- factor(es$alcgp, ordered = FALSE)
+es$trials <- es$ncases + es$ncontrols
+es$prop <- es$ncases / es$trials
+head(es[, c("agegp", "alcgp", "ncases", "trials", "prop")])
+```
+
+(The factors are made unordered so that the coefficients are comparisons with
+the first level rather than polynomial trends.) With one row per subject
+instead, the same data have `r sum(es$trials)` rows of a 0/1 response:
+
+```{r esoph-long}
+per_subject <- rbind(
+  data.frame(agegp = rep(es$agegp, es$ncases),
+             alcgp = rep(es$alcgp, es$ncases), case = 1),
+  data.frame(agegp = rep(es$agegp, es$ncontrols),
+             alcgp = rep(es$alcgp, es$ncontrols), case = 0))
+nrow(per_subject)
+```
+
+```{r esoph-fits}
+as_prop <- anova_glm(es, "prop", c("agegp", "alcgp"), family = binomial(),
+                     weights = "trials", plots = FALSE)
+as_rows <- anova_glm(per_subject, "case", c("agegp", "alcgp"),
+                     family = binomial(), plots = FALSE)
+all.equal(as_prop$anova, as_rows$anova)
+data.frame(term = as_prop$emmeans$term,
+           level = ifelse(is.na(as_prop$emmeans$agegp),
+                          as.character(as_prop$emmeans$alcgp),
+                          as.character(as_prop$emmeans$agegp)),
+           prob_prop = as_prop$emmeans$estimate,
+           prob_rows = as_rows$emmeans$estimate)
+```
+
+The likelihood-ratio tests and the marginal means are the same. The
+deviance explained is not: it is measured against the saturated model, which
+differs between the two forms, and a note says so. McFadden's R squared is
+computed from the Bernoulli log-likelihood and is the same either way.
+
+The trials are not frequencies, because each row is one binomial observation
+rather than a count of identical ones. The Pearson dispersion of the
+proportions carries information about overdispersion, which a 0/1 response
+cannot show, so `anova_glm()` checks it:
+
+```{r esoph-dispersion}
+as_prop$assumptions$dispersion
+grep("Pearson dispersion", as_prop$notes, value = TRUE)
+```
+
+A robust covariance also treats each of the `r nrow(es)` rows as one unit, so
+it allows for the extra variation between rows that the dispersion of
+`r round(as_prop$assumptions$dispersion, 2)` measures. The per-subject form
+cannot see that variation, and its robust standard errors stay close to the
+model-based ones:
+
+```{r esoph-robust}
+prop_hc3 <- anova_glm(es, "prop", c("agegp", "alcgp"), family = binomial(),
+                      weights = "trials", vcov_type = "HC3", plots = FALSE)
+rows_hc3 <- anova_glm(per_subject, "case", c("agegp", "alcgp"),
+                      family = binomial(), vcov_type = "HC3", plots = FALSE)
+data.frame(term = as_prop$emmeans$term,
+           se_model = as_prop$emmeans$se,
+           se_hc3_prop = prop_hc3$emmeans$se,
+           se_hc3_rows = rows_hc3$emmeans$se)
+```
+
+Trials do not inflate the tests the way unequal sampling weights do (below):
+they set the variance of each proportion, as precision weights do.
+
+## Sampling and other weights that are not whole numbers
+
+Weights that are not whole numbers are used as given, as `stats::glm()` uses
+prior weights: each row's contribution to the likelihood is multiplied by its
+weight, as if it were that many observations. The fit, the tests, the
+intervals and the marginal means all treat them that way. The robust
+covariance treats each row as one unit instead, and two checks rescale the
+weights to average 1 first: the sparse-data check of `anova_bin()` and the
+Pearson dispersion on which `anova_count()` chooses its model.
+
+Suppose the applicants above came from a survey that sampled men at a higher
+rate than women, so that each woman's response is weighted up and each man's
+down. The weights here are made up for illustration and average 1:
+
+```{r sampling-weights}
+applicants$w <- c(Male = 0.4, Female = 2.2)[as.character(applicants$Gender)]
+applicants$w <- applicants$w / mean(applicants$w)
+tapply(applicants$w, applicants$Gender, unique)
+```
+
+### Their scale matters
+
+Weights used as given have no natural scale, and the tests scale with them.
+The same weights divided by 100 make the 4,526 applicants count as about 45,
+and every likelihood-ratio statistic falls by the same factor:
+
+```{r scale}
+sw <- anova_bin(applicants, "Admit", c("Gender", "Dept"), weights = "w",
+                success = "Admitted", plots = FALSE)
+applicants$w_small <- applicants$w / 100
+sw_small <- anova_bin(applicants, "Admit", c("Gender", "Dept"),
+                      weights = "w_small", success = "Admitted",
+                      plots = FALSE)
+data.frame(term = sw$anova$term, mean_1 = sw$anova$statistic,
+           mean_0.01 = sw_small$anova$statistic)
+grep("average", sw_small$notes, value = TRUE)
+```
+
+`anova_bin()`, `anova_count()` and a Poisson or binomial `anova_glm()` give
+that note whenever such weights do not average 1 (within about 10%).
+Rescale sampling weights to average 1, as above, or analyse them with a
+design-based method such as `survey::svyglm()`.
+
+In a binomial model, weights that are not whole numbers also make AIC, BIC
+and the log-likelihood in `$model_stats` `NA`, with a note, because R's
+binomial log-likelihood rounds the weights. McFadden's R squared and the
+model-versus-null test use the deviances and are reported. `glm()`'s warning
+about "non-integer #successes" is recorded in `$notes` rather than printed.
+
+In `anova_count()` the Pearson dispersion in `$dispersion` and
+`$model_dispersion` is computed with the weights rescaled to average 1, so the
+choice between Poisson and negative binomial does not depend on their scale.
+In `anova_glm()` the dispersion is that of the model as weighted, so in a
+Poisson or binomial fit it scales with the weights, and so does the
+overdispersion check; the note on the weights' scale says so. A family that
+estimates its dispersion (Gaussian, Gamma, quasi families) absorbs the scale
+of the weights.
+
+### Unequal weights distort the tests
+
+Weights that average 1 still distort the tests when they are unequal: some
+terms are inflated, others deflated. A likelihood-ratio or Wald test treats
+a woman's row, of weight `r sprintf("%.2f", max(applicants$w))`, as that many
+independent observations, while it is one person. How much that moves a test
+depends on where the heavy rows fall, so `$notes` computes the factor for
+each term from the sandwich covariance:
+
+```{r inflation}
+sw$anova
+grep("unequal", sw$notes, value = TRUE)
+```
+
+The calculation assumes the weights are not inverse variances; precision
+weights, such as the trials behind a proportion, would not inflate the tests.
+The note appears in `anova_bin()`, `anova_count()` and `anova_glm()` for
+Poisson, quasi-Poisson, negative binomial, binomial and quasi-binomial fits
+(on a binomial, only for weights that are not whole numbers on a 0/1
+response). It never appears for Gaussian, Gamma or inverse Gaussian fits,
+where weights are read as precision weights. It is given only when some test
+would reject 7.5% or more of true null hypotheses at a nominal 5%. Under the
+quasi families' F tests the estimated dispersion removes the average
+inflation but not the part due to unequal weights, and the note says so.
+
+The remedy the note names is a robust covariance, and an omnibus test that
+uses it:
+
+```{r inflation-fix}
+sw_hc3 <- anova_bin(applicants, "Admit", c("Gender", "Dept"), weights = "w",
+                    success = "Admitted", vcov_type = "HC3",
+                    test_statistic = "Wald", plots = FALSE)
+sw_hc3$anova
+data.frame(comparison = sw$effect_sizes$comparison,
+           se_model = sw$effect_sizes$se_log_or,
+           se_hc3 = sw_hc3$effect_sizes$se_log_or)
+grep("unequal", sw_hc3$notes, value = TRUE)
+```
+
+Dept, the term the note names as the worst affected (its factor is the
+larger one), falls from `r round(sw$anova$statistic[2])` to
+`r round(sw_hc3$anova$statistic[2])`;
+Gender rises from `r sprintf("%.2f", sw$anova$statistic[1])` to
+`r sprintf("%.2f", sw_hc3$anova$statistic[1])`. Those are the directions of
+the note's factors, but the sizes differ from them, because the comparison
+also moves from a likelihood-ratio to a Wald statistic. Most standard errors
+grow, and the inflation note is gone.
+Weights alone do not describe strata or clusters; a design-based analysis
+with survey accounts for those too.
+
+## Robust standard errors with `vcov_type`
+
+`vcov_type = "model"` (the default) uses the model's own covariance.
+`"HC0"` to `"HC4"` use a heteroscedasticity-consistent (sandwich) covariance
+from the sandwich package, which does not rely on the family's variance
+function or on equal residual variances. HC0 is White's estimator; HC1 to
+HC4 refine it for small samples, HC1 by a degrees-of-freedom factor and HC2
+to HC4 by each row's leverage. HC3, the default of `sandwich::vcovHC()` and
+the type used throughout this guide, is the usual choice for small or
+unbalanced groups.
+
+The robust covariance does not reach every table:
+
+| Result | `anova_ancova()` | `anova_bin()` | `anova_count()` | `anova_glm()` |
+|---|---|---|---|---|
+| Coefficients | no coefficient table | `$effect_sizes` (odds ratios) | `$effect_sizes` (rate ratios) | `$assumptions$coefficients` |
+| `$emmeans` and `$posthoc` | yes | yes | yes | yes |
+| Omnibus `$anova` | yes, as Wald F tests | with `test_statistic = "Wald"` | with `test_statistic = "Wald"` | with `test_statistic = "Wald"` |
+| `$simple_slopes` | yes | no such table | no such table | no such table |
+| Not reached | `$effect_sizes`, `$slopes_test` | `$anova` unless `test_statistic = "Wald"` | `$anova` unless `test_statistic = "Wald"`; `$dispersion` and the model choice | `$anova` unless `test_statistic = "Wald"`; `$effect_sizes` |
+
+In `anova_bin()`, `anova_count()` and `anova_glm()`, a likelihood-ratio or F
+test compares deviances, so it rests on the model-based variance whatever
+`vcov_type` says; set `test_statistic = "Wald"` for an omnibus test that uses
+the robust covariance. `$notes` says which tests use it. Coefficient
+intervals in `anova_bin()` and `anova_glm()` become Wald intervals built from
+it, since a profile likelihood cannot use a sandwich covariance.
+
+On `warpbreaks` (numbers of warp breaks per loom, 9 looms in each of six
+cells), the default likelihood-ratio table is unchanged by `vcov_type`, while
+a Wald table uses it:
+
+```{r count-robust}
+breaks_model <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                            interaction = TRUE, plots = FALSE)
+breaks_lr <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                         interaction = TRUE, vcov_type = "HC3",
+                         plots = FALSE)
+breaks_wald <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
+                           interaction = TRUE, vcov_type = "HC3",
+                           test_statistic = "Wald", plots = FALSE)
+all.equal(breaks_model$anova, breaks_lr$anova)
+breaks_wald$anova
+data.frame(comparison = breaks_model$effect_sizes$comparison,
+           low_model = breaks_model$effect_sizes$conf_low,
+           high_model = breaks_model$effect_sizes$conf_high,
+           low_hc3 = breaks_lr$effect_sizes$conf_low,
+           high_hc3 = breaks_lr$effect_sizes$conf_high)
+grep("omnibus", breaks_lr$notes, value = TRUE)
+```
+
+In `anova_ancova()` the omnibus table itself changes: its F tests become Wald
+F tests built from the robust covariance (through `car::Anova(vcov. = )`), on
+the model's residual degrees of freedom, so the table has no sums of squares.
+Its `statistic` attribute, which `print()` shows in the heading, says so.
+`MASS::anorexia` has the weights of 72 young women before and after one of
+three treatments:
+
+```{r ancova-robust}
+an <- MASS::anorexia
+an_hc3 <- anova_ancova(an, "Postwt", "Treat", "Prewt",
+                       force_interaction = TRUE, vcov_type = "HC3",
+                       plots = FALSE)
+an_hc3$anova
+attr(an_hc3$anova, "statistic")
+grep("Wald F", an_hc3$notes, value = TRUE)
+```
+
+`$effect_sizes` are still computed from the model-based sums of squares,
+which the covariance does not change, and the homogeneity-of-slopes test
+stays the model-based F test. In `anova_ancova()` and in a Gaussian
+`anova_glm()`, comparisons that use robust standard errors keep the model's
+residual degrees of freedom, and a note warns that with very small groups of
+unequal variance they can be anti-conservative; for a one-way design without
+covariates, `anova_welch()` is better calibrated.
+
+### Robust standard errors and weights
+
+With frequency weights the sandwich is computed per observation, as it would
+be on the data expanded to one row per observation. `sandwich::vcovHC()`
+applied to the weighted rows directly would count each row as one unit with
+an inflated score, and overstate the standard errors:
+
+```{r freq-robust}
+table_hc3 <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
+                       success = "Admitted", vcov_type = "HC3",
+                       plots = FALSE)
+appl_hc3 <- anova_bin(applicants, "Admit", c("Gender", "Dept"),
+                      success = "Admitted", vcov_type = "HC3",
+                      plots = FALSE)
+naive <- sqrt(diag(sandwich::vcovHC(from_table$model, type = "HC3")))[-1]
+data.frame(comparison = table_hc3$effect_sizes$comparison,
+           model_based = from_table$effect_sizes$se_log_or,
+           hc3_table = table_hc3$effect_sizes$se_log_or,
+           hc3_rows = appl_hc3$effect_sizes$se_log_or,
+           hc3_row_by_row = unname(naive))
+grep("frequency weights represent", table_hc3$notes, value = TRUE)
+```
+
+The HC3 standard errors from the table and from one row per applicant are
+the same. `sandwich::vcovHC()` on the table is wrong by a factor of
+`r round(min(naive / table_hc3$effect_sizes$se_log_or))` to
+`r round(max(naive / table_hc3$effect_sizes$se_log_or))`.
+
+With any other weights (sampling weights, precision weights, trials) the
+robust covariance treats each row as one independent unit, and `$notes`
+says so. If such weights in fact count identical observations, expand the
+data to one row per observation first.
+
+## When the model-based covariance is used instead
+
+In some fits a sandwich covariance is wrong, and the function uses the
+model-based covariance instead, with a note saying why. That happens when:
+
+- the sandwich package is not installed;
+- some fitted values are on the boundary: a group with no events or all
+  events in a binomial model, a group of all-zero counts, or a separated
+  coefficient, where the sandwich collapses towards zero and gives
+  spuriously small p-values;
+- a row has leverage 1, as a group or cell with a single observation does,
+  so its residual is zero by construction and the sandwich would give a
+  standard error of zero (HC0, HC1) or none at all (HC2 to HC4);
+- the robust covariance fails or has non-finite entries.
+
+A site where nothing happened puts the fitted rate on the boundary:
+
+```{r fallback-boundary}
+incidents <- data.frame(
+  site = rep(c("north", "south", "east"), each = 8),
+  events = c(2, 4, 3, 1, 5, 3, 2, 4,
+             6, 3, 5, 7, 4, 6, 5, 8,
+             0, 0, 0, 0, 0, 0, 0, 0))
+grep("Robust", anova_count(incidents, "events", "site", vcov_type = "HC3",
+                           plots = FALSE)$notes, value = TRUE)
+```
+
+A group with one observation has leverage 1:
+
+```{r fallback-leverage}
+small <- data.frame(g = c(rep("a", 6), rep("b", 6), "c"),
+                    y = c(1:6, 3:8, 4))
+grep("Robust", anova_glm(small, "y", "g", vcov_type = "HC3",
+                         plots = FALSE)$notes, value = TRUE)
+```
+
+In `anova_ancova()`, `car::Anova()` refuses robust Wald tests for a model with
+aliased coefficients (an empty cell of the design, for example). `$anova` then
+keeps the model-based F tests, and `$notes` says so, while `$emmeans` and
+`$posthoc` still use the robust covariance.
+
+## See also
+
+- [Binary outcomes: `anova_bin()`](binary.html), [Counts and rates:
+  `anova_count()`](counts.html) and [Any GLM family: `anova_glm()`](glm.html)
+  for weights in each function, including precision weights on averages in a
+  Gamma model.
+- [ANCOVA: `anova_ancova()`](ancova.html) for robust tests alongside the
+  homogeneity-of-slopes test.
+- [Diagnostics](diagnostics.html) for the overdispersion, separation and
+  sparse-data checks mentioned here.
+- [Working with results](results.html) for `$notes`, `$data_used` and
+  `$n_removed`.
