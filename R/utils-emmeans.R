@@ -54,9 +54,11 @@
   type <- match.arg(type)
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  args <- list(object = fit,
+  ready <- .emm_ready(fit)
+  args <- list(object = ready,
                specs = .formula(NULL, specs, quote_terms = TRUE))
   if (type == "response") args$type <- "response"
+  if (is.null(vcov_matrix)) vcov_matrix <- attr(ready, "emm_vcov")
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
   dots <- list(...)
   if (!"cov.keep" %in% names(dots)) args$cov.keep <- character(0)
@@ -83,6 +85,42 @@
       "Estimated marginal means could not be computed: %s", msg)))
   }
   list(grid = grid, note = .said_note(got$said, "emmeans"))
+}
+
+#' A model emmeans can build an estimability basis for
+#'
+#' estimability 2.0 computes the non-estimable basis from the SVD of the QR's
+#' R factor, which fails ("infinite or missing values in 'x'") when the model
+#' has more coefficients than rows: an incomplete crossed design whose
+#' interaction has many empty cells, say. Zero rows added to the weighted
+#' model matrix leave X'X, and so R'R, the rank and the estimable functions,
+#' unchanged, and make the decomposition square. Only the copy handed to
+#' emmeans gets the padded QR; the fit itself is not changed.
+#' @noRd
+.emm_ready <- function(fit) {
+  q <- fit$qr
+  if (!inherits(fit, "lm") || !is.qr(q) || !is.matrix(q$qr) ||
+      ncol(q$qr) <= nrow(q$qr)) {
+    return(fit)
+  }
+  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
+  if (is.null(X)) return(fit)
+  w <- if (inherits(fit, "glm")) fit$weights else fit$weights
+  if (is.null(w)) w <- rep(1, nrow(X))
+  if (length(w) != nrow(X)) return(fit)
+  keep <- w > 0
+  Xw <- X[keep, , drop = FALSE] * sqrt(w[keep])
+  if (nrow(Xw) != nrow(q$qr)) return(fit)
+  pad <- rbind(Xw, matrix(0, ncol(Xw) - nrow(Xw), ncol(Xw)))
+  qp <- tryCatch(qr(pad, tol = if (is.null(q$tol)) 1e-7 else q$tol),
+                 error = function(e) NULL)
+  if (is.null(qp) || qp$rank != q$rank) return(fit)
+  # emmeans takes the covariance from vcov(), which reaches summary.lm() and
+  # would warn that the padded QR's rows do not match the residual degrees
+  # of freedom; the fit's own covariance is attached for the callers to pass.
+  attr(fit, "emm_vcov") <- stats::vcov(fit, complete = FALSE)
+  fit$qr <- qp
+  fit
 }
 
 #' Standard column names used across the package
@@ -420,8 +458,10 @@
 .cell_estimable <- function(model, groups) {
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  got <- .collect_conditions(emmeans::ref_grid(model, nesting = NULL,
-                                               cov.keep = character(0)))
+  ready <- .emm_ready(model)
+  rg_args <- list(ready, nesting = NULL, cov.keep = character(0))
+  if (!is.null(attr(ready, "emm_vcov"))) rg_args$vcov. <- attr(ready, "emm_vcov")
+  got <- .collect_conditions(do.call(emmeans::ref_grid, rg_args))
   rg <- got$value
   if (inherits(rg, "error") || !all(groups %in% names(rg@grid))) return(NULL)
   p <- tryCatch(suppressWarnings(suppressMessages(stats::predict(rg))),

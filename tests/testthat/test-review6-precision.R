@@ -374,3 +374,41 @@ test_that("glm.nb() failing on counts no more variable than Poisson gives the Po
   expect_equal(r$anova$statistic[1], ref$Deviance[2], tolerance = 1e-6)
   expect_true(any(grepl("Poisson", r$notes, fixed = TRUE)))
 })
+
+test_that("emmeans gets a square QR for a model with more coefficients than rows", {
+  # estimability 2.0 takes the SVD of the QR's R factor, which fails when the
+  # model is wider than it is tall (an incomplete crossed design).
+  cells <- data.frame(A = rep(1:10, each = 2), B = c(rbind(1:10, c(2:10, 1))))
+  d <- cells[rep(1:20, each = 4), ]
+  d$A <- factor(d$A); d$B <- factor(d$B)
+  d$x <- withr::with_seed(15, stats::rnorm(80)); d$y <- d$x + withr::with_seed(16, stats::rnorm(80))
+  m <- stats::lm(y ~ x + A * B, data = d)
+  expect_gt(ncol(m$qr$qr), nrow(m$qr$qr))
+  m2 <- .emm_ready(m)
+  expect_lte(ncol(m2$qr$qr), nrow(m2$qr$qr))
+  expect_identical(m2$qr$rank, m$qr$rank)
+  # same estimable space: R'R = X'X is unchanged by zero rows
+  unpivot <- function(q) {
+    RR <- crossprod(qr.R(q))
+    RR[order(q$pivot), order(q$pivot)]
+  }
+  expect_equal(unpivot(m2$qr), unpivot(m$qr), tolerance = 1e-8)
+  # and the same marginal means as emmeans on the original fit
+  e1 <- summary(emmeans::emmeans(m, ~ A:B))
+  e2 <- summary(emmeans::emmeans(m2, ~ A:B, vcov. = attr(m2, "emm_vcov")))
+  expect_equal(e2$emmean, e1$emmean, tolerance = 1e-10)
+  expect_equal(e2$SE, e1$SE, tolerance = 1e-10)
+  expect_equal(e2$df, e1$df)
+})
+
+test_that("zero repeated-measures error variance is recognised at the data's rounding level", {
+  skip_if_not_installed("afex")
+  d <- expand.grid(id = factor(1:5), time = factor(1:3))
+  d$y <- as.numeric(d$id) + as.numeric(d$time)
+  f <- anova_rm(d, "y", "id", "time", plots = FALSE)
+  expect_true(is.na(f$anova$p_value[1]))
+  # real variation of 1e-6 at a level of 5 is a test, not zero variance
+  d$y2 <- d$y + withr::with_seed(2, stats::rnorm(15, sd = 1e-6))
+  f2 <- anova_rm(d, "y2", "id", "time", plots = FALSE)
+  expect_false(is.na(f2$anova$p_value[1]))
+})
