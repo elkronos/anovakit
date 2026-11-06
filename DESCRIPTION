@@ -36,6 +36,7 @@ Suggests:
     bit64,
     data.table,
     effectsize,
+    estimability,
     knitr,
     MASS,
     rmarkdown,

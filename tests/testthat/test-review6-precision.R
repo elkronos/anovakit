@@ -375,30 +375,35 @@ test_that("glm.nb() failing on counts no more variable than Poisson gives the Po
   expect_true(any(grepl("Poisson", r$notes, fixed = TRUE)))
 })
 
-test_that("emmeans gets a square QR for a model with more coefficients than rows", {
-  # estimability 2.0 takes the SVD of the QR's R factor, which fails when the
-  # model is wider than it is tall (an incomplete crossed design).
+test_that("emmeans gets anovakit's estimability basis, not estimability's svd of a wide R", {
+  skip_if_not_installed("estimability")
   cells <- data.frame(A = rep(1:10, each = 2), B = c(rbind(1:10, c(2:10, 1))))
   d <- cells[rep(1:20, each = 4), ]
   d$A <- factor(d$A); d$B <- factor(d$B)
   d$x <- withr::with_seed(15, stats::rnorm(80)); d$y <- d$x + withr::with_seed(16, stats::rnorm(80))
   m <- stats::lm(y ~ x + A * B, data = d)
-  expect_gt(ncol(m$qr$qr), nrow(m$qr$qr))
+  expect_gt(ncol(m$qr$qr), nrow(m$qr$qr))   # 101 coefficients, 80 rows, rank 21
   m2 <- .emm_ready(m)
-  expect_lte(ncol(m2$qr$qr), nrow(m2$qr$qr))
-  expect_identical(m2$qr$rank, m$qr$rank)
-  # same estimable space: R'R = X'X is unchanged by zero rows
-  unpivot <- function(q) {
-    RR <- crossprod(qr.R(q))
-    RR[order(q$pivot), order(q$pivot)]
-  }
-  expect_equal(unpivot(m2$qr), unpivot(m$qr), tolerance = 1e-8)
-  # and the same marginal means as emmeans on the original fit
+  nb <- estimability::nonest.basis(m2$qr)
+  expect_identical(dim(nb), c(101L, 80L))
+  # the same non-estimable space as estimability's own basis (where it works)
+  ref <- estimability::nonest.basis(m$qr)
+  proj <- nb %*% crossprod(nb, ref)
+  expect_lt(max(abs(proj - ref)), 1e-8)
+  # and the same marginal means
   e1 <- summary(emmeans::emmeans(m, ~ A:B))
-  e2 <- summary(emmeans::emmeans(m2, ~ A:B, vcov. = attr(m2, "emm_vcov")))
+  e2 <- summary(emmeans::emmeans(m2, ~ A:B))
   expect_equal(e2$emmean, e1$emmean, tolerance = 1e-10)
   expect_equal(e2$SE, e1$SE, tolerance = 1e-10)
-  expect_equal(e2$df, e1$df)
+  # Under R 4.6 estimability 2.0's own method fails on this model ("infinite
+  # or missing values in 'x'"); with it failing, anova_ancova() still gives
+  # all 20 observed cells.
+  local_mocked_bindings(
+    nonest.basis.qr = function(x, ...) stop("infinite or missing values in 'x'"),
+    .package = "estimability")
+  expect_error(estimability::nonest.basis(m$qr), "infinite or missing")
+  f <- anova_ancova(d, "y", c("A", "B"), "x", force_interaction = FALSE, plots = FALSE)
+  expect_identical(nrow(f$emmeans), 20L, info = paste(f$notes, collapse = " | "))
 })
 
 test_that("zero repeated-measures error variance is recognised at the data's rounding level", {

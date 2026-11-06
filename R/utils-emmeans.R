@@ -58,7 +58,6 @@
   args <- list(object = ready,
                specs = .formula(NULL, specs, quote_terms = TRUE))
   if (type == "response") args$type <- "response"
-  if (is.null(vcov_matrix)) vcov_matrix <- attr(ready, "emm_vcov")
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
   dots <- list(...)
   if (!"cov.keep" %in% names(dots)) args$cov.keep <- character(0)
@@ -89,39 +88,54 @@
 
 #' A model emmeans can build an estimability basis for
 #'
-#' estimability 2.0 computes the non-estimable basis from the SVD of the QR's
-#' R factor, which fails ("infinite or missing values in 'x'") when the model
-#' has more coefficients than rows: an incomplete crossed design whose
-#' interaction has many empty cells, say. Zero rows added to the weighted
-#' model matrix leave X'X, and so R'R, the rank and the estimable functions,
-#' unchanged, and make the decomposition square. Only the copy handed to
-#' emmeans gets the padded QR; the fit itself is not changed.
+#' emmeans asks \code{estimability::nonest.basis()} for the basis of the
+#' non-estimable functions of a model with aliased coefficients. estimability
+#' 2.0 computes it from \code{svd()} of the QR's R factor with every right
+#' singular vector, which fails ("infinite or missing values in 'x'") under R
+#' 4.6 when the model has more coefficients than rows (an incomplete crossed
+#' design whose interaction has many empty cells). The basis is the null
+#' space of the weighted model matrix, so it is computed here, from the
+#' eigenvectors of X'X (square and symmetric) belonging to its p - rank
+#' smallest eigenvalues, and handed to emmeans through the model's QR, which
+#' gets a class whose \code{nonest.basis()} method returns it. Nothing else
+#' about the fit changes, so every other computation is the one emmeans
+#' always does.
 #' @noRd
 .emm_ready <- function(fit) {
   q <- fit$qr
-  if (!inherits(fit, "lm") || !is.qr(q) || !is.matrix(q$qr) ||
-      ncol(q$qr) <= nrow(q$qr)) {
-    return(fit)
-  }
-  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
-  if (is.null(X)) return(fit)
-  w <- if (inherits(fit, "glm")) fit$weights else fit$weights
-  if (is.null(w)) w <- rep(1, nrow(X))
-  if (length(w) != nrow(X)) return(fit)
-  keep <- w > 0
-  Xw <- X[keep, , drop = FALSE] * sqrt(w[keep])
-  if (nrow(Xw) != nrow(q$qr)) return(fit)
-  pad <- rbind(Xw, matrix(0, ncol(Xw) - nrow(Xw), ncol(Xw)))
-  qp <- tryCatch(qr(pad, tol = if (is.null(q$tol)) 1e-7 else q$tol),
-                 error = function(e) NULL)
-  if (is.null(qp) || qp$rank != q$rank) return(fit)
-  # emmeans takes the covariance from vcov(), which reaches summary.lm() and
-  # would warn that the padded QR's rows do not match the residual degrees
-  # of freedom; the fit's own covariance is attached for the callers to pass.
-  attr(fit, "emm_vcov") <- stats::vcov(fit, complete = FALSE)
-  fit$qr <- qp
+  if (!inherits(fit, "lm") || !is.qr(q) || !anyNA(stats::coef(fit))) return(fit)
+  nb <- .null_basis(fit)
+  if (is.null(nb)) return(fit)
+  attr(q, "anovakit_nbasis") <- nb
+  class(q) <- c("anovakit_qr", class(q))
+  fit$qr <- q
   fit
 }
+
+#' The null space of a model's weighted model matrix
+#' @return a p x (p - rank) matrix with orthonormal columns, rows in the order
+#'   of the coefficients, or \code{NULL}.
+#' @noRd
+.null_basis <- function(fit) {
+  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
+  if (is.null(X)) return(NULL)
+  w <- fit$weights
+  if (is.null(w)) w <- rep(1, nrow(X))
+  if (length(w) != nrow(X)) return(NULL)
+  keep <- w > 0
+  Xw <- X[keep, , drop = FALSE] * sqrt(w[keep])
+  p <- ncol(Xw)
+  r <- fit$rank
+  if (is.null(r) || r >= p) return(NULL)
+  e <- tryCatch(eigen(crossprod(Xw), symmetric = TRUE), error = function(e) NULL)
+  if (is.null(e)) return(NULL)
+  nb <- e$vectors[, (r + 1L):p, drop = FALSE]
+  rownames(nb) <- colnames(X)
+  nb
+}
+
+#' @exportS3Method estimability::nonest.basis
+nonest.basis.anovakit_qr <- function(x, ...) attr(x, "anovakit_nbasis")
 
 #' Standard column names used across the package
 #'
@@ -458,10 +472,8 @@
 .cell_estimable <- function(model, groups) {
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  ready <- .emm_ready(model)
-  rg_args <- list(ready, nesting = NULL, cov.keep = character(0))
-  if (!is.null(attr(ready, "emm_vcov"))) rg_args$vcov. <- attr(ready, "emm_vcov")
-  got <- .collect_conditions(do.call(emmeans::ref_grid, rg_args))
+  got <- .collect_conditions(emmeans::ref_grid(.emm_ready(model), nesting = NULL,
+                                               cov.keep = character(0)))
   rg <- got$value
   if (inherits(rg, "error") || !all(groups %in% names(rg@grid))) return(NULL)
   p <- tryCatch(suppressWarnings(suppressMessages(stats::predict(rg))),
