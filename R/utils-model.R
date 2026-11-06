@@ -920,6 +920,13 @@
     } else if (!any(bnd) && isTRUE(rel_i <= 1e-10) &&
                .constant_within_cells(model, keep, off)) {
       what <- "the response is constant within every design cell and every fitted value equals it to rounding error"
+    } else if (!any(bnd) && !gauss_like && .on_linear_predictor(model, keep, y, off)) {
+      # The response lies exactly in the model's space on the link scale (an
+      # exactly multiplicative response under a log link, say), so the
+      # maximum-likelihood fit reproduces it exactly, however far glm()'s
+      # iterations stopped short of that: judged without them, so the same
+      # on every platform.
+      what <- "the response lies exactly on the model's linear predictor (on the scale of the link), so the model reproduces it"
     } else if (!any(bnd) && isTRUE(if (gauss_like) rel_i == 0 else rel_i <= 1e-13)) {
       # The fit reproduces every response to the rounding error of the fit
       # itself (an exactly additive two-factor response, say) -- for a fit
@@ -937,6 +944,29 @@
   sprintf(
     "The model fits response `%s` exactly: %s, as when the response is constant within every group. There is no residual variation to estimate the dispersion from, so the F tests, intervals and comparisons are undefined (each F statistic would be a ratio of rounding errors).",
     response, what)
+}
+
+#' Does the response lie exactly in the model's space on the link scale?
+#'
+#' When \code{linkfun(y) - offset} is a linear combination of the model
+#' matrix's columns, the maximum-likelihood fit reproduces every response.
+#' The least-squares residual of that projection is rounding error then
+#' (about eps * max|eta|); real variation of even 1e-12 of a count's level
+#' leaves a residual far above the tolerance, 16 eps sqrt(n) max|eta|.
+#' @noRd
+.on_linear_predictor <- function(model, keep, y, off) {
+  fam <- tryCatch(stats::family(model), error = function(e) NULL)
+  X <- tryCatch(stats::model.matrix(model), error = function(e) NULL)
+  if (is.null(fam) || is.null(X) || nrow(X) != length(keep)) return(FALSE)
+  eta <- suppressWarnings(tryCatch(fam$linkfun(y), error = function(e) NULL))
+  if (is.null(eta) || length(eta) != length(y) || !all(is.finite(eta))) return(FALSE)
+  if (length(off) == length(eta)) eta <- eta - off
+  X <- X[keep, !is.na(stats::coef(model)), drop = FALSE]
+  if (ncol(X) == 0L || ncol(X) >= length(eta)) return(FALSE)
+  r <- tryCatch(qr.resid(qr(X), eta), error = function(e) NULL)
+  if (is.null(r)) return(FALSE)
+  scale_ <- max(abs(eta))
+  scale_ > 0 && max(abs(r)) <= 16 * .Machine$double.eps * sqrt(length(eta)) * scale_
 }
 
 #' Is a GLM's response constant within every design cell?

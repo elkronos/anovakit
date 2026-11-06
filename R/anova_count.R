@@ -384,6 +384,27 @@ anova_count <- function(data, response, groups,
       function() .fit_glm(fml, d, NULL, weights),
       type = type))
     nb <- nbg$value
+    # Counts no more variable than Poisson put the negative binomial's
+    # maximum at theta = Inf. glm.nb() usually stops theta at its iteration
+    # limit there, but where long double is no wider than double (ARM macOS)
+    # theta.ml() can return NaN and glm.nb() fails. That is the Poisson limit,
+    # not a failed model: it is fitted at a theta of 1e8 (within mu / 1e8 of
+    # Poisson) and reported as theta at its limit, as glm.nb() would.
+    if (inherits(nb, "error") && isTRUE(dispersion <= 1) &&
+        isTRUE(stats::df.residual(pois) >= 1)) {
+      lim <- .collect_conditions(.fit_with_contrasts(
+        function() .fit_glm(fml, d, MASS::negative.binomial(1e8), weights),
+        type = type))
+      if (!inherits(lim$value, "error")) {
+        nb <- lim$value
+        nb$theta <- 1e8
+        nb$SE.theta <- NA_real_
+        nb$twologlik <- 2 * as.numeric(stats::logLik(nb))
+        nb$th.warn <- "iteration limit reached"
+        class(nb) <- c("negbin", class(nb))
+        nbg$said <- character(0)
+      }
+    }
     if (inherits(nb, "error")) {
       if (model == "negbin") {
         # Asked for by name: substituting another model would contradict the
