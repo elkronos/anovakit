@@ -243,12 +243,16 @@ with `interaction = TRUE`.
 Bonett, D. G. (2008). Confidence intervals for standardized linear
 contrasts of means. *Psychological Methods*, 13(2), 99-109.
 
+Cohen, J. (1988). *Statistical Power Analysis for the Behavioral
+Sciences* (2nd ed.). Lawrence Erlbaum.
+
 Delacre, M., Lakens, D., Ley, C., Liu, L., & Leys, C. (2021). Why
 Hedges' g\*s based on the non-pooled standard deviation should be
 reported with Welch's t-test. *PsyArXiv*.
 
 Welch, B. L. (1951). On the comparison of several mean values: an
 alternative approach. *Biometrika*, 38(3/4), 330-336.
+[doi:10.1093/biomet/38.3-4.330](https://doi.org/10.1093/biomet/38.3-4.330)
 
 ## See also
 

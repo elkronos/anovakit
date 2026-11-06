@@ -250,7 +250,7 @@ plot(anc, "covariate")
 
 To fix the model in advance instead of letting the slopes test choose
 it, set `force_interaction = TRUE`. The [ANCOVA
-walkthrough](https://elkronos.github.io/anovakit/articles/articles/ancova.md)
+walkthrough](https://elkronos.github.io/anovakit/articles/ancova.html)
 covers that choice, the slopes test and covariate centring.
 
 ## Arguments every function shares
@@ -287,35 +287,35 @@ to one function are on its help page and in its walkthrough.
 ## Where to go next
 
 - [Choose an
-  analysis](https://elkronos.github.io/anovakit/articles/articles/choosing.md):
+  analysis](https://elkronos.github.io/anovakit/articles/choosing.html):
   which of the eight functions fits your data.
 - A walkthrough for each function:
-  [Welch](https://elkronos.github.io/anovakit/articles/articles/welch.md),
-  [Kruskal-Wallis](https://elkronos.github.io/anovakit/articles/articles/kruskal-wallis.md),
-  [ANCOVA](https://elkronos.github.io/anovakit/articles/articles/ancova.md),
+  [Welch](https://elkronos.github.io/anovakit/articles/welch.html),
+  [Kruskal-Wallis](https://elkronos.github.io/anovakit/articles/kruskal-wallis.html),
+  [ANCOVA](https://elkronos.github.io/anovakit/articles/ancova.html),
   [repeated
-  measures](https://elkronos.github.io/anovakit/articles/articles/repeated-measures.md),
-  [MANOVA](https://elkronos.github.io/anovakit/articles/articles/manova.md),
+  measures](https://elkronos.github.io/anovakit/articles/repeated-measures.html),
+  [MANOVA](https://elkronos.github.io/anovakit/articles/manova.html),
   [binary
-  outcomes](https://elkronos.github.io/anovakit/articles/articles/binary.md),
+  outcomes](https://elkronos.github.io/anovakit/articles/binary.html),
   [counts and
-  rates](https://elkronos.github.io/anovakit/articles/articles/counts.md)
-  and [other GLM
-  families](https://elkronos.github.io/anovakit/articles/articles/glm.md).
+  rates](https://elkronos.github.io/anovakit/articles/counts.html) and
+  [other GLM
+  families](https://elkronos.github.io/anovakit/articles/glm.html).
 - [Working with
-  results](https://elkronos.github.io/anovakit/articles/articles/results.md):
+  results](https://elkronos.github.io/anovakit/articles/results.html):
   every component of the returned object, the `emmeans` grid, tables for
   a report, many analyses at once.
-- [Diagnostics](https://elkronos.github.io/anovakit/articles/articles/diagnostics.md):
+- [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.html):
   what each assumption check computes and how to read it.
 - [Plots and
-  themes](https://elkronos.github.io/anovakit/articles/articles/visuals.md):
+  themes](https://elkronos.github.io/anovakit/articles/visuals.html):
   customising the figures.
 - [Weights and robust standard
-  errors](https://elkronos.github.io/anovakit/articles/articles/weights.md):
+  errors](https://elkronos.github.io/anovakit/articles/weights.html):
   frequency, trial and sampling weights, and `vcov_type`.
 - [Design
-  choices](https://elkronos.github.io/anovakit/articles/articles/design.md):
+  choices](https://elkronos.github.io/anovakit/articles/design.html):
   why the defaults are what they are.
 
 [`?anovakit_fit`](https://elkronos.github.io/anovakit/reference/anovakit_fit.md)

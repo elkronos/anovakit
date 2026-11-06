@@ -25,16 +25,7 @@ them. See
 for a tour and the “Design choices” article on the website for the
 decisions behind the defaults.
 
-The package supersedes a collection of loose scripts distributed from
-the same repository. If you used those, note the following before
-comparing results.
-
-### Changes made after an adversarial review, before release
-
-An adversarial review reproduced 167 problems; all were fixed, each with
-a regression test against an independent reference, and a second,
-independent pass re-verified every fix and closed the gaps it found. The
-changes a user will notice:
+### Methods and results
 
 - **MANOVA** reports genuine Type II / Type III multivariate tests from
   [`car::Manova()`](https://rdrr.io/pkg/car/man/Anova.html); it
@@ -132,7 +123,7 @@ changes a user will notice:
 - **Packaging.** `ggplot2 (>= 3.4.0)` and `testthat (>= 3.1.8)` are
   declared.
 
-### Plots: a theme option and two fixes
+### Plots
 
 - `options(anovakit.theme = ...)` sets the base theme of every plot the
   package draws: a complete ggplot2 theme, or a function returning one
@@ -140,31 +131,23 @@ changes a user will notice:
   follows
   [`theme_set()`](https://ggplot2.tidyverse.org/reference/get_theme.html)).
   Unset, it is
-  [`theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html),
-  as before. The package’s adjustments (bold title, legend at the
-  bottom, rotated long labels) are added on top, and no result changes.
-  See
+  [`theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html).
+  The package’s adjustments (bold title, legend at the bottom, rotated
+  long labels) are added on top, and no result changes. See
   [`?anovakit`](https://elkronos.github.io/anovakit/reference/anovakit-package.md)
   and the plots article.
-- The marginal-means plot joins the means of an ordered first factor
-  with a line, as the plots article describes. The check looked at the
-  marginal-means table, whose factors are never ordered, so the line was
-  never drawn.
-- The ANCOVA covariate plot puts each clause of its subtitle on its own
-  line; as one line it ran off the right edge of the figure.
+- Marginal-means plots join the means of an ordered first factor with a
+  line; an unordered factor’s means are points with error bars.
 
 ### Documentation
 
-The website is reorganised: Get started, Choose an analysis, eight
-walkthroughs that follow the same section order, and guides to results,
-diagnostics, plots and themes, weights and robust standard errors (new),
-and the design choices behind the defaults (new). The README is now a
-short landing page.
+The website, <https://elkronos.github.io/anovakit/>, has a Get started
+page, a guide to choosing an analysis, a walkthrough for each of the
+eight functions, and guides to results, diagnostics, plots and themes,
+weights and robust standard errors, and the design choices behind the
+defaults.
 
-### Changes made after two further reviews, before release
-
-Two more adversarial reviews found about 100 further problems, mostly in
-edge cases. Each is fixed and has a regression test.
+### Edge cases and numerical precision
 
 - **Welch and Kruskal-Wallis.** Noncentral-t intervals for g are exact
   for very well-separated groups and faster. The Hedges correction is
@@ -258,7 +241,12 @@ edge cases. Each is fixed and has a regression test.
   [`summary()`](https://rdrr.io/r/base/summary.html) shows
   `$model_stats`.
 
-### The functions were renamed and now share one convention
+### Changes for users of the earlier scripts
+
+If you used the ANOVAtoolbox scripts, note the following before
+comparing results.
+
+#### The functions were renamed and now share one convention
 
 `ancova_analysis()` is
 [`anova_ancova()`](https://elkronos.github.io/anovakit/reference/anova_ancova.md)
@@ -279,7 +267,7 @@ Every function returns an `anovakit_fit` object with
 [`plot()`](https://rdrr.io/r/graphics/plot.default.html) methods, in
 place of eight differently shaped lists.
 
-### Results that changed
+#### Results that changed
 
 Numbers the old scripts produced for these analyses should not be relied
 on.
@@ -312,7 +300,7 @@ on.
   `effectsize::omega_squared(partial = TRUE)`. Every effect-size table
   also carried a spurious `Residuals` row at exactly 0.5.
 
-### What the package now guarantees
+#### What the package now guarantees
 
 - **Nothing prints.** No analysis function writes to the console and no
   plot is drawn as a side effect. Warnings and messages raised by `car`,
@@ -334,7 +322,7 @@ on.
   weights are named as a column, so they are subsetted with the data
   rather than misaligning when a row is dropped.
 
-### New capabilities
+#### New capabilities
 
 - Mardia’s tests of multivariate skewness and kurtosis, Box’s M, and a
   canonical discriminant analysis with its plot, in
@@ -358,7 +346,7 @@ on.
   heteroskedasticity-consistent standard errors through `vcov_type` that
   flow into the marginal means and the comparisons.
 
-### Dependencies
+#### Dependencies
 
 Imports `car`, `emmeans`, `ggplot2` and base R. `afex`, `MASS` and
 `sandwich` are Suggests behind
@@ -367,7 +355,7 @@ scripts previously needed eighteen packages, including `dplyr`,
 `magrittr`, `rlang`, `multcomp`, `nortest`, `lmtest`, `effectsize`,
 `effsize` and `dunn.test`.
 
-### Tests
+#### Tests
 
 A `testthat` (edition 3) suite that checks results against
 [`stats::oneway.test`](https://rdrr.io/r/stats/oneway.test.html),

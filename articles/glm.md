@@ -107,7 +107,7 @@ fit
 #> Omnibus test (Type II, F)
 #>        term sum_sq df statistic   p_value
 #> 1      dose   2426  2        92 < 2.2e-16
-#> 2      supp  205.4  1     15.57 0.0002312
+#> 2      supp  205.3  1     15.57 0.0002312
 #> 3 dose:supp  108.3  2     4.107   0.02186
 #> 4 Residuals  712.1 54        NA        NA
 #> 

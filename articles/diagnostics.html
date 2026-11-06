@@ -1468,7 +1468,7 @@ number per cell:</p>
 <span><span class="co">#&gt; 1         wool 5.007407e+01  1        NA      NA</span></span>
 <span><span class="co">#&gt; 2      tension 2.260288e+02  2        NA      NA</span></span>
 <span><span class="co">#&gt; 3 wool:tension 1.114198e+02  2        NA      NA</span></span>
-<span><span class="co">#&gt; 4    Residuals 4.266160e-27  0        NA      NA</span></span></code></pre></div>
+<span><span class="co">#&gt; 4    Residuals 9.971202e-28  0        NA      NA</span></span></code></pre></div>
 <p>Analyse the individual observations instead, or fit fewer terms.</p>
 <p>For a family with a fixed dispersion (binomial, Poisson) the
 likelihood-ratio tests remain valid: a saturated log-linear model is how
@@ -1563,7 +1563,7 @@ deviance, so it can still test the term:</p>
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">level</span>, <span class="st">"y"</span>, <span class="st">"g"</span>, family <span class="op">=</span> <span class="st">"Gamma"</span>, test_statistic <span class="op">=</span> <span class="st">"Wald"</span>,</span>
 <span>          plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">anova</span></span>
 <span><span class="co">#&gt;   term df statistic      p_value</span></span>
-<span><span class="co">#&gt; 1    g  2  43.93691 2.878862e-10</span></span></code></pre></div>
+<span><span class="co">#&gt; 1    g  2  43.93691 2.878863e-10</span></span></code></pre></div>
 <p><code><a href="../reference/anova_count.html">anova_count()</a></code> makes the same check on Poisson and
 negative binomial deviances. Their deviance tracks the counts’ own
 variance, so a test becomes <code>NA</code> only on far larger levels

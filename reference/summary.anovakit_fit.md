@@ -26,7 +26,10 @@ print(x, digits = x$digits, ...)
 
 - digits:
 
-  Number of significant digits for the printed tables. Default `4`.
+  Number of significant digits for the printed tables. Default `4` for
+  [`summary()`](https://rdrr.io/r/base/summary.html); the
+  [`print()`](https://rdrr.io/r/base/print.html) method uses the value
+  stored in the summary object.
 
 - ...:
 
@@ -38,8 +41,11 @@ print(x, digits = x$digits, ...)
 
 ## Value
 
-An object of class `summary.anovakit_fit`, which prints the summary. Its
-`$fit` element is `object`.
+[`summary()`](https://rdrr.io/r/base/summary.html) returns an object of
+class `summary.anovakit_fit`, a list holding `fit` (the original
+`object`) and `digits`. Its
+[`print()`](https://rdrr.io/r/base/print.html) method prints the summary
+and returns `x` invisibly.
 
 ## Examples
 
