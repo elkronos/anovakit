@@ -81,7 +81,9 @@ anova_rm(
   (default), `"HF"` or `"none"`. The correction actually applied is
   recorded in `attr(fit$anova, "correction")` and printed: `"none"` when
   every within-subject factor has two levels, where there is nothing to
-  correct.
+  correct, and also when sphericity could not be assessed (for instance,
+  the design leaves no error degrees of freedom); `$notes` then says
+  why.
 
 - posthoc:
 
@@ -119,6 +121,10 @@ anova_rm(
   `type`
 
   :   Sums of squares: `3` (or `"III"`, the default) or `2` (`"II"`).
+      With no between-subject factor the two are identical, since the
+      only between-subject term is the intercept; the table keeps the
+      label asked for, and car's message that it substituted the
+      equivalent Type III tests is not relayed.
 
   `anova_table`
 
@@ -311,9 +317,9 @@ if (requireNamespace("afex", quietly = TRUE)) {
 #> 
 #> Omnibus test (Type III, F, GG-corrected degrees of freedom)
 #>       term num_df den_df   mse statistic partial_eta_sq   p_value
-#> 1      arm  1.000  22.00 3.274   14.8000         0.4022 0.0008754
-#> 2     time  1.994  43.87 3.672   29.7600         0.5750 7.013e-09
-#> 3 arm:time  1.994  43.87 3.672    0.4833         0.0215 0.6194033
+#> 1      arm      1     22 3.274      14.8         0.4022 0.0008754
+#> 2     time  1.994  43.87 3.672     29.76          0.575 7.013e-09
+#> 3 arm:time  1.994  43.87 3.672    0.4833         0.0215    0.6194
 #> 
 #> Notes
 #>   - The Huynh-Feldt epsilon estimate exceeds 1 for time, arm:time (1.096, 1.096). Epsilon cannot exceed 1, so it is capped at 1 in $sphericity$hf_epsilon and wherever it is used (p_hf); the uncapped estimate is in $sphericity$hf_epsilon_raw.

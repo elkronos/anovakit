@@ -262,7 +262,8 @@ vitamin C at the two lower doses has gone at the highest:</p>
 <p><code><a href="../reference/anova_count.html">anova_count()</a></code> plots the estimated mean count in each
 cell, on the count scale (a rate per unit of exposure when there is an
 <code>offset</code>). Here wool A breaks far more often than wool B at
-low tension and no more often at the other two:</p>
+low tension, less often at medium tension, and somewhat more often (not
+significantly) at high tension:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">count</span>, <span class="st">"emmeans"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/count-emmeans-1.png" class="r-plt" alt="" width="100%"></p>
@@ -386,17 +387,20 @@ a trend here would point to drift over time.</p>
 <div class="sourceCode" id="cb22"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fits</span><span class="op">$</span><span class="va">ancova</span>, <span class="st">"covariate"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="visuals_files/figure-html/ancova-covariate-1.png" class="r-plt" alt="" width="100%"></p>
-<p>The response against the covariate, one colour and one fitted line
-per group, with a confidence band at <code>conf_level</code> for each
-line. It shows the two things an ANCOVA rests on. The slopes: an ANCOVA
-with common slopes assumes parallel lines, and here the control group’s
-line is flat while both treatment lines rise, which is why the
-homogeneity-of-slopes test rejected and the fit kept the interaction
-(see <code>$slopes_test</code> and <code>$simple_slopes</code>). And the
-overlap: the adjusted means are read at the covariate mean, and a group
-whose points do not reach that value is being extrapolated along its
-line. The covariate is shown on its original scale even though the model
-is fitted on the centred covariate.</p>
+<p>The response against the covariate, one colour and one line of the
+fitted model per group, with a confidence band at
+<code>conf_level</code> for each line (when the additive model is used,
+those lines are parallel, and each group’s own least-squares line is
+added dashed). It shows the two things an ANCOVA rests on. The slopes:
+an ANCOVA with common slopes assumes parallel lines, and here the
+control group’s line is flat while both treatment lines rise, which is
+why the homogeneity-of-slopes test rejected and the fit kept the
+interaction (see <code>$slopes_test</code> and
+<code>$simple_slopes</code>). And the overlap: the adjusted means are
+read at the covariate mean, and a group whose points do not reach that
+value is being extrapolated along its line. The covariate is shown on
+its original scale even though the model is fitted on the centred
+covariate.</p>
 </div>
 <div class="section level3">
 <h3 id="the-canonical-plot-anova_manova">The canonical plot: <code>anova_manova()</code><a class="anchor" aria-label="anchor" href="#the-canonical-plot-anova_manova"></a>
@@ -682,7 +686,7 @@ it:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"emmeans"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
 <span><span class="co">#&gt; [1] "Error bars are 99% confidence intervals"</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">a99</span>, <span class="st">"covariate"</span><span class="op">)</span><span class="op">$</span><span class="va">labels</span><span class="op">$</span><span class="va">subtitle</span></span>
-<span><span class="co">#&gt; [1] "Bands are 99% confidence intervals for each group's line"</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Solid lines are the fitted model, with a slope for each group; bands are 99% confidence intervals for them"</span></span></code></pre></div>
 <p>The bars and bands are then wider by exactly the change in the
 critical value: for the casein group, the 99% interval for the mean is
 1.41 times as wide as the 95% one. To show a different level, refit with

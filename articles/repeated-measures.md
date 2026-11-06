@@ -93,38 +93,38 @@ fit
 #> Observations used: 240
 #> 
 #> Omnibus test (Type III, F, GG-corrected degrees of freedom)
-#>                           term num_df den_df    mse statistic partial_eta_sq
-#> 1                    treatment  2.000  10.00 22.810   3.94000        0.44070
-#> 2                       gender  1.000  10.00 22.810   3.65900        0.26790
-#> 3             treatment:gender  2.000  10.00 22.810   2.85500        0.36350
-#> 4                        phase  1.599  15.99  5.020  16.13000        0.61730
-#> 5              treatment:phase  3.198  15.99  5.020   4.85100        0.49240
-#> 6                 gender:phase  1.599  15.99  5.020   0.28280        0.02750
-#> 7       treatment:gender:phase  3.198  15.99  5.020   0.63660        0.11290
-#> 8                         hour  1.841  18.41  3.395  16.69000        0.62530
-#> 9               treatment:hour  3.682  18.41  3.395   0.09333        0.01832
-#> 10                 gender:hour  1.841  18.41  3.395   0.45030        0.04309
-#> 11       treatment:gender:hour  3.682  18.41  3.395   0.62040        0.11040
-#> 12                  phase:hour  3.596  35.96  2.674   1.18000        0.10550
-#> 13        treatment:phase:hour  7.192  35.96  2.674   0.34530        0.06460
-#> 14           gender:phase:hour  3.596  35.96  2.674   0.93130        0.08520
-#> 15 treatment:gender:phase:hour  7.192  35.96  2.674   0.73590        0.12830
+#>                           term num_df den_df   mse statistic partial_eta_sq
+#> 1                    treatment      2     10 22.81      3.94         0.4407
+#> 2                       gender      1     10 22.81     3.659         0.2679
+#> 3             treatment:gender      2     10 22.81     2.855         0.3635
+#> 4                        phase  1.599  15.99  5.02     16.13         0.6173
+#> 5              treatment:phase  3.198  15.99  5.02     4.851         0.4924
+#> 6                 gender:phase  1.599  15.99  5.02    0.2828         0.0275
+#> 7       treatment:gender:phase  3.198  15.99  5.02    0.6366         0.1129
+#> 8                         hour  1.841  18.41 3.395     16.69         0.6253
+#> 9               treatment:hour  3.682  18.41 3.395   0.09333        0.01832
+#> 10                 gender:hour  1.841  18.41 3.395    0.4503        0.04309
+#> 11       treatment:gender:hour  3.682  18.41 3.395    0.6204         0.1104
+#> 12                  phase:hour  3.596  35.96 2.674      1.18         0.1055
+#> 13        treatment:phase:hour  7.192  35.96 2.674    0.3453         0.0646
+#> 14           gender:phase:hour  3.596  35.96 2.674    0.9313         0.0852
+#> 15 treatment:gender:phase:hour  7.192  35.96 2.674    0.7359         0.1283
 #>      p_value
-#> 1  0.0547069
-#> 2  0.0848003
-#> 3  0.1044692
+#> 1    0.05471
+#> 2     0.0848
+#> 3     0.1045
 #> 4  0.0002814
-#> 5  0.0126909
-#> 6  0.7089599
-#> 7  0.6116209
+#> 5    0.01269
+#> 6      0.709
+#> 7     0.6116
 #> 8  9.763e-05
-#> 9  0.9786227
-#> 10 0.6284344
-#> 11 0.6413625
-#> 12 0.3345212
-#> 13 0.9303725
-#> 14 0.4490777
-#> 15 0.6463449
+#> 9     0.9786
+#> 10    0.6284
+#> 11    0.6414
+#> 12    0.3345
+#> 13    0.9304
+#> 14    0.4491
+#> 15    0.6463
 #> 
 #> Notes
 #>   - Mauchly's test rejects sphericity for hour, treatment:hour, gender:hour, treatment:gender:hour; the reported table uses the Greenhouse-Geisser correction.

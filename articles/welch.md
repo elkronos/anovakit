@@ -74,7 +74,7 @@ fit
 #> Call: anova_welch(data = PlantGrowth, response = "weight", groups = "group")
 #> Observations used: 30
 #> 
-#> Omnibus test
+#> Omnibus test (Welch F)
 #>    term statistic num_df den_df p_value
 #> 1 group     5.181      2  17.13 0.01739
 #> 
@@ -634,9 +634,17 @@ ratio was below 4, there was one grouping column, and there were more
 than two groups. Each of those would otherwise have produced a note. You
 have seen several above: the variance ratio (`InsectSprays`), combined
 cells (`warpbreaks`), two groups, and `posthoc = FALSE`. The function
-also writes a note if you ask for a low `conf_level` with very small
-groups and the bias-corrected estimate falls outside its own interval.
-Read `$notes` on every fit, including when you expect it to be empty.
+also writes a note, at any `conf_level`, when a group of two
+observations holds most of a pair’s variance, so that the standardiser
+has fewer than 2 degrees of freedom and the bias correction is not
+applied to that pair; a group of 30 beside one of two is enough. It
+names, with their degrees of freedom and correction factor, the pairs
+where that factor is below 0.8, which is at about 4 degrees of freedom
+or fewer: two groups of three with equal variances give exactly 4 and a
+factor of 0.798, so the correction pulls the estimate well towards zero.
+It writes another when an estimate falls outside its own interval, which
+can happen with very small groups and a low `conf_level`. Read `$notes`
+on every fit, including when you expect it to be empty.
 
 ## Reporting the result
 

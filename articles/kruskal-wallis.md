@@ -75,12 +75,12 @@ kw
 #> Call: anova_kw(data = aq, response = "Ozone", groups = "Month")
 #> Observations used: 116  (37 input row(s) not in $data_used; see $notes)
 #> 
-#> Omnibus test
+#> Omnibus test (Kruskal-Wallis chi-square)
 #>    term statistic df   p_value
 #> 1 Month     29.27  4 6.901e-06
 #> 
 #> Notes
-#>   - Dropped 37 row(s) with missing values in: Ozone, Month.
+#>   - Dropped 37 row(s) with missing values in: Ozone.
 #> 
 #> Plots available: box
 #>   (use plot(x, which = "box"))
@@ -379,7 +379,7 @@ kwd$assumptions$normality
 #> 4   Aug 26 0.9327912 9.032475e-02 <NA>
 #> 5   Sep 29 0.7837315 4.325436e-05 <NA>
 kwd$notes
-#> [1] "Dropped 37 row(s) with missing values in: Ozone, Month."                                                                      
+#> [1] "Dropped 37 row(s) with missing values in: Ozone."                                                                             
 #> [2] "The normality diagnostics are contextual only. Kruskal-Wallis does not assume normality and the test does not depend on them."
 names(kwd$plots)
 #> [1] "box" "qq"
@@ -474,7 +474,7 @@ pz
 #> Call: anova_kw(data = puzzle, response = "minutes", groups = "hint")
 #> Observations used: 24
 #> 
-#> Omnibus test
+#> Omnibus test (Kruskal-Wallis chi-square)
 #>   term statistic df p_value
 #> 1 hint     13.13  2 0.00141
 #> 
@@ -551,7 +551,7 @@ reported:
 ``` r
 
 anova_kw(aq, "Ozone", "Month", posthoc = FALSE, plots = FALSE)$notes
-#> [1] "Dropped 37 row(s) with missing values in: Ozone, Month."                                                                                                                           
+#> [1] "Dropped 37 row(s) with missing values in: Ozone."                                                                                                                                  
 #> [2] "Pairwise comparisons were not computed (posthoc = FALSE); there would have been 10. $effect_sizes still reports epsilon squared and eta squared, which come from the omnibus test."
 ```
 
@@ -622,7 +622,7 @@ c(anova_kw = nt_round$anova$statistic,
 ``` r
 
 kw$notes
-#> [1] "Dropped 37 row(s) with missing values in: Ozone, Month."
+#> [1] "Dropped 37 row(s) with missing values in: Ozone."
 ```
 
 For the ozone fit the only note records the 37 rows dropped for missing

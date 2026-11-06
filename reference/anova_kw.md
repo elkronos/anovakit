@@ -198,7 +198,7 @@ fit
 #> Call: anova_kw(data = d, response = "value", groups = "group")
 #> Observations used: 75
 #> 
-#> Omnibus test
+#> Omnibus test (Kruskal-Wallis chi-square)
 #>    term statistic df   p_value
 #> 1 group     45.71  2 1.187e-10
 #> 

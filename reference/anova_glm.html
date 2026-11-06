@@ -140,7 +140,16 @@ fitted model estimates its dispersion – the Gaussian, Gamma, inverse
 Gaussian, quasi, quasi-Poisson and quasi-binomial families, and
 <code>MASS::negative.binomial(theta)</code>, whose coefficient table also uses
 t – and a likelihood ratio test when the dispersion is fixed (binomial,
-Poisson).</p></dd>
+Poisson). A quasi family has no likelihood, so <code>"LR"</code> becomes
+<code>"F"</code> there, with a note, as in <code><a href="anova_count.html">anova_count</a></code>. For any
+other family that estimates its dispersion, <code>"LR"</code> is <span class="pkg">car</span>'s
+scaled-deviance chi-square, each change in deviance divided by the
+estimated dispersion as though it were known; the table heading and
+<code>$notes</code> say so. <code>"F"</code> on a binomial or Poisson fit is a
+quasi-likelihood test, since <span class="pkg">car</span> estimates the dispersion from the
+Pearson statistic; the method label and <code>$notes</code> say so, and the
+coefficient table, <code>$emmeans</code> and <code>$posthoc</code> still assume a
+dispersion of 1.</p></dd>
 
 
 <dt id="arg-conf-level">conf_level<a class="anchor" aria-label="anchor" href="#arg-conf-level"></a></dt>
@@ -155,11 +164,26 @@ coefficient table's p-values. For a family with a fixed dispersion
 (binomial, Poisson) the profile interval is <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code>'s,
 which cuts the signed-root deviance profile at normal quantiles. For a
 family that estimates its dispersion the same profile is cut at
-<code>qt(., df.residual)</code> instead, so that the interval agrees with the
-t test beside it; for the Gaussian identity model it equals
-<code>confint(lm())</code>. If profiling fails, Wald intervals are used, with a
-note. A bound the profile cannot reach (as under separation) is
-<code>NA</code>, also with a note.</p></dd>
+<code>qt(., df.residual)</code> instead, the distribution of the t test beside
+it; for the Gaussian identity model, whose profile is exactly quadratic,
+it is the Wald t interval <code>confint(lm())</code>, and is computed as such.
+The p-values in the coefficient table are Wald p-values, so in small or
+sparse samples a profile interval can exclude the null value while the
+p-value beside it is above <code>1 - conf_level</code>, or the reverse;
+<code>$notes</code> names such rows, and <code>ci_method = "wald"</code> gives
+intervals that always agree with the p-values. If profiling fails, Wald
+intervals are used, with a note. A bound the profile cannot reach (as
+under separation) is <code>NA</code>, also with a note. Profiling refits the
+model many times for every coefficient, so when <code>ci_method</code> is left
+at its default and the model has more than 50 coefficients, or the
+number of coefficients squared times the number of rows exceeds
+<code>1e7</code>, Wald intervals are used instead, with a note; give
+<code>ci_method = "profile"</code> explicitly to profile them anyway. Under
+separation the interval of a diverged coefficient is
+found by profiling the likelihood directly when <code>ci_method =
+"profile"</code>, and its <code>ci_method</code> column then says <code>"profile"</code>;
+<code>ci_method = "wald"</code> keeps the Wald interval, as
+<code><a href="anova_bin.html">anova_bin</a></code> does.</p></dd>
 
 
 <dt id="arg-vcov-type">vcov_type<a class="anchor" aria-label="anchor" href="#arg-vcov-type"></a></dt>
@@ -199,12 +223,34 @@ subsetted with the data: a vector supplied by the caller is evaluated
 against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Rows with weight zero contribute nothing to
 the fit; they are dropped before fitting and counted in
-<code>$n_removed</code>. Whole-number weights (some above 1) on a count or 0/1
-response are read as frequency weights, each row standing for that many
-identical observations: the robust covariance (<code>vcov_type</code>) and, for
-the Poisson families, the residual degrees of freedom are then those of
-the data expanded to one row per observation. Other weights (precision
-weights, or the trials behind a proportion) keep each row as one unit.</p></dd>
+<code>$n_removed</code>. Whole-number weights (some above 1) are read as
+frequency weights, each row standing for that many identical
+observations, in the families where that reading is unambiguous: the
+Poisson and quasi-Poisson families and
+<code>MASS::negative.binomial(theta)</code> on counts, and the binomial and
+quasi-binomial families on a 0/1 response. The robust covariance
+(<code>vcov_type</code>), the residual degrees of freedom, and so the
+dispersion, F tests, t intervals, marginal means and BIC, are then those
+of the data expanded to one row per observation. <code>$model</code> is still
+the <code>glm</code> as <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> fitted it to the rows, so that
+<code><a href="https://rdrr.io/r/stats/anova.html" class="external-link">anova()</a></code>, <code><a href="https://rdrr.io/r/stats/update.html" class="external-link">update()</a></code> and other refits of it stay consistent;
+its own residual degrees of freedom count rows, and <code>$notes</code> says
+when that changes what <code>summary(fit$model)</code> would show. In any other
+family (Gaussian, a linear probability model on a 0/1 response included,
+Gamma, inverse Gaussian, <code><a href="https://rdrr.io/r/stats/family.html" class="external-link">quasi()</a></code>) and for other weights
+(precision weights, or the trials behind a proportion) each row is one
+unit for the residual degrees of freedom and the robust covariance. The
+likelihood still multiplies by the weights, as in <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>: a
+family that estimates its dispersion absorbs their scale (as does
+<code>MASS::negative.binomial(theta)</code>, whose dispersion
+<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> and <code><a href="https://rdrr.io/r/stats/summary.glm.html" class="external-link">summary.glm()</a></code> estimate), but in a
+Poisson or binomial fit the likelihood-ratio and Wald statistics and
+the Pearson dispersion (so the overdispersion check) scale with them,
+and the intervals narrow as they grow. Unlike <code><a href="anova_count.html">anova_count</a></code>,
+the dispersion is not computed with the weights rescaled, since it
+describes the model as weighted; in a Poisson or binomial fit
+<code>$notes</code> says so when weights that are not whole numbers do not
+average 1.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -216,7 +262,10 @@ Default <code>FALSE</code>.</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>An <code><a href="anovakit_fit.html">anovakit_fit</a></code> object, with <code>$family</code> (the
   family object actually used) and <code>$model_stats</code> (AIC, BIC, the null
-  and residual deviances, and the residual degrees of freedom).
+  and residual deviances, and the residual degrees of freedom). For a
+  binomial family with weights that are not all whole numbers, AIC and BIC
+  are <code>NA</code> with a note, as in <code><a href="anova_bin.html">anova_bin</a></code>: R's binomial
+  log-likelihood rounds the weights.
   <code>$anova</code> has the columns <code>term</code>, <code>sum_sq</code> (F tests only),
   <code>df</code>, <code>statistic</code> and <code>p_value</code>, in that order whatever
   <code>test_statistic</code>. In an F table of a non-Gaussian family, as
@@ -228,8 +277,10 @@ Default <code>FALSE</code>.</p></dd>
   <code>$effect_sizes</code> depends on the family:</p><ul><li><p>Gaussian: partial eta squared and partial omega squared for each
       term, from the F table's sums of squares whatever
       <code>test_statistic</code> is. Partial omega squared is floored at 0, with
-      a note. When the ANOVA table cannot be computed (a Type III table
-      with an empty cell, say) the table is empty and a note says why.</p></li>
+      a note. When the ANOVA table cannot be computed the table is empty
+      and a note says why. (A Type III request on a model with an empty
+      cell is not such a case: Type II tests are computed instead; see
+      <code>type</code>.)</p></li>
 <li><p>Any other family: <code>deviance_explained</code>,
       <code>1 - deviance / null deviance</code>, and <code>mcfadden_r2</code>,
       McFadden's pseudo R squared <code>1 - logLik(model) /
@@ -266,6 +317,36 @@ and negative binomial families the fit is checked for groups whose fitted
 probability is numerically 0 or 1 (or whose fitted rate is numerically 0),
 where coefficients, Wald tests and comparisons are not identified;
 <code>$notes</code> says so when it happens.</p>
+<p><strong>Exact fits.</strong> A family that estimates its dispersion (and any
+family with <code>test_statistic = "F"</code>) divides every test statistic by
+the residual variation. When the response is constant, or constant within
+every group, there is none, and the function stops with an error instead
+of reporting F statistics that are ratios of rounding errors. That
+includes a frequency table with one row per group, which stands for a
+response constant within every group. A response with a large level and
+small but real variation (epoch seconds varying by minutes, say) is not an
+exact fit: the Gaussian family resolves it. The Poisson, Gamma and
+negative binomial deviances, however, are computed as differences of
+nearly equal terms, and on such a level rounding can swamp the change in
+deviance a test is built on. A likelihood-ratio or F test that rounding
+could move by more than a fifth of its size or of its size under the
+null hypothesis (its degrees of freedom for a chi-square, 1 for an F),
+whichever is larger, is then NA, and one it could move by more than 2%
+of that gets a note; a negative statistic within its rounding error is
+shown as 0, with p = 1; <code>$notes</code> says which, and
+<code>test_statistic = "Wald"</code>, which does not use the deviance, can still
+test them.</p>
+<p><strong>Convergence.</strong> <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code> judges convergence by a change
+in deviance relative to the deviance plus 0.1, so a fit whose deviance is
+small because of the units of the response (or the scale of the weights)
+would stop early. Such a fit is repeated with a convergence tolerance
+scaled to its deviance, so the results do not depend on the units. A
+binomial fit with prior weights is <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>'s own fit whenever that
+reaches the maximum of the likelihood. When it does not (<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code>'s
+default start diverges for a frequency-weighted 0/1 response under a
+cloglog link), the model is refitted from the overall proportion, to a
+tight convergence tolerance, and <span class="pkg">car</span>'s refits of reduced models start
+there too.</p>
 <p>For binary responses see <code><a href="anova_bin.html">anova_bin</a></code>, and for counts see
 <code><a href="anova_count.html">anova_count</a></code>: both add family-specific diagnostics and effect
 sizes that this general wrapper does not.</p>

@@ -73,10 +73,10 @@ fit
 #> 
 #> Omnibus test (Type III, F)
 #>          term sum_sq df statistic   p_value
-#> 1       Prewt  503.4  1    11.680 0.0010866
+#> 1       Prewt  503.4  1     11.68  0.001087
 #> 2       Treat  785.1  2     9.107 0.0003215
-#> 3 Prewt:Treat  466.5  2     5.411 0.0066656
-#> 4   Residuals 2845.0 66        NA        NA
+#> 3 Prewt:Treat  466.5  2     5.411  0.006666
+#> 4   Residuals   2845 66        NA        NA
 #> 
 #> Notes
 #>   - Covariate(s) mean-centred before fitting (Prewt: 82.41), so the intercept and the Type III group row refer to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way.
@@ -178,10 +178,12 @@ as here, the p-values that follow do not allow for that choice and can
 be too small. When the slopes really differ but the test misses it, the
 additive model’s adjusted comparisons are biased by the slope difference
 times the difference in covariate means – which averages out when groups
-are randomised, but not otherwise. The help page
+are randomised, but not otherwise. Even with randomised groups the
+selection step leaves the group row somewhat above its nominal level
+(about 6–7% at the 5% level in the simulations), and with unbalanced
+covariates far above it. The help page
 ([`?anova_ancova`](https://elkronos.github.io/anovakit/reference/anova_ancova.md))
-reports simulations of how often that second case rejects a true null
-hypothesis.
+reports those simulations.
 
 `force_interaction` removes the selection step. Decide in advance:
 
@@ -477,16 +479,17 @@ plot(fit, "covariate")
 ![](ancova_files/figure-html/plot-covariate-1.png)
 
 This is the plot to look at first in any ANCOVA. It shows the response
-against the covariate *on its original scale*, with a separate
-least-squares line and confidence band for each group (the bands use
-`conf_level`). The lines are each group’s own fit, drawn whichever model
-was chosen, so they show you directly whether parallel lines are a fair
-description. Here they are not: the control group’s line is almost flat
-while the two treatment lines rise. Look too at whether the groups cover
-the same range of the covariate – adjusted means for a group observed
-only at one end are extrapolations, and `$notes` names such a group.
-With several covariates there is one plot per covariate, named
-`covariate_<name>`.
+against the covariate *on its original scale*, with the lines of the
+model that was fitted and their confidence bands (the bands use
+`conf_level`). With the interaction, as here, each group has its own
+slope; when the additive model is used, the solid lines are parallel and
+each group’s own least-squares line is added dashed, so the plot still
+shows directly whether parallel lines are a fair description. Here they
+are not: the control group’s line is almost flat while the two treatment
+lines rise. Look too at whether the groups cover the same range of the
+covariate – adjusted means for a group observed only at one end are
+extrapolations, and `$notes` names such a group. With several covariates
+there is one plot per covariate, named `covariate_<name>`.
 
 ### Adjusted means
 

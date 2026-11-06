@@ -215,8 +215,8 @@ plot(fits$glm, "emmeans")
 [`anova_count()`](https://elkronos.github.io/anovakit/reference/anova_count.md)
 plots the estimated mean count in each cell, on the count scale (a rate
 per unit of exposure when there is an `offset`). Here wool A breaks far
-more often than wool B at low tension and no more often at the other
-two:
+more often than wool B at low tension, less often at medium tension, and
+somewhat more often (not significantly) at high tension:
 
 ``` r
 
@@ -404,12 +404,14 @@ plot(fits$ancova, "covariate")
 
 ![](visuals_files/figure-html/ancova-covariate-1.png)
 
-The response against the covariate, one colour and one fitted line per
-group, with a confidence band at `conf_level` for each line. It shows
-the two things an ANCOVA rests on. The slopes: an ANCOVA with common
-slopes assumes parallel lines, and here the control group’s line is flat
-while both treatment lines rise, which is why the homogeneity-of-slopes
-test rejected and the fit kept the interaction (see `$slopes_test` and
+The response against the covariate, one colour and one line of the
+fitted model per group, with a confidence band at `conf_level` for each
+line (when the additive model is used, those lines are parallel, and
+each group’s own least-squares line is added dashed). It shows the two
+things an ANCOVA rests on. The slopes: an ANCOVA with common slopes
+assumes parallel lines, and here the control group’s line is flat while
+both treatment lines rise, which is why the homogeneity-of-slopes test
+rejected and the fit kept the interaction (see `$slopes_test` and
 `$simple_slopes`). And the overlap: the adjusted means are read at the
 covariate mean, and a group whose points do not reach that value is
 being extrapolated along its line. The covariate is shown on its
@@ -758,7 +760,7 @@ a99 <- anova_ancova(MASS::anorexia, "Postwt", "Treat", "Prewt",
 plot(a99, "emmeans")$labels$subtitle
 #> [1] "Error bars are 99% confidence intervals"
 plot(a99, "covariate")$labels$subtitle
-#> [1] "Bands are 99% confidence intervals for each group's line"
+#> [1] "Solid lines are the fitted model, with a slope for each group; bands are 99% confidence intervals for them"
 ```
 
 The bars and bands are then wider by exactly the change in the critical

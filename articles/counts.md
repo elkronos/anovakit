@@ -74,15 +74,15 @@ model includes the interaction:
 fit <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
                    interaction = TRUE)
 fit
-#> Analysis of deviance for a count response (negbin regression) 
-#> -------------------------------------------------------------
+#> Analysis of deviance for a count response (negbin regression, Type II) 
+#> ----------------------------------------------------------------------
 #> Call: anova_count(data = warpbreaks, response = "breaks", groups = c("wool", "tension"), interaction = TRUE)
 #> Observations used: 54
 #> 
 #> Omnibus test (Type II, likelihood-ratio chi-square)
 #>           term df statistic   p_value
 #> 1         wool  1     3.905   0.04814
-#> 2      tension  2    20.220 4.068e-05
+#> 2      tension  2     20.22 4.068e-05
 #> 3 wool:tension  2     8.206   0.01652
 #> 
 #> Notes
@@ -166,7 +166,7 @@ even on data like these, but not silently:
 ``` r
 
 fits[[1]]$notes[1]
-#> [1] "Pearson dispersion is 3.76, above the threshold of 1.50: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p < 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters."
+#> [1] "Pearson dispersion is 3.76, above the threshold of 1.50: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p < 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses, and one on 2 (the largest term here) roughly 45%. Use model = \"quasipoisson\" or \"negbin\" when that matters."
 ```
 
 The note puts a size on the problem: at a dispersion of 3.76, a nominal
@@ -202,7 +202,7 @@ lenient <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
 lenient$model_type
 #> [1] "poisson"
 lenient$notes
-#> [1] "Pearson dispersion is 3.76, at or below the threshold of 5.00, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p < 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters."
+#> [1] "Pearson dispersion is 3.76, at or below the threshold of 5.00, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 3.76 (Pearson test of overdispersion: p < 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.94 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 31% of true null hypotheses, and one on 2 (the largest term here) roughly 45%. Use model = \"quasipoisson\" or \"negbin\" when that matters."
 ```
 
 Which to use? The negative binomial is a full likelihood model, and with
@@ -377,18 +377,18 @@ formula.
 
 ins_fit <- anova_count(ins, "Claims", c("Group", "Age"), offset = "Holders")
 ins_fit
-#> Analysis of deviance for a count response (poisson regression) 
-#> --------------------------------------------------------------
+#> Analysis of deviance for a count response (poisson regression, Type II) 
+#> -----------------------------------------------------------------------
 #> Call: anova_count(data = ins, response = "Claims", groups = c("Group", "Age"), offset = "Holders")
 #> Observations used: 64
 #> 
 #> Omnibus test (Type II, likelihood-ratio chi-square)
 #>    term df statistic   p_value
-#> 1 Group  3     90.10 < 2.2e-16
+#> 1 Group  3      90.1 < 2.2e-16
 #> 2   Age  3     82.62 < 2.2e-16
 #> 
 #> Notes
-#>   - Pearson dispersion is 1.14, at or below the threshold of 1.50, so a Poisson model was kept.
+#>   - Pearson dispersion is 1.14, at or below the threshold of 1.50, so a Poisson model was kept. The Pearson test of overdispersion (p = 0.22) cannot tell the dispersion from 1, but with 57 residual degrees of freedom it has little power: the data are consistent with a dispersion of up to 1.60 (its upper 95% confidence bound), and at that dispersion the Poisson likelihood-ratio and Wald statistics would be inflated by about that factor and the standard errors would be about 1.26 times too small: a nominal 5% test on 1 degree of freedom would reject roughly 12% of true null hypotheses, and one on 3 (the largest term here) roughly 18%. Use model = "quasipoisson" or "negbin" when that matters.
 #>   - The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `term`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead.
 #>   - Estimated marginal means are rates at Holders = 1 (one unit of exposure).
 #> 
@@ -540,8 +540,8 @@ tapply(incidents$events, incidents$site, sum)
 #>    21    44     0
 zero_fit <- anova_count(incidents, "events", "site")
 zero_fit
-#> Analysis of deviance for a count response (poisson regression) 
-#> --------------------------------------------------------------
+#> Analysis of deviance for a count response (poisson regression, Type II) 
+#> -----------------------------------------------------------------------
 #> Call: anova_count(data = incidents, response = "events", groups = "site")
 #> Observations used: 30
 #> 
@@ -551,7 +551,7 @@ zero_fit
 #> 
 #> Notes
 #>   - 1 group combination(s) hold fewer than 5 events in total; their rates, and any rate ratio involving them, rest on very little information, so their Wald intervals and p-values are unreliable.
-#>   - Pearson dispersion is 0.74, at or below the threshold of 1.50, so a Poisson model was kept.
+#>   - Pearson dispersion is 0.74, at or below the threshold of 1.50, so a Poisson model was kept. The Pearson test of overdispersion (p = 0.83) cannot tell the dispersion from 1, but with 27 residual degrees of freedom it has little power: the data are consistent with a dispersion of up to 1.24 (its upper 95% confidence bound), and at that dispersion the Poisson likelihood-ratio and Wald statistics would be inflated by about that factor and the standard errors would be about 1.11 times too small: a nominal 5% test on 1 degree of freedom would reject roughly 8% of true null hypotheses, and one on 2 (the largest term here) roughly 9%. Use model = "quasipoisson" or "negbin" when that matters.
 #>   - No events were observed in site = east, so the fitted rate there is numerically zero. The affected coefficient(s): siteeast. A rate ratio involving such a cell is not identified: it will be near zero or enormous, its interval unbounded on one side, and its Wald p-value near 1 no matter how large the difference is; the same goes for that cell's marginal mean and the comparisons involving it. The likelihood-ratio omnibus test remains usable. Consider collapsing the level, or an exact or penalised method for the affected comparisons.
 #>   - The rate ratio(s) for siteeast involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf.
 #> 
@@ -579,14 +579,17 @@ print(zero_fit$posthoc[, c("contrast", "IRR", "conf_low", "conf_high",
 #> 3  south / east 1.06e+09 2.22e-16       Inf     1.0000
 ```
 
-`east vs north` is estimated as practically zero, with an interval from
-0 to infinity and a p-value of 0.99: the Wald machinery has nothing to
-work with, however clear the difference. The likelihood-ratio test in
-the omnibus table does work, and it is the number to report for the
-overall comparison. For the rate ratios involving `east`, follow the
-note’s advice: collapse the level with another, or use an exact method.
-A robust covariance would fail here too, and `vcov_type` falls back to
-the model-based one with a note saying so:
+`east vs north` is estimated as practically zero, with a Wald p-value of
+0.99: the Wald machinery has nothing to work with, however clear the
+difference. Its interval in `$effect_sizes` is profiled and one-sided,
+open at 0 and bounded above at about 0.096; only the Wald intervals of
+the comparisons with `east` in `$posthoc` run from 0 to infinity. The
+likelihood-ratio test in the omnibus table does work, and it is the
+number to report for the overall comparison. For the rate ratios
+involving `east`, follow the note’s advice: collapse the level with
+another, or use an exact method. A robust covariance would fail here
+too, and `vcov_type` falls back to the model-based one with a note
+saying so:
 
 ``` r
 
@@ -772,7 +775,7 @@ data.frame(comparison = fit$effect_sizes$comparison,
 #> 4   (B vs A) x (M vs L) 1.2122753  2.9560520 1.1459874 3.1270404
 #> 5   (B vs A) x (H vs L) 0.7667100  1.9009866 0.7290004 1.9993205
 grep("robust", robust$notes, value = TRUE)
-#> [1] "The omnibus Wald test uses the robust (HC3) covariance, as the coefficient table, the marginal means and the comparisons do."
+#> [1] "The omnibus Wald test uses the robust (HC3) covariance, as $effect_sizes, the marginal means and the comparisons do."
 ```
 
 The robust intervals are wider here: with 9 looms a cell, the sandwich

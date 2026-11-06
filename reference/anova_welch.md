@@ -108,7 +108,8 @@ object.
 - `$assumptions`: a per-group Shapiro-Wilk table in `normality`, with a
   `note` column giving the reason for any group that was not tested, and
   the ratio of the largest to the smallest group variance in
-  `variance_ratio`.
+  `variance_ratio` (`Inf` when that ratio is larger than the largest
+  double, about 1.8e308; the note then gives it as a power of ten).
 
 - `$model`: the `htest` returned by
   [`oneway.test`](https://rdrr.io/r/stats/oneway.test.html); there is no
@@ -163,13 +164,69 @@ are equal and the groups are the same size this is the familiar \\n_1 +
 n_2 - 2\\; when the variances differ it removes the bias that the
 pooled-variance correction leaves. The correction is a property of the
 point estimate, so the interval, which is for \\\delta^\*\\ itself, is
-the same with or without it. With two or three observations per group
-and a low `conf_level`, the corrected estimate can fall outside that
-interval; `$notes` says so when it does.
+the same with or without it. When a group of two holds most of the
+variance, \\\nu\\ approaches 1 and \\J(\nu)\\ approaches 0 (the mean of
+the uncorrected estimate stops existing there), so the corrected
+estimate would collapse towards zero whatever the data say. Below \\\nu
+= 2\\, where \\J(\nu)\\ is less than 0.57, the correction is therefore
+not applied: that pair's `hedges_g` is the uncorrected estimate, and
+`$notes` names the pair. A pair whose factor is below 0.8, which is at
+about 4 degrees of freedom or fewer (two groups of three with equal
+variances give exactly 4, where \\J = 0.798\\), is also named in
+`$notes`, with its degrees of freedom and factor: there the correction
+pulls the estimate well towards zero, and the estimate is not continuous
+at 2 degrees of freedom. With few observations and a low `conf_level`
+the estimate, corrected or not, can fall outside its interval, because
+the interval inverts a skewed distribution and the correction shrinks
+only the estimate; `$notes` says so when it does.
+
+The interval is found with an exact noncentral t distribution function:
+beyond a noncentrality of 30 it is computed by Gauss-Hermite quadrature,
+because [`stats::pt()`](https://rdrr.io/r/stats/TDist.html) switches to
+a normal approximation for a large noncentrality that is badly wrong at
+small degrees of freedom.
+
+A pair whose standard error is below the floating-point resolution of
+its means, which
+[`stats::t.test()`](https://rdrr.io/r/stats/t.test.html) refuses as
+"essentially constant", is reported as `NA` with a note. Welch's F is a
+weighted sum, over pairs of groups, of terms that grow with each pair's
+squared t statistic, so when the pairs at that resolution make up more
+than 5% of it the omnibus test is rounding noise too: `$anova` then
+reports its statistic, denominator degrees of freedom and p-value as
+`NA`, with a note. With two groups that is whenever the single pair is
+at that resolution. Below 5% the test is reported and the note gives the
+share. Subtracting a constant close to the values from the response
+avoids both.
+
+Welch's F, the pairwise t tests and the resolution check above do not
+depend on the response's units, but at a response far from 1 in
+magnitude their intermediate quantities do not fit in double precision:
+around 1e-155 the weights (group size over variance) are each finite but
+their sum overflows, which makes
+[`stats::oneway.test()`](https://rdrr.io/r/stats/oneway.test.html)
+return a finite but wrong F, and around 1e-162 the group variances are
+subnormal and the variances of the means underflow. So all three are
+computed on the response multiplied by a power of two chosen so the
+group variances are centred on 1 on a log scale, as are the group
+summaries in `$emmeans`, and the means, standard deviations, differences
+and intervals are scaled back to the response's units. Multiplying by a
+power of two is exact unless it pushes a value out of the range of
+normal doubles, and such a scale is not used. The power is chosen from
+the data and is often not \\2^0\\ even for an ordinary response, but
+because the scaling is exact the results there are unchanged. The
+omnibus test is accepted at the first of that scale, the response as
+supplied and the response brought near 1 at which its F and the sum of
+its weights are finite. If none qualifies, `$anova` reports the
+statistic, denominator degrees of freedom and p-value as `NA`, with a
+note.
 
 The standardiser is recorded in the `standardiser` column of
 `$effect_sizes`. The magnitude labels use Cohen's conventional
-thresholds of 0.2, 0.5 and 0.8 on the absolute value.
+thresholds of 0.2, 0.5 and 0.8 on the absolute value of the estimate;
+when the estimate lies outside its own interval the label is taken from
+the nearer interval bound instead, so that it does not describe a value
+the interval rules out.
 
 **Several grouping variables.** They are combined into a single cell
 factor and unused level combinations are dropped, so the number of
@@ -215,7 +272,7 @@ fit
 #> Call: anova_welch(data = d, response = "value", groups = "group")
 #> Observations used: 90
 #> 
-#> Omnibus test
+#> Omnibus test (Welch F)
 #>    term statistic num_df den_df  p_value
 #> 1 group     28.44      2  55.18 3.24e-09
 #> 

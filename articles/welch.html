@@ -148,7 +148,7 @@ more grouping columns.</p>
 <span><span class="co">#&gt; Call: anova_welch(data = PlantGrowth, response = "weight", groups = "group")</span></span>
 <span><span class="co">#&gt; Observations used: 30</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Omnibus test</span></span>
+<span><span class="co">#&gt; Omnibus test (Welch F)</span></span>
 <span><span class="co">#&gt;    term statistic num_df den_df p_value</span></span>
 <span><span class="co">#&gt; 1 group     5.181      2  17.13 0.01739</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -655,8 +655,16 @@ there were more than two groups. Each of those would otherwise have
 produced a note. You have seen several above: the variance ratio
 (<code>InsectSprays</code>), combined cells (<code>warpbreaks</code>),
 two groups, and <code>posthoc = FALSE</code>. The function also writes a
-note if you ask for a low <code>conf_level</code> with very small groups
-and the bias-corrected estimate falls outside its own interval. Read
+note, at any <code>conf_level</code>, when a group of two observations
+holds most of a pair’s variance, so that the standardiser has fewer than
+2 degrees of freedom and the bias correction is not applied to that
+pair; a group of 30 beside one of two is enough. It names, with their
+degrees of freedom and correction factor, the pairs where that factor is
+below 0.8, which is at about 4 degrees of freedom or fewer: two groups
+of three with equal variances give exactly 4 and a factor of 0.798, so
+the correction pulls the estimate well towards zero. It writes another
+when an estimate falls outside its own interval, which can happen with
+very small groups and a low <code>conf_level</code>. Read
 <code>$notes</code> on every fit, including when you expect it to be
 empty.</p>
 </div>

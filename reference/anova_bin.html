@@ -152,13 +152,21 @@ Default <code>0.95</code>.</p></dd>
 
 <dt id="arg-ci-method">ci_method<a class="anchor" aria-label="anchor" href="#arg-ci-method"></a></dt>
 <dd><p>Character. <code>"profile"</code> (default) for
-profile-likelihood intervals, or <code>"wald"</code>.</p></dd>
+profile-likelihood intervals, or <code>"wald"</code>. Profile intervals are
+slow with many coefficients; left at the default, a model with more
+than 50 coefficients gets Wald intervals instead, with a note, except
+for odds ratios that separation drives to infinity or zero (see
+Details). The p-values in <code>$effect_sizes</code> are Wald p-values, so in
+small or sparse samples a profile interval can exclude an odds ratio of 1
+while the p-value beside it is above <code>1 - conf_level</code>, or the
+reverse; <code>$notes</code> names such rows, and <code>"wald"</code> intervals
+always agree with the p-values.</p></dd>
 
 
 <dt id="arg-vcov-type">vcov_type<a class="anchor" aria-label="anchor" href="#arg-vcov-type"></a></dt>
 <dd><p>Character. <code>"model"</code> (default) or an HC type
 (<code>"HC0"</code> to <code>"HC4"</code>) for robust standard errors, which requires
-the <span class="pkg">sandwich</span> package. They reach the coefficient table, the
+the <span class="pkg">sandwich</span> package. They reach <code>$effect_sizes</code>, the
 marginal means and the comparisons; the omnibus table uses them only with
 <code>test_statistic = "Wald"</code>, since a likelihood-ratio test compares
 deviances. <code>$notes</code> says which applies.</p></dd>
@@ -190,8 +198,16 @@ against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Whole-number weights (some above 1) are read
 as frequency weights, each row standing for that many identical
 observations, and the robust covariance (<code>vcov_type</code>) is then that
-of the data expanded to one row per observation; other weights are
-treated as sampling weights, with each row as one unit.</p></dd>
+of the data expanded to one row per observation. Other weights are used
+as given, as <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> uses prior weights: the fit, the tests, the
+intervals and the marginal means treat them as multipliers of each row,
+like frequencies, so their scale matters (weights averaging 0.01 make
+300 rows count as 3 observations), and <code>$notes</code> says so when they
+do not average 1. Only the robust covariance, and the sparse-data check
+(which rescales them to average 1), treat each row as one unit. Sampling
+weights should therefore
+be rescaled to average 1, or analysed with a design-based method such as
+<code>survey::svyglm()</code>.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
@@ -212,8 +228,10 @@ Default <code>FALSE</code>.</p></dd>
       weights. When any weight is not a whole number, <code>AIC</code>,
       <code>BIC</code> and <code>logLik</code> are <code>NA</code> with a note, because R's
       binomial log-likelihood rounds the weights; the deviance-based
-      statistics are unaffected. <code>BIC</code> uses <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">nobs()</a></code>, the number
-      of rows with a non-zero weight.</p></dd>
+      statistics are unaffected. <code>BIC</code> uses <code>log(nobs())</code>, the
+      number of rows with a non-zero weight, or, with frequency weights,
+      the number of observations they represent (their sum), so that it
+      equals the BIC of the expanded data.</p></dd>
 
     <dt><code>$effect_sizes</code></dt>
 <dd><p>One row per coefficient of the
@@ -226,7 +244,8 @@ Default <code>FALSE</code>.</p></dd>
       <code>"(b vs a) x (south vs north)"</code> is a ratio of odds ratios),
       <code>odds_ratio</code>, <code>conf_low</code>, <code>conf_high</code>,
       <code>se_log_or</code>, <code>statistic</code>, <code>p_value</code> and
-      <code>ci_method</code>.</p></dd>
+      <code>ci_method</code> (<code>"profile"</code> or <code>"wald"</code>, row by row:
+      see Details).</p></dd>
 
     <dt><code>$assumptions</code></dt>
 <dd><p><code>dispersion</code>, which is <code>NA</code>: the
@@ -270,8 +289,27 @@ intervals are meaningless even though <code><a href="https://rdrr.io/r/stats/glm
 of an odds ratio that separation drives to infinity (or to zero) is open on
 that side, and is reported with <code>conf_high = Inf</code> (or
 <code>conf_low = 0</code>); its finite end is found by profiling the likelihood
-directly, since <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> cannot step from a diverged estimate,
-and is <code>NA</code> when the likelihood rules out no value on that side either.</p>
+directly, since <code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">stats::confint()</a></code> cannot step from a diverged estimate.
+When the likelihood rules out no value on that side either (for example an
+interaction whose cells are all separated) the interval is <code>(0, Inf)</code>:
+the data do not identify that odds ratio at all, its point estimate is
+arbitrary, and <code>$notes</code> says so. An end the search cannot find is
+<code>NA</code>.</p>
+<p><strong>Interval cost.</strong> A profile-likelihood interval refits the model
+several times for each coefficient. The model has only grouping factors,
+so the refits run over the data collapsed to one weighted row per cell and
+outcome, which has the same likelihood: the number of rows does not add to
+the cost, and individual rows and the same data aggregated with counts as
+weights get the same intervals. The number of coefficients does: a factor
+with 200 levels can take minutes where Wald intervals take about a second.
+Left at its default, <code>ci_method</code> therefore gives Wald intervals, with
+a note, when the model has more than 50 coefficients, as
+<code><a href="anova_glm.html">anova_glm</a></code> does. An odds ratio that separation drives to
+infinity or to zero still gets its profile-likelihood interval then, since
+a Wald interval means nothing there. Wald and profile intervals are close
+when every cell has many events and non-events, and can differ noticeably
+when events are rare. Give <code>ci_method = "profile"</code> explicitly to
+profile every coefficient.</p>
 <p><strong>Sparse data.</strong> When fewer than about 5 events or non-events are
 expected in a cell under the null hypothesis, the likelihood-ratio omnibus
 test is liberal (its false-positive rate can be well above the nominal
@@ -281,7 +319,8 @@ remedy; an exact test, or the score test, holds its level better.</p>
 the observed proportions alike. A row with weight <code>w</code> counts as
 <code>w</code> identical observations, so data aggregated to one row per cell and
 outcome, with the count as the weight, give the same results as the
-individual rows (apart from BIC, which R bases on the number of rows).</p>
+individual rows, BIC included: with frequency weights its penalty uses the
+number of observations they represent, not the number of rows.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -297,8 +336,8 @@ individual rows (apart from BIC, which R bases on the number of rows).</p>
 <span class="r-in"><span><span class="va">d</span><span class="op">$</span><span class="va">y</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Binomial.html" class="external-link">rbinom</a></span><span class="op">(</span><span class="va">n</span>, <span class="fl">1</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>a <span class="op">=</span> <span class="fl">0.2</span>, b <span class="op">=</span> <span class="fl">0.5</span>, c <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">d</span><span class="op">$</span><span class="va">g</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">anova_bin</span><span class="op">(</span><span class="va">d</span>, <span class="st">"y"</span>, <span class="st">"g"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">fit</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Analysis of deviance for a binary response (logistic regression) </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> ----------------------------------------------------------------</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Analysis of deviance for a binary response (logistic regression, Type II) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -------------------------------------------------------------------------</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Call: anova_bin(data = d, response = "y", groups = "g")</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Observations used: 300</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -336,7 +375,7 @@ individual rows (apart from BIC, which R bases on the number of rows).</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 344.7904</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $BIC</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 344.1657</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 355.9018</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $logLik</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] -169.3952</span>

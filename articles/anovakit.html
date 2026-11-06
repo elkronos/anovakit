@@ -136,7 +136,7 @@ not.</p>
 <span><span class="co">#&gt; Call: anova_welch(data = trial, response = "score", groups = "arm")</span></span>
 <span><span class="co">#&gt; Observations used: 240</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Omnibus test</span></span>
+<span><span class="co">#&gt; Omnibus test (Welch F)</span></span>
 <span><span class="co">#&gt;   term statistic num_df den_df   p_value</span></span>
 <span><span class="co">#&gt; 1  arm     17.98      2  157.9 9.223e-08</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -201,8 +201,8 @@ analysis.</p>
 <p>Note what <code>$notes</code> says:</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">anc</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Covariate(s) mean-centred before fitting (baseline: 100.3), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way."</span></span>
-<span><span class="co">#&gt; [2] "Slopes are consistent with being equal across groups (p = 0.6908), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Covariate(s) mean-centred before fitting (baseline: 100.3), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way."                                                                                                                                                                                                                                                                                                                                                                                            </span></span>
+<span><span class="co">#&gt; [2] "Slopes are consistent with being equal across groups (p = 0.6908), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal. Setting force_interaction = TRUE in advance avoids the selection step."</span></span></code></pre></div>
 <p>Covariates are mean-centred by default. That matters as soon as the
 model contains a group-by-covariate term: under sum-to-zero contrasts
 the Type III row for <code>arm</code> then tests the group difference
@@ -248,17 +248,19 @@ groups.</p>
 <span><span class="co">#&gt; 1    high   0.6250 0.05412659 Inf 0.51454373 0.7238140</span></span>
 <span><span class="co">#&gt; 2     low   0.4250 0.05526923 Inf 0.32179010 0.5351906</span></span>
 <span><span class="co">#&gt; 3 placebo   0.1625 0.04124526 Inf 0.09676128 0.2600427</span></span></code></pre></div>
-<p>Odds-ratio intervals are profile-likelihood by default;
-<code>ci_method = "wald"</code> switches them. Separation, which makes
-Wald intervals meaningless while <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> still reports
-convergence, is detected and named in <code>$notes</code>.</p>
+<p>Odds-ratio intervals are profile-likelihood by default (for a model
+with more than 50 coefficients, Wald intervals except where separation
+needs profiling, with a note); <code>ci_method = "wald"</code> switches
+them. Separation, which makes Wald intervals meaningless while
+<code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">glm()</a></code> still reports convergence, is detected and named in
+<code>$notes</code>.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sep</span> <span class="op">&lt;-</span> <span class="va">trial</span></span>
 <span><span class="va">sep</span><span class="op">$</span><span class="va">improved</span><span class="op">[</span><span class="va">sep</span><span class="op">$</span><span class="va">arm</span> <span class="op">==</span> <span class="st">"high"</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fl">1L</span></span>
 <span><span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">sep</span>, <span class="st">"improved"</span>, <span class="st">"arm"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Modelling P(improved = 1); the other level is the baseline."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 </span></span>
 <span><span class="co">#&gt; [2] "Complete or quasi-complete separation detected: the fitted probability is numerically 0 or 1 in arm = high. The affected coefficient(s): armlow, armplacebo. An affected odds ratio is not identified: it will be enormous, its interval will be unbounded on one side, and its Wald p-value will be near 1 no matter how strong the association is; the same goes for that cell's marginal probability and the comparisons involving it. With events this sparse the likelihood-ratio omnibus test is also liberal. Consider a penalised fit such as logistf::logistf(), or collapsing the offending level."</span></span>
-<span><span class="co">#&gt; [3] "Separation drives the odds ratio(s) for armlow, armplacebo to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate; it is NA where the likelihood rules out no value on that side either."                                                                                                                                                                                                             </span></span>
+<span><span class="co">#&gt; [3] "Separation drives the odds ratio(s) for armlow, armplacebo to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate."                                                                                                                                                                                                                                                                                   </span></span>
 <span><span class="co">#&gt; [4] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>
 </div>
 <div class="section level2">
@@ -447,7 +449,7 @@ records what it decided on your behalf, what it could not compute, and
 what it thinks you should know before you quote a number.</p>
 <div class="sourceCode" id="cb21"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cnt</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 1.36, at or below the threshold of 1.50, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 1.36 (Pearson test of overdispersion: p = 0.00018) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.17 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 9% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span>
+<span><span class="co">#&gt; [1] "Pearson dispersion is 1.36, at or below the threshold of 1.50, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 1.36 (Pearson test of overdispersion: p = 0.00018) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.17 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 9% of true null hypotheses, and one on 2 (the largest term here) roughly 11%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span>
 <span><span class="co">#&gt; [2] "Estimated marginal means are rates at weeks = 1 (one unit of exposure)."</span></span></code></pre></div>
 </div>
 <div class="section level2">

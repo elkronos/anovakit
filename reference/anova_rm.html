@@ -148,7 +148,9 @@ Default <code>0.95</code>.</p></dd>
 table: <code>"GG"</code> (default), <code>"HF"</code> or <code>"none"</code>. The
 correction actually applied is recorded in
 <code>attr(fit$anova, "correction")</code> and printed: <code>"none"</code> when every
-within-subject factor has two levels, where there is nothing to correct.</p></dd>
+within-subject factor has two levels, where there is nothing to correct,
+and also when sphericity could not be assessed (for instance, the design
+leaves no error degrees of freedom); <code>$notes</code> then says why.</p></dd>
 
 
 <dt id="arg-posthoc">posthoc<a class="anchor" aria-label="anchor" href="#arg-posthoc"></a></dt>
@@ -182,7 +184,10 @@ accepted; anything else is an error rather than silently ignored.</p><dl><dt><co
 
   <dt><code>type</code></dt>
 <dd><p>Sums of squares: <code>3</code> (or <code>"III"</code>, the
-    default) or <code>2</code> (<code>"II"</code>).</p></dd>
+    default) or <code>2</code> (<code>"II"</code>). With no between-subject
+    factor the two are identical, since the only between-subject term is
+    the intercept; the table keeps the label asked for, and car's message
+    that it substituted the equivalent Type III tests is not relayed.</p></dd>
 
   <dt><code>anova_table</code></dt>
 <dd><p>A list holding only <code>p_adjust_method</code>,
@@ -360,9 +365,9 @@ level <em>indices</em>, so a response of 11, 17, 21 would silently become
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Omnibus test (Type III, F, GG-corrected degrees of freedom)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       term num_df den_df   mse statistic partial_eta_sq   p_value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1      arm  1.000  22.00 3.274   14.8000         0.4022 0.0008754</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2     time  1.994  43.87 3.672   29.7600         0.5750 7.013e-09</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3 arm:time  1.994  43.87 3.672    0.4833         0.0215 0.6194033</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1      arm      1     22 3.274      14.8         0.4022 0.0008754</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2     time  1.994  43.87 3.672     29.76          0.575 7.013e-09</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3 arm:time  1.994  43.87 3.672    0.4833         0.0215    0.6194</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Notes</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   - The Huynh-Feldt epsilon estimate exceeds 1 for time, arm:time (1.096, 1.096). Epsilon cannot exceed 1, so it is capped at 1 in $sphericity$hf_epsilon and wherever it is used (p_hf); the uncapped estimate is in $sphericity$hf_epsilon_raw.</span>

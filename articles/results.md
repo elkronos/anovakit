@@ -124,12 +124,12 @@ s
 #> 
 #>   coefficients
 #>           term estimate   se statistic  p_value distribution conf_low conf_high
-#>    (Intercept)   324.00 15.8    20.400  < 2e-16            t    292.0   355.000
-#>  feedhorsebean  -163.00 23.5    -6.960 2.07e-09            t   -210.0  -116.000
-#>    feedlinseed  -105.00 22.4    -4.680 1.49e-05            t   -150.0   -60.100
-#>   feedmeatmeal   -46.70 22.9    -2.040 0.045567            t    -92.4    -0.948
-#>    feedsoybean   -77.20 21.6    -3.580 0.000665            t   -120.0   -34.100
-#>  feedsunflower     5.33 22.4     0.238 0.812495            t    -39.4    50.100
+#>    (Intercept)      324 15.8      20.4   <2e-16            t      292       355
+#>  feedhorsebean     -163 23.5     -6.96 2.07e-09            t     -210      -116
+#>    feedlinseed     -105 22.4     -4.68 1.49e-05            t     -150     -60.1
+#>   feedmeatmeal    -46.7 22.9     -2.04   0.0456            t    -92.4    -0.948
+#>    feedsoybean    -77.2 21.6     -3.58 0.000665            t     -120     -34.1
+#>  feedsunflower     5.33 22.4     0.238    0.812            t    -39.4      50.1
 #>  ci_method
 #>    profile
 #>    profile
@@ -153,37 +153,41 @@ s
 #> 
 #> Pairwise comparisons
 #>               contrast estimate   se df conf_low conf_high statistic  p_value
-#>     casein - horsebean   163.00 23.5 65     94.4    232.00     6.960 2.07e-09
-#>       casein - linseed   105.00 22.4 65     39.1    171.00     4.680 1.49e-05
-#>      casein - meatmeal    46.70 22.9 65    -20.6    114.00     2.040 0.045567
-#>       casein - soybean    77.20 21.6 65     13.8    141.00     3.580 0.000665
-#>     casein - sunflower    -5.33 22.4 65    -71.1     60.40    -0.238 0.812495
-#>    horsebean - linseed   -58.60 23.5 65   -128.0     10.40    -2.490 0.015222
-#>   horsebean - meatmeal  -117.00 24.0 65   -187.0    -46.30    -4.870 7.48e-06
-#>    horsebean - soybean   -86.20 22.7 65   -153.0    -19.50    -3.800 0.000325
-#>  horsebean - sunflower  -169.00 23.5 65   -238.0    -99.80    -7.180 8.20e-10
-#>     linseed - meatmeal   -58.20 22.9 65   -125.0      9.07    -2.540 0.013479
-#>      linseed - soybean   -27.70 21.6 65    -91.0     35.70    -1.280 0.204145
-#>    linseed - sunflower  -110.00 22.4 65   -176.0    -44.40    -4.920 6.21e-06
-#>     meatmeal - soybean    30.50 22.1 65    -34.4     95.40     1.380 0.172554
-#>   meatmeal - sunflower   -52.00 22.9 65   -119.0     15.20    -2.270 0.026435
-#>    soybean - sunflower   -82.50 21.6 65   -146.0    -19.10    -3.820 0.000298
+#>     casein - horsebean      163 23.5 65     94.4       232      6.96 2.07e-09
+#>       casein - linseed      105 22.4 65     39.1       171      4.68 1.49e-05
+#>      casein - meatmeal     46.7 22.9 65    -20.6       114      2.04   0.0456
+#>       casein - soybean     77.2 21.6 65     13.8       141      3.58 0.000665
+#>     casein - sunflower    -5.33 22.4 65    -71.1      60.4    -0.238    0.812
+#>    horsebean - linseed    -58.6 23.5 65     -128      10.4     -2.49   0.0152
+#>   horsebean - meatmeal     -117   24 65     -187     -46.3     -4.87 7.48e-06
+#>    horsebean - soybean    -86.2 22.7 65     -153     -19.5      -3.8 0.000325
+#>  horsebean - sunflower     -169 23.5 65     -238     -99.8     -7.18  8.2e-10
+#>     linseed - meatmeal    -58.2 22.9 65     -125      9.07     -2.54   0.0135
+#>      linseed - soybean    -27.7 21.6 65      -91      35.7     -1.28    0.204
+#>    linseed - sunflower     -110 22.4 65     -176     -44.4     -4.92 6.21e-06
+#>     meatmeal - soybean     30.5 22.1 65    -34.4      95.4      1.38    0.173
+#>   meatmeal - sunflower      -52 22.9 65     -119      15.2     -2.27   0.0264
+#>    soybean - sunflower    -82.5 21.6 65     -146     -19.1     -3.82 0.000298
 #>  p_adjusted adjustment
 #>    3.07e-08      tukey
-#>    0.000210      tukey
-#>    0.332458      tukey
-#>    0.008365      tukey
-#>    0.999890      tukey
-#>    0.141333      tukey
+#>     0.00021      tukey
+#>       0.332      tukey
+#>     0.00837      tukey
+#>           1      tukey
+#>       0.141      tukey
 #>    0.000106      tukey
-#>    0.004217      tukey
+#>     0.00422      tukey
 #>    1.22e-08      tukey
-#>    0.127696      tukey
-#>    0.793285      tukey
+#>       0.128      tukey
+#>       0.793      tukey
 #>    8.84e-05      tukey
-#>    0.739136      tukey
-#>    0.220696      tukey
-#>    0.003885      tukey
+#>       0.739      tukey
+#>       0.221      tukey
+#>     0.00388      tukey
+#> 
+#> Model fit
+#>  AIC BIC null_deviance residual_deviance df_residual
+#>  778 794        427000            196000          65
 ```
 
 Both use `digits` for display only; the numbers stored in the fit are
@@ -291,7 +295,7 @@ robust <- anova_glm(chickwts, "weight", "feed", vcov_type = "HC3",
                     plots = FALSE)
 writeLines(robust$notes)
 #> Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative, and for a one-way design anova_welch() is better calibrated.
-#> The omnibus F test compares deviances, so it rests on the model-based variance; the robust (HC3) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = "Wald".
+#> The omnibus F test compares deviances scaled by a dispersion estimated from the Pearson residuals, so it uses the model's variance function, not the robust (HC3) covariance, which only the coefficient table, the marginal means and the comparisons use. For an omnibus test that uses it, set test_statistic = "Wald".
 #> Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.
 ```
 

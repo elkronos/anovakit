@@ -702,7 +702,7 @@ says what that costs:</p>
 <div class="sourceCode" id="cb33"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">note_with</span><span class="op">(</span><span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
 <span>                      model <span class="op">=</span> <span class="st">"poisson"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>, <span class="st">"^Pearson"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 4.26, above the threshold of 1.50: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. A Poisson model assumes a dispersion of 1; at 4.26 (Pearson test of overdispersion: p &lt; 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 2.06 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 34% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Pearson dispersion is 4.26, above the threshold of 1.50: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. A Poisson model assumes a dispersion of 1; at 4.26 (Pearson test of overdispersion: p &lt; 2.2e-16) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 2.06 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 34% of true null hypotheses, and one on 2 (the largest term here) roughly 50%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
 <p>The threshold is a fixed cut-off, not a test, and a dispersion near
 it is worth a second look whichever side it falls:</p>
 <div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
@@ -714,7 +714,7 @@ it is worth a second look whichever side it falls:</p>
 <span><span class="va">ins_p</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="va">InsectSprays</span>, <span class="st">"count"</span>, <span class="st">"spray"</span>,</span>
 <span>                     overdispersion_threshold <span class="op">=</span> <span class="fl">2</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">ins_p</span>, <span class="st">"^Pearson"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 1.51, at or below the threshold of 2.00, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 1.51 (Pearson test of overdispersion: p = 0.0048) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.23 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 11% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Pearson dispersion is 1.51, at or below the threshold of 2.00, so a Poisson model was kept. A Poisson model assumes a dispersion of 1; at 1.51 (Pearson test of overdispersion: p = 0.0048) its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about 1.23 times too small, so its intervals are too narrow and a nominal 5% test on 1 degree of freedom rejects roughly 11% of true null hypotheses, and one on 5 (the largest term here) roughly 20%. Use model = \"quasipoisson\" or \"negbin\" when that matters."</span></span></code></pre></div>
 <p>A dispersion of 1.51 is just over the default threshold, so the
 default moved to a negative binomial, and the theta note reports that
 theta is poorly determined but large: the data are only weakly
@@ -737,7 +737,7 @@ test finds it above 1 beyond chance:</p>
 <code class="sourceCode R"><span><span class="va">gp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">warpbreaks</span>, <span class="st">"breaks"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"wool"</span>, <span class="st">"tension"</span><span class="op">)</span>,</span>
 <span>                family <span class="op">=</span> <span class="st">"poisson"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">gp</span>, <span class="st">"^Pearson"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 4.26 (Pearson test of overdispersion: p &lt; 2.2e-16), where a poisson model assumes 1: its test statistics are inflated by about that factor, its standard errors are about 2.06 times too small, and a nominal 5% test on 1 degree of freedom rejects roughly 34% of true null hypotheses. Consider family = \"quasipoisson\", or anova_count(model = \"negbin\")."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Pearson dispersion is 4.26 (Pearson test of overdispersion: p &lt; 2.2e-16), where a poisson model assumes 1: its test statistics are inflated by about that factor, its standard errors are about 2.06 times too small, and a nominal 5% test on 1 degree of freedom rejects roughly 34% of true null hypotheses, and one on 2 (the largest term here) roughly 50%. Consider family = \"quasipoisson\", or anova_count(model = \"negbin\")."</span></span></code></pre></div>
 <p>The remedies are the ones the note names.
 <code>family = "quasipoisson"</code> estimates the dispersion and scales
 every standard error and test by it (the omnibus table becomes an F
@@ -755,7 +755,7 @@ the number of subjects as weights:</p>
 <span><span class="va">e2</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">dispersion</span></span>
 <span><span class="co">#&gt; [1] 1.487358</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">e2</span>, <span class="st">"^Pearson"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "Pearson dispersion is 1.49 (Pearson test of overdispersion: p = 0.0032), where a binomial model assumes 1: its test statistics are inflated by about that factor, its standard errors are about 1.22 times too small, and a nominal 5% test on 1 degree of freedom rejects roughly 11% of true null hypotheses. Consider family = \"quasibinomial\", or a beta-binomial model."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Pearson dispersion is 1.49 (Pearson test of overdispersion: p = 0.0032), where a binomial model assumes 1: its test statistics are inflated by about that factor, its standard errors are about 1.22 times too small, and a nominal 5% test on 1 degree of freedom rejects roughly 11% of true null hypotheses, and one on 5 (the largest term here) roughly 19%. Consider family = \"quasibinomial\", or a beta-binomial model."</span></span></code></pre></div>
 <p>Overdispersion is often a sign of a missing predictor rather than of
 a wrong distribution. Adding tobacco use removes it:</p>
 <div class="sourceCode" id="cb37"><pre class="downlit sourceCode r">
@@ -836,11 +836,12 @@ second class are infinite:</p>
 <span>                reference <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>Class <span class="op">=</span> <span class="st">"3rd"</span><span class="op">)</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
 <span><span class="va">tk</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Dropped 8 row(s) whose weight in `Freq` is zero: they contribute nothing to the fit, and keeping them would make row counts, robust standard errors and information criteria disagree with it."                                                                                                                                                                                                                                                                                                                                                                                                                            </span></span>
-<span><span class="co">#&gt; [2] "Modelling P(Survived = Yes); the other level is the baseline."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             </span></span>
-<span><span class="co">#&gt; [3] "Complete or quasi-complete separation detected: the fitted probability is numerically 0 or 1 in Class = 1st, Class = 2nd. The affected coefficient(s): Class1st, Class2nd. An affected odds ratio is not identified: it will be enormous, its interval will be unbounded on one side, and its Wald p-value will be near 1 no matter how strong the association is; the same goes for that cell's marginal probability and the comparisons involving it. With events this sparse the likelihood-ratio omnibus test is also liberal. Consider a penalised fit such as logistf::logistf(), or collapsing the offending level."</span></span>
-<span><span class="co">#&gt; [4] "Separation drives the odds ratio(s) for Class1st, Class2nd to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate; it is NA where the likelihood rules out no value on that side either."                                                                                                                                                                                                                           </span></span>
-<span><span class="co">#&gt; [5] "Sparse data: fewer than 5 events or non-events are expected under the null hypothesis in Class = 1st (smallest 2.86). With data this sparse the likelihood-ratio omnibus test is liberal, rejecting a true null more often than its nominal level. test_statistic = \"Wald\" is not a remedy: Wald tests are less reliable still here. An exact test (for one grouping variable, fisher.test() on the group-by-outcome table) or the score test, anova(fit$model, test = \"Rao\"), holds its level better."                                                                                                                </span></span>
-<span><span class="co">#&gt; [6] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>
+<span><span class="co">#&gt; [2] "Level \"Crew\" of `Class` had no rows with a non-zero weight in `Freq`, so it was dropped from the analysis."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              </span></span>
+<span><span class="co">#&gt; [3] "Modelling P(Survived = Yes); the other level is the baseline."                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             </span></span>
+<span><span class="co">#&gt; [4] "Complete or quasi-complete separation detected: the fitted probability is numerically 0 or 1 in Class = 1st, Class = 2nd. The affected coefficient(s): Class1st, Class2nd. An affected odds ratio is not identified: it will be enormous, its interval will be unbounded on one side, and its Wald p-value will be near 1 no matter how strong the association is; the same goes for that cell's marginal probability and the comparisons involving it. With events this sparse the likelihood-ratio omnibus test is also liberal. Consider a penalised fit such as logistf::logistf(), or collapsing the offending level."</span></span>
+<span><span class="co">#&gt; [5] "Separation drives the odds ratio(s) for Class1st, Class2nd to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate."                                                                                                                                                                                                                                                                                                 </span></span>
+<span><span class="co">#&gt; [6] "Sparse data: fewer than 5 events or non-events are expected under the null hypothesis in Class = 1st (smallest 2.86). With data this sparse the likelihood-ratio omnibus test is liberal, rejecting a true null more often than its nominal level. test_statistic = \"Wald\" is not a remedy: Wald tests are less reliable still here. An exact test (for one grouping variable, fisher.test() on the group-by-outcome table) or the score test, anova(fit$model, test = \"Rao\"), holds its level better."                                                                                                                </span></span>
+<span><span class="co">#&gt; [7] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>
 <p>The eight rows with a frequency of zero (the crew’s, and those for
 first- and second-class children who died, of whom there were none) are
 dropped first. The separation note names the cells and the coefficients.
@@ -853,7 +854,7 @@ likelihood directly:</p>
 <span>                    <span class="st">"p_value"</span><span class="op">)</span><span class="op">]</span></span>
 <span><span class="co">#&gt;   comparison odds_ratio  conf_low conf_high   p_value</span></span>
 <span><span class="co">#&gt; 1 1st vs 3rd  155696313  4.879501       Inf 0.9932398</span></span>
-<span><span class="co">#&gt; 2 2nd vs 3rd  454335709 21.981682       Inf 0.9916359</span></span></code></pre></div>
+<span><span class="co">#&gt; 2 2nd vs 3rd  454335709 21.981681       Inf 0.9916359</span></span></code></pre></div>
 <p>Read the estimates as “infinite” and the intervals as what the data
 support: by the 95% profile intervals, the odds of survival for a
 first-class child were at least 4.88 times those of a third-class child,
@@ -932,9 +933,12 @@ and finds the same end:</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">co</span><span class="op">[</span><span class="va">co</span><span class="op">$</span><span class="va">term</span> <span class="op">==</span> <span class="st">"siteC"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"conf_low"</span>, <span class="st">"conf_high"</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt;   conf_low  conf_high</span></span>
 <span><span class="co">#&gt; 3        0 0.06391874</span></span></code></pre></div>
-<p>The likelihood-ratio omnibus test remains usable. If a zero group is
-a structural zero (a species that cannot occur there), drop it; if not,
-report the one-sided interval, or collapse the level.</p>
+<p>The likelihood-ratio omnibus test remains usable. A Wald omnibus test
+(<code>test_statistic = "Wald"</code>) does not: it is built from the
+same diverged coefficient, its p-value can be near 1 however large the
+difference, and the note says so when one was asked for. If a zero group
+is a structural zero (a species that cannot occur there), drop it; if
+not, report the one-sided interval, or collapse the level.</p>
 </div>
 </div>
 <div class="section level2">
@@ -975,9 +979,8 @@ group:</p>
 <span><span class="co">#&gt; 6 F1 : SL 31</span></span>
 <span><span class="co">#&gt; 7 F2 : SL 24</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">qn</span>, <span class="st">"possible group|aliased|contain no data"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "1 of the 8 possible group combination(s) contain no observations; contrasts involving them are not estimable."                                                                                                                                </span></span>
-<span><span class="co">#&gt; [2] "1 coefficient(s) are aliased and could not be estimated: AgeF3:LrnSL. This happens when level combinations are empty or when predictors are collinear; the affected terms are tested with fewer degrees of freedom than their levels suggest."</span></span>
-<span><span class="co">#&gt; [3] "1 level combination(s) contain no data and are not estimable under this model, so they are left out of $emmeans and $posthoc: F3 : SL."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "1 coefficient(s) of the Age:Lrn term are aliased and could not be estimated because 1 of its 8 level combination(s) contain no data: F3 : SL; the affected terms are tested with fewer degrees of freedom than their levels suggest."</span></span>
+<span><span class="co">#&gt; [2] "1 level combination(s) contain no data and are not estimable under this model, so they are left out of $emmeans and $posthoc: F3 : SL."</span></span></code></pre></div>
 <p>With the interaction, the empty cell’s parameter cannot be estimated,
 it is left out of <code>$emmeans</code> and <code>$posthoc</code>, and
 the interaction is tested on 2 degrees of freedom instead of 3. The
@@ -986,7 +989,7 @@ the note it gives instead says what that relies on:</p>
 <div class="sourceCode" id="cb48"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">note_with</span><span class="op">(</span><span class="fu"><a href="../reference/anova_count.html">anova_count</a></span><span class="op">(</span><span class="fu">MASS</span><span class="fu">::</span><span class="va"><a href="https://rdrr.io/pkg/MASS/man/quine.html" class="external-link">quine</a></span>, <span class="st">"Days"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Age"</span>, <span class="st">"Lrn"</span><span class="op">)</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>,</span>
 <span>          <span class="st">"possible group"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "1 of the 8 possible group combination(s) contain no observations; the additive model still estimates them from the main effects, so marginal means that average over them rely on there being no interaction."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "1 of the 8 possible group combination(s) contain no data: F3 : SL. The additive model still estimates them from the main effects, so the marginal means in $emmeans, which average over them, rely on there being no interaction."</span></span></code></pre></div>
 <p><strong>Small groups for normality tests.</strong> Shapiro-Wilk needs
 at least 3 values, and at least 3 distinct ones to mean anything.
 <code><a href="../reference/anova_welch.html">anova_welch()</a></code> names any group it could not test, with the
@@ -1009,10 +1012,10 @@ transmission:</p>
 <span><span class="co">#&gt; 3                                                                                   &lt;NA&gt;</span></span>
 <span><span class="co">#&gt; 4                                                                                   &lt;NA&gt;</span></span>
 <span><span class="co">#&gt; 5 Shapiro-Wilk skipped: only 2 distinct value(s), too few for the test to mean anything.</span></span>
-<span><span class="co">#&gt; 6                   Shapiro-Wilk skipped: 2 usable residual(s), at least 3 are required.</span></span>
+<span><span class="co">#&gt; 6                Shapiro-Wilk skipped: 2 usable observation(s), at least 3 are required.</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">mw</span>, <span class="st">"^Shapiro"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "Shapiro-Wilk was not run for group \"6 : 1\": only 2 distinct value(s), too few for the test to mean anything."</span></span>
-<span><span class="co">#&gt; [2] "Shapiro-Wilk was not run for group \"8 : 1\": 2 usable residual(s), at least 3 are required."</span></span></code></pre></div>
+<span><span class="co">#&gt; [2] "Shapiro-Wilk was not run for group \"8 : 1\": 2 usable observation(s), at least 3 are required."</span></span></code></pre></div>
 <p>The group with two cars is skipped, and so is a group of three cars,
 two of which have the same fuel economy. Run on those three values
 anyway, the test shows why:</p>
@@ -1048,7 +1051,7 @@ flowers per species:</p>
 <span><span class="co">#&gt; 3  virginica 4</span></span>
 <span><span class="fu">note_with</span><span class="op">(</span><span class="va">ms</span>, <span class="st">"^Mardia|^Box"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "Mardia's tests were not computed: the residuals have 9 degree(s) of freedom for 4 responses, and at least 14 are needed. At 4 they would not depend on the data at all, and close to it they are dominated by the design."</span></span>
-<span><span class="co">#&gt; [2] "Box's M not computed: every group needs more than 4 observations (smallest group has 4)."</span></span></code></pre></div>
+<span><span class="co">#&gt; [2] "Box's M not computed: every group needs more than 4 observations, and 3 groups have 4: `setosa`; `versicolor`; `virginica`."</span></span></code></pre></div>
 <p>Neither check can be computed; more data, or fewer responses, are the
 only remedies.</p>
 </div>
@@ -1101,7 +1104,7 @@ that cannot be estimated. The same <code>mtcars</code> fit has no
 eight-cylinder car with four gears:</p>
 <div class="sourceCode" id="cb54"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">note_with</span><span class="op">(</span><span class="va">lev</span>, <span class="st">"aliased|contain no data"</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] "1 coefficient(s) are aliased and could not be estimated: cyl8:gear4. This happens when level combinations are empty or when predictors are collinear; the affected terms are tested with fewer degrees of freedom than their levels suggest."</span></span>
+<span><span class="co">#&gt; [1] "1 coefficient(s) of the cyl:gear term are aliased and could not be estimated because 1 of its 9 level combination(s) contain no data: 8 : 4; the affected terms are tested with fewer degrees of freedom than their levels suggest."</span></span>
 <span><span class="co">#&gt; [2] "1 level combination(s) contain no data and are not estimable under this model, so they are left out of $emmeans and $posthoc: 8 : 4."</span></span>
 <span><span class="va">lev</span><span class="op">$</span><span class="va">anova</span></span>
 <span><span class="co">#&gt;        term     sum_sq df  statistic      p_value</span></span>
@@ -1167,10 +1170,10 @@ number per cell:</p>
 <span><span class="co">#&gt; [1] "The model has 6 parameters and no residual degrees of freedom: it is saturated, so there is nothing left to test against. Every p-value, interval and effect size below is undefined or degenerate (partial eta squared is exactly 1 by construction). Fewer groups, a simpler interaction structure, or more data are needed."</span></span>
 <span><span class="va">sat</span><span class="op">$</span><span class="va">anova</span></span>
 <span><span class="co">#&gt;           term       sum_sq df statistic p_value</span></span>
-<span><span class="co">#&gt; 1         wool 5.007407e+01  1         0     NaN</span></span>
-<span><span class="co">#&gt; 2      tension 2.260288e+02  2         0     NaN</span></span>
-<span><span class="co">#&gt; 3 wool:tension 1.114198e+02  2         0     NaN</span></span>
-<span><span class="co">#&gt; 4    Residuals 4.266160e-27  0        NA      NA</span></span></code></pre></div>
+<span><span class="co">#&gt; 1         wool 5.007407e+01  1        NA      NA</span></span>
+<span><span class="co">#&gt; 2      tension 2.260288e+02  2        NA      NA</span></span>
+<span><span class="co">#&gt; 3 wool:tension 1.114198e+02  2        NA      NA</span></span>
+<span><span class="co">#&gt; 4    Residuals 9.971202e-28  0        NA      NA</span></span></code></pre></div>
 <p>Analyse the individual observations instead, or fit fewer terms.</p>
 <p>For a family with a fixed dispersion (binomial, Poisson) the
 likelihood-ratio tests remain valid: a saturated log-linear model is how

@@ -72,7 +72,15 @@ validate their input the same way and return the same S3 class,
   a rank test can use infinite values (as the best or worst possible
   outcome), so it keeps them. `$n_removed` counts the input rows that
   are not in `$data_used`, so `nrow($data_used) + $n_removed` is always
-  the number of rows supplied.
+  the number of rows supplied. The note names only the columns that held
+  such a value, and a group left with no rows is named.
+
+- An analysed numeric column (response, covariate, weights, offset) must
+  hold one value per row: a one-column matrix is used as a vector and a
+  wider one is refused. A
+  [`bit64::integer64`](https://bit64.r-lib.org/reference/bit64-package.html)
+  column is converted to double, exactly; one holding a value of 2^53 or
+  more, which a double cannot always hold exactly, is refused.
 
 - Grouping columns are coerced to factors; character columns get their
   levels in C-locale order, so the reference level does not depend on
@@ -85,23 +93,35 @@ validate their input the same way and return the same S3 class,
   contain data. The model-based functions fit the grouping columns as
   factors instead. When those factors enter the model additively,
   marginal means and pairwise comparisons are reported for each factor
-  separately, averaged over the others. When the model contains their
+  separately, averaged over the others; a level combination with no
+  data, which those averages include by extrapolation from the main
+  effects, is named in `$notes`. When the model contains their
   interaction, they are reported for the cells: a level combination with
   no data is left out when the model cannot estimate it, and named in
   `$notes` when the model estimates it by extrapolation from the other
   cells.
 
 - `posthoc = FALSE` skips the pairwise comparisons and says in `$notes`
-  how many there would have been. Above 5000 comparisons they are
-  skipped by default, with a note.
+  how many there would have been. In the six functions whose comparisons
+  come from emmeans (all but
+  [`anova_welch`](https://elkronos.github.io/anovakit/reference/anova_welch.md)
+  and
+  [`anova_kw`](https://elkronos.github.io/anovakit/reference/anova_kw.md)),
+  above 5000 comparisons they are skipped by default, with a note;
+  Welch's and Dunn's comparisons are always computed in full.
 
 - Prior weights, where a function accepts them, are named as a column
   rather than passed as a vector, so they are subsetted with the data.
   Rows with a weight of zero contribute nothing and are dropped (and
-  counted in `$n_removed`). Whole-number weights on a count or 0/1
-  response are frequency weights: robust standard errors and residual
-  degrees of freedom are then those of the data expanded to one row per
-  observation.
+  counted in `$n_removed`); a group whose every weight is zero is named
+  in `$notes` and dropped. Whole-number weights on a count or 0/1
+  response are frequency weights in the families whose likelihood reads
+  a weight as a number of identical observations (binomial and
+  quasi-binomial on a 0/1 response; Poisson, quasi-Poisson and negative
+  binomial on counts): robust standard errors and residual degrees of
+  freedom are then those of the data expanded to one row per
+  observation. In a Gaussian (or other) family they are precision
+  weights, and each row is one unit.
 
 - `vcov_type`, where a function accepts it, asks for
   heteroscedasticity-consistent (sandwich) standard errors. Where the

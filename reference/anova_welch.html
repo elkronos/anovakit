@@ -173,7 +173,9 @@ Default <code>FALSE</code>.</p></dd>
 <li><p><code>$assumptions</code>: a per-group Shapiro-Wilk table in
       <code>normality</code>, with a <code>note</code> column giving the reason for any
       group that was not tested, and the ratio of the largest to the
-      smallest group variance in <code>variance_ratio</code>.</p></li>
+      smallest group variance in <code>variance_ratio</code> (<code>Inf</code> when
+      that ratio is larger than the largest double, about 1.8e308; the
+      note then gives it as a power of ten).</p></li>
 <li><p><code>$model</code>: the <code>htest</code> returned by
       <code><a href="https://rdrr.io/r/stats/oneway.test.html" class="external-link">oneway.test</a></code>; there is no fitted model object and
       <code>$emmeans_object</code> is <code>NULL</code>.</p></li>
@@ -223,12 +225,62 @@ sample variances are equal and the groups are the same size this is the
 familiar \(n_1 + n_2 - 2\); when the variances differ it
 removes the bias that the pooled-variance correction leaves. The correction is a property of the point estimate, so
 the interval, which is for \(\delta^*\) itself, is the same with or
-without it. With two or three observations per group and a low
-<code>conf_level</code>, the corrected estimate can fall outside that interval;
-<code>$notes</code> says so when it does.</p>
+without it. When a group of two holds most of the variance,
+\(\nu\) approaches 1 and \(J(\nu)\) approaches 0 (the mean
+of the uncorrected estimate stops existing there), so the corrected
+estimate would collapse towards zero whatever the data say. Below
+\(\nu = 2\), where \(J(\nu)\) is less than 0.57, the
+correction is therefore not applied: that pair's <code>hedges_g</code> is the
+uncorrected estimate, and <code>$notes</code> names the pair. A pair whose
+factor is below 0.8, which is at about 4 degrees of freedom or fewer
+(two groups of three with equal variances give exactly 4, where
+\(J = 0.798\)), is also named in <code>$notes</code>, with its degrees
+of freedom and factor: there the correction pulls the estimate well
+towards zero, and the estimate is not continuous at 2 degrees of freedom.
+With few
+observations and a low <code>conf_level</code> the estimate, corrected or not,
+can fall outside its interval, because the interval inverts a skewed
+distribution and the correction shrinks only the estimate; <code>$notes</code>
+says so when it does.</p>
+<p>The interval is found with an exact noncentral t distribution function:
+beyond a noncentrality of 30 it is computed by Gauss-Hermite quadrature,
+because <code><a href="https://rdrr.io/r/stats/TDist.html" class="external-link">stats::pt()</a></code> switches to a normal approximation for a large
+noncentrality that is badly wrong at small degrees of freedom.</p>
+<p>A pair whose standard error is below the floating-point resolution of its
+means, which <code><a href="https://rdrr.io/r/stats/t.test.html" class="external-link">stats::t.test()</a></code> refuses as "essentially constant", is
+reported as <code>NA</code> with a note. Welch's F is a weighted sum, over pairs
+of groups, of terms that grow with each pair's squared t statistic, so
+when the pairs at that resolution make up more than 5% of it the omnibus
+test is rounding noise too: <code>$anova</code> then reports its statistic,
+denominator degrees of freedom and p-value as <code>NA</code>, with a note. With
+two groups that is whenever the single pair is at that resolution. Below
+5% the test is reported and the note gives the share. Subtracting a
+constant close to the values from the response avoids both.</p>
+<p>Welch's F, the pairwise t tests and the resolution check above do not
+depend on the response's units, but at a response far from 1 in magnitude
+their intermediate quantities do not fit in double precision: around
+1e-155 the weights (group size over variance) are each finite but their
+sum overflows, which makes <code><a href="https://rdrr.io/r/stats/oneway.test.html" class="external-link">stats::oneway.test()</a></code> return a finite but
+wrong F, and around 1e-162 the group variances are subnormal and the
+variances of the means underflow. So all three are computed on the response
+multiplied by a power of two chosen so the group variances are centred on 1
+on a log scale, as are the group summaries in <code>$emmeans</code>, and the
+means, standard deviations, differences and intervals are scaled back to
+the response's units. Multiplying by a
+power of two is exact unless it pushes a value out of the range of normal
+doubles, and such a scale is not used. The power is chosen from the data
+and is often not \(2^0\) even for an ordinary response, but
+because the scaling is exact the results there are unchanged. The omnibus test is accepted at the
+first of that scale, the response as supplied and the response brought
+near 1 at which its F and the sum of its weights are finite. If none
+qualifies, <code>$anova</code> reports the statistic, denominator degrees of
+freedom and p-value as <code>NA</code>, with a note.</p>
 <p>The standardiser is recorded in the <code>standardiser</code> column of
 <code>$effect_sizes</code>. The magnitude labels use Cohen's conventional
-thresholds of 0.2, 0.5 and 0.8 on the absolute value.</p>
+thresholds of 0.2, 0.5 and 0.8 on the absolute value of the estimate; when
+the estimate lies outside its own interval the label is taken from the
+nearer interval bound instead, so that it does not describe a value the
+interval rules out.</p>
 <p><strong>Several grouping variables.</strong> They are combined into a single cell
 factor and unused level combinations are dropped, so the number of groups
 reported is the number that actually contain data. The result is one
@@ -268,7 +320,7 @@ alternative approach. <em>Biometrika</em>, 38(3/4), 330-336.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Call: anova_welch(data = d, response = "value", groups = "group")</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Observations used: 90</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Omnibus test</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Omnibus test (Welch F)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    term statistic num_df den_df  p_value</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1 group     28.44      2  55.18 3.24e-09</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

@@ -150,10 +150,10 @@ grouping variable(s), then the covariate(s).</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Omnibus test (Type III, F)</span></span>
 <span><span class="co">#&gt;          term sum_sq df statistic   p_value</span></span>
-<span><span class="co">#&gt; 1       Prewt  503.4  1    11.680 0.0010866</span></span>
+<span><span class="co">#&gt; 1       Prewt  503.4  1     11.68  0.001087</span></span>
 <span><span class="co">#&gt; 2       Treat  785.1  2     9.107 0.0003215</span></span>
-<span><span class="co">#&gt; 3 Prewt:Treat  466.5  2     5.411 0.0066656</span></span>
-<span><span class="co">#&gt; 4   Residuals 2845.0 66        NA        NA</span></span>
+<span><span class="co">#&gt; 3 Prewt:Treat  466.5  2     5.411  0.006666</span></span>
+<span><span class="co">#&gt; 4   Residuals   2845 66        NA        NA</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Notes</span></span>
 <span><span class="co">#&gt;   - Covariate(s) mean-centred before fitting (Prewt: 82.41), so the intercept and the Type III group row refer to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way.</span></span>
@@ -245,9 +245,11 @@ as here, the p-values that follow do not allow for that choice and can
 be too small. When the slopes really differ but the test misses it, the
 additive model’s adjusted comparisons are biased by the slope difference
 times the difference in covariate means – which averages out when groups
-are randomised, but not otherwise. The help page
-(<code><a href="../reference/anova_ancova.html">?anova_ancova</a></code>) reports simulations of how often that
-second case rejects a true null hypothesis.</p>
+are randomised, but not otherwise. Even with randomised groups the
+selection step leaves the group row somewhat above its nominal level
+(about 6–7% at the 5% level in the simulations), and with unbalanced
+covariates far above it. The help page (<code><a href="../reference/anova_ancova.html">?anova_ancova</a></code>)
+reports those simulations.</p>
 <p><code>force_interaction</code> removes the selection step. Decide in
 advance:</p>
 <ul>
@@ -521,16 +523,18 @@ above.</p>
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span>, <span class="st">"covariate"</span><span class="op">)</span></span></code></pre></div>
 <p><img src="ancova_files/figure-html/plot-covariate-1.png" class="r-plt" alt="" width="100%"></p>
 <p>This is the plot to look at first in any ANCOVA. It shows the
-response against the covariate <em>on its original scale</em>, with a
-separate least-squares line and confidence band for each group (the
-bands use <code>conf_level</code>). The lines are each group’s own fit,
-drawn whichever model was chosen, so they show you directly whether
-parallel lines are a fair description. Here they are not: the control
-group’s line is almost flat while the two treatment lines rise. Look too
-at whether the groups cover the same range of the covariate – adjusted
-means for a group observed only at one end are extrapolations, and
-<code>$notes</code> names such a group. With several covariates there is
-one plot per covariate, named <code>covariate_&lt;name&gt;</code>.</p>
+response against the covariate <em>on its original scale</em>, with the
+lines of the model that was fitted and their confidence bands (the bands
+use <code>conf_level</code>). With the interaction, as here, each group
+has its own slope; when the additive model is used, the solid lines are
+parallel and each group’s own least-squares line is added dashed, so the
+plot still shows directly whether parallel lines are a fair description.
+Here they are not: the control group’s line is almost flat while the two
+treatment lines rise. Look too at whether the groups cover the same
+range of the covariate – adjusted means for a group observed only at one
+end are extrapolations, and <code>$notes</code> names such a group. With
+several covariates there is one plot per covariate, named
+<code>covariate_&lt;name&gt;</code>.</p>
 </div>
 <div class="section level3">
 <h3 id="adjusted-means">Adjusted means<a class="anchor" aria-label="anchor" href="#adjusted-means"></a>

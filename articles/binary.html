@@ -201,15 +201,15 @@ in the C locale, so the default does not depend on your session.)</p>
 <code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">ucb</span>, <span class="st">"Admit"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"Gender"</span>, <span class="st">"Dept"</span><span class="op">)</span>, weights <span class="op">=</span> <span class="st">"Freq"</span>,</span>
 <span>                 success <span class="op">=</span> <span class="st">"Admitted"</span><span class="op">)</span></span>
 <span><span class="va">fit</span></span>
-<span><span class="co">#&gt; Analysis of deviance for a binary response (logistic regression) </span></span>
-<span><span class="co">#&gt; ----------------------------------------------------------------</span></span>
+<span><span class="co">#&gt; Analysis of deviance for a binary response (logistic regression, Type II) </span></span>
+<span><span class="co">#&gt; -------------------------------------------------------------------------</span></span>
 <span><span class="co">#&gt; Call: anova_bin(data = ucb, response = "Admit", groups = c("Gender", "Dept"), success = "Admitted", weights = "Freq")</span></span>
 <span><span class="co">#&gt; Observations used: 24</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Omnibus test (Type II, likelihood-ratio chi-square)</span></span>
-<span><span class="co">#&gt;     term df statistic p_value</span></span>
-<span><span class="co">#&gt; 1 Gender  1     1.531  0.2159</span></span>
-<span><span class="co">#&gt; 2   Dept  5   763.400  &lt;2e-16</span></span>
+<span><span class="co">#&gt;     term df statistic   p_value</span></span>
+<span><span class="co">#&gt; 1 Gender  1     1.531    0.2159</span></span>
+<span><span class="co">#&gt; 2   Dept  5     763.4 &lt; 2.2e-16</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Notes</span></span>
 <span><span class="co">#&gt;   - Modelling P(Admit = Admitted); the other level is the baseline.</span></span>
@@ -272,7 +272,7 @@ numbers.</p>
 <span><span class="co">#&gt; [1] 5201.488</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $BIC</span></span>
-<span><span class="co">#&gt; [1] 5209.735</span></span>
+<span><span class="co">#&gt; [1] 5246.412</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; $logLik</span></span>
 <span><span class="co">#&gt; [1] -2593.744</span></span>
@@ -367,6 +367,17 @@ two kinds agree closely:</p>
 <span><span class="co">#&gt; 6         F vs A  0.02596498   0.05061965 0.02626184 0.05113317</span></span></code></pre></div>
 <p>They part company in small samples and, above all, under separation,
 where only the profile interval means anything (see <a href="#separation">Separation</a>).</p>
+<p>Profiling refits the model several times for each coefficient. The
+model has only grouping factors, so the refits run on the data collapsed
+to one weighted row per cell and outcome, which has the same likelihood:
+the number of rows does not add to the cost, but the number of
+coefficients does. Left at its default, <code>ci_method</code> gives
+Wald intervals instead, with a note, when the model has more than 50
+coefficients. That holds under separation too, except that an odds ratio
+separation drives to infinity or to zero still gets its profile
+interval, since a Wald interval means nothing there.
+<code>ci_method = "profile"</code> given explicitly always profiles
+every coefficient.</p>
 </div>
 <div class="section level3">
 <h3 id="choosing-the-reference-level">Choosing the reference level<a class="anchor" aria-label="anchor" href="#choosing-the-reference-level"></a>
@@ -546,8 +557,8 @@ healed:</p>
 <span><span class="co">#&gt; 6    high    yes 15</span></span>
 <span><span class="va">sep_fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_bin.html">anova_bin</a></span><span class="op">(</span><span class="va">healing</span>, <span class="st">"healed"</span>, <span class="st">"arm"</span>, weights <span class="op">=</span> <span class="st">"n"</span><span class="op">)</span></span>
 <span><span class="va">sep_fit</span></span>
-<span><span class="co">#&gt; Analysis of deviance for a binary response (logistic regression) </span></span>
-<span><span class="co">#&gt; ----------------------------------------------------------------</span></span>
+<span><span class="co">#&gt; Analysis of deviance for a binary response (logistic regression, Type II) </span></span>
+<span><span class="co">#&gt; -------------------------------------------------------------------------</span></span>
 <span><span class="co">#&gt; Call: anova_bin(data = healing, response = "healed", groups = "arm", weights = "n")</span></span>
 <span><span class="co">#&gt; Observations used: 5  (1 input row(s) not in $data_used; see $notes)</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -559,7 +570,7 @@ healed:</p>
 <span><span class="co">#&gt;   - Dropped 1 row(s) whose weight in `n` is zero: they contribute nothing to the fit, and keeping them would make row counts, robust standard errors and information criteria disagree with it.</span></span>
 <span><span class="co">#&gt;   - Modelling P(healed = yes); the other level is the baseline.</span></span>
 <span><span class="co">#&gt;   - Complete or quasi-complete separation detected: the fitted probability is numerically 0 or 1 in arm = high. The affected coefficient(s): armhigh. An affected odds ratio is not identified: it will be enormous, its interval will be unbounded on one side, and its Wald p-value will be near 1 no matter how strong the association is; the same goes for that cell's marginal probability and the comparisons involving it. With events this sparse the likelihood-ratio omnibus test is also liberal. Consider a penalised fit such as logistf::logistf(), or collapsing the offending level.</span></span>
-<span><span class="co">#&gt;   - Separation drives the odds ratio(s) for armhigh to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate; it is NA where the likelihood rules out no value on that side either.</span></span>
+<span><span class="co">#&gt;   - Separation drives the odds ratio(s) for armhigh to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate.</span></span>
 <span><span class="co">#&gt;   - Sparse data: fewer than 5 events or non-events are expected under the null hypothesis in arm = control, arm = low, arm = high (smallest 4.67). With data this sparse the likelihood-ratio omnibus test is liberal, rejecting a true null more often than its nominal level. test_statistic = "Wald" is not a remedy: Wald tests are less reliable still here. An exact test (for one grouping variable, fisher.test() on the group-by-outcome table) or the score test, anova(fit$model, test = "Rao"), holds its level better.</span></span>
 <span><span class="co">#&gt;   - $assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data).</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -834,7 +845,7 @@ that differs is BIC, because R bases it on the number of rows:</p>
 <div class="sourceCode" id="cb34"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>table <span class="op">=</span> <span class="va">fit</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span>, applicants <span class="op">=</span> <span class="va">one_row</span><span class="op">$</span><span class="va">model_stats</span><span class="op">$</span><span class="va">BIC</span><span class="op">)</span></span>
 <span><span class="co">#&gt;      table applicants </span></span>
-<span><span class="co">#&gt;   5209.735   5246.412</span></span></code></pre></div>
+<span><span class="co">#&gt;   5246.412   5246.412</span></span></code></pre></div>
 <p><code>vcov_type</code> requests heteroskedasticity-consistent
 (sandwich) standard errors, <code>"HC0"</code> to <code>"HC4"</code>,
 which need the <strong>sandwich</strong> package. With frequency weights
@@ -868,7 +879,7 @@ covariance was used for:</p>
 <code class="sourceCode R"><span><span class="va">hc_table</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; [1] "Modelling P(Admit = Admitted); the other level is the baseline."                                                                                                                                                                                                                             </span></span>
 <span><span class="co">#&gt; [2] "The robust covariance (HC3) treats each of the 4,526 observations the frequency weights represent as a unit, as it would on the data expanded to one row per observation; computed row by row it would count each row as one unit with an inflated score, and overstate the standard errors."</span></span>
-<span><span class="co">#&gt; [3] "The omnibus likelihood-ratio test compares deviances, so it rests on the model-based variance; the robust (HC3) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\"."                  </span></span>
+<span><span class="co">#&gt; [3] "The omnibus likelihood-ratio test compares deviances, so it rests on the model-based variance; the robust (HC3) covariance is used only by $effect_sizes, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\"."                          </span></span>
 <span><span class="co">#&gt; [4] "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance."                                                                                                                       </span></span>
 <span><span class="co">#&gt; [5] "The grouping factors enter the model additively, so $emmeans and $posthoc are reported for each factor separately, averaged over the others (column `term`), and each factor's comparisons are a separate multiplicity family. Set interaction = TRUE to compare cells instead."             </span></span>
 <span><span class="co">#&gt; [6] "$assumptions$dispersion is NA: the Pearson dispersion of a 0/1 response carries no information about overdispersion (in a model saturated in the cells it equals N / (N - k) whatever the data)."</span></span></code></pre></div>

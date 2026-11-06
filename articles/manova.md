@@ -717,8 +717,10 @@ head(cr_add$emmeans[, c("response", "term", "sex", "sp", "estimate")], 4)
   ([above](#which-statistic-test)).
 - `type = "III"` gives Type III tests, for the multivariate table and
   the univariate follow-ups alike. If the model has aliased coefficients
-  (an empty cell, collinear covariates), Type III is not defined, and
-  Type II is used with a note.
+  (an empty cell), Type III is not defined, and Type II is used with a
+  note. Covariates that are constant, determined by the grouping
+  variables or collinear with each other are refused with an error
+  before any model is fitted.
 - `interaction` chooses how several grouping variables combine
   ([above](#several-grouping-variables)).
 - `adjust` sets the adjustment of the comparisons within each response

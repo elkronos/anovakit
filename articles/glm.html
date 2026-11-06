@@ -156,9 +156,9 @@ of the marginal-means plot.</p>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Omnibus test (Type II, F)</span></span>
 <span><span class="co">#&gt;        term sum_sq df statistic   p_value</span></span>
-<span><span class="co">#&gt; 1      dose 2426.0  2    92.000 &lt; 2.2e-16</span></span>
-<span><span class="co">#&gt; 2      supp  205.4  1    15.570 0.0002312</span></span>
-<span><span class="co">#&gt; 3 dose:supp  108.3  2     4.107 0.0218603</span></span>
+<span><span class="co">#&gt; 1      dose   2426  2        92 &lt; 2.2e-16</span></span>
+<span><span class="co">#&gt; 2      supp  205.3  1     15.57 0.0002312</span></span>
+<span><span class="co">#&gt; 3 dose:supp  108.3  2     4.107   0.02186</span></span>
 <span><span class="co">#&gt; 4 Residuals  712.1 54        NA        NA</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
@@ -550,7 +550,7 @@ multiplicative, so comparisons come out as ratios of means.</p>
 <span><span class="co">#&gt; 2 Residuals   9.98 87        NA        NA</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Notes</span></span>
-<span><span class="co">#&gt;   - McFadden's pseudo R squared is not reported (NA): the log-likelihood of a Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead.</span></span>
+<span><span class="co">#&gt;   - McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead.</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: box, residuals, qq, emmeans</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
@@ -583,20 +583,24 @@ table has <code>sum_sq</code> and a <code>Residuals</code> row:</p>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">g</span><span class="op">$</span><span class="va">anova</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; likelihood-ratio chi-square</span></span>
+<span><span class="co">#&gt; scaled-deviance chi-square, estimated dispersion treated as known</span></span>
 <span><span class="co">#&gt;   term df statistic      p_value</span></span>
 <span><span class="co">#&gt; 1 Type  5   92.8029 1.730729e-18</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Wald chi-square</span></span>
 <span><span class="co">#&gt;   term df statistic      p_value</span></span>
 <span><span class="co">#&gt; 1 Type  5  101.7011 2.314394e-20</span></span></code></pre></div>
-<p>The likelihood-ratio statistic is the deviance drop divided by the
-estimated dispersion, referred to a chi-squared distribution. That
-ignores the uncertainty in the dispersion estimate, which the F test
-allows for, so for a family that estimates its dispersion F is the
-better default. The Wald test is built from the coefficients and their
-covariance matrix. It is the only one of the three that can use a robust
-covariance (see <a href="#vcov_type-robust-standard-errors"><code>vcov_type</code></a>).
+<p>For a family that estimates its dispersion, the “LR” statistic is not
+a true likelihood ratio: it is the deviance drop divided by the
+estimated dispersion, referred to a chi-squared distribution as though
+the dispersion were known, and the table heading calls it a
+scaled-deviance chi-square. That ignores the uncertainty in the
+dispersion estimate, which the F test allows for, so for a family that
+estimates its dispersion F is the better default. A quasi family has no
+likelihood at all, so there <code>test_statistic = "LR"</code> gives the
+F test, with a note, as <code><a href="../reference/anova_count.html">anova_count()</a></code> does. The Wald test
+is built from the coefficients and their covariance matrix. It is the
+only one of the three that can use a robust covariance (see <a href="#vcov_type-robust-standard-errors"><code>vcov_type</code></a>).
 Here all three agree that the car types differ.</p>
 </div>
 <div class="section level3">
@@ -641,9 +645,12 @@ exp(-0.583) = 0.56 times as much as compact ones on average. The
 <code>distribution</code> column says the tests use t, because the
 dispersion is estimated.</p>
 <p><code>ci_method = "profile"</code> (the default) gives
-profile-likelihood intervals, cut at t quantiles so that they agree with
-the t tests beside them. <code>ci_method = "wald"</code> gives estimate
-± t × SE:</p>
+profile-likelihood intervals, cut at the t quantiles the tests beside
+them use. The p-values are Wald p-values, though, so in a small sample a
+profile interval can exclude 0 while its p-value is above 0.05, or the
+reverse; <code>$notes</code> names any such row.
+<code>ci_method = "wald"</code> gives estimate ± t × SE, which always
+agrees with the p-value:</p>
 <div class="sourceCode" id="cb26"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">wald</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/anova_glm.html">anova_glm</a></span><span class="op">(</span><span class="va">cars</span>, <span class="st">"Price"</span>, <span class="st">"Type"</span>, family <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/family.html" class="external-link">Gamma</a></span><span class="op">(</span>link <span class="op">=</span> <span class="st">"log"</span><span class="op">)</span>,</span>
 <span>                  ci_method <span class="op">=</span> <span class="st">"wald"</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">assumptions</span><span class="op">$</span><span class="va">coefficients</span></span>
@@ -831,8 +838,8 @@ as the vans suggest it is here:</p>
 <span><span class="co">#&gt; 5  Sporty 1.7554535 2.2117883</span></span>
 <span><span class="co">#&gt; 6     Van 2.1563719 0.6640312</span></span>
 <span><span class="va">rob</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "The omnibus F test compares deviances, so it rests on the model-based variance; the robust (HC3) covariance is used only by the coefficient table, the marginal means and the comparisons. For an omnibus test that uses it, set test_statistic = \"Wald\"."              </span></span>
-<span><span class="co">#&gt; [2] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of a Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."</span></span>
+<span><span class="co">#&gt; [1] "The omnibus F test compares deviances scaled by a dispersion estimated from the Pearson residuals, so it uses the model's variance function, not the robust (HC3) covariance, which only the coefficient table, the marginal means and the comparisons use. For an omnibus test that uses it, set test_statistic = \"Wald\"."</span></span>
+<span><span class="co">#&gt; [2] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."                                                 </span></span>
 <span><span class="co">#&gt; [3] "Robust standard errors (HC3) were requested, so the coefficient intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance."</span></span></code></pre></div>
 <p>The standard error for vans shrinks and the one for midsize cars
 grows: each now reflects that type’s own spread. The notes spell out
@@ -955,7 +962,7 @@ coefficient table, the marginal means and the comparisons.</p>
 <code class="sourceCode R"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span>
 <span><span class="co">#&gt; character(0)</span></span>
 <span><span class="va">gam</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of a Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "McFadden's pseudo R squared is not reported (NA): the log-likelihood of the Gamma family is a log density, which shifts with the units of the response, so the ratio has no unit-free meaning. The deviance explained does not depend on the units and is reported instead."</span></span></code></pre></div>
 <p>The ToothGrowth fit has no notes. No rows were dropped, the model is
 far from saturated, nothing failed to compute, and the Gaussian family
 has partial eta squared to report. The Gamma fit has one, explaining why

@@ -153,12 +153,12 @@ more grouping columns.</p>
 <span><span class="co">#&gt; Call: anova_kw(data = aq, response = "Ozone", groups = "Month")</span></span>
 <span><span class="co">#&gt; Observations used: 116  (37 input row(s) not in $data_used; see $notes)</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Omnibus test</span></span>
+<span><span class="co">#&gt; Omnibus test (Kruskal-Wallis chi-square)</span></span>
 <span><span class="co">#&gt;    term statistic df   p_value</span></span>
 <span><span class="co">#&gt; 1 Month     29.27  4 6.901e-06</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Notes</span></span>
-<span><span class="co">#&gt;   - Dropped 37 row(s) with missing values in: Ozone, Month.</span></span>
+<span><span class="co">#&gt;   - Dropped 37 row(s) with missing values in: Ozone.</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Plots available: box</span></span>
 <span><span class="co">#&gt;   (use plot(x, which = "box"))</span></span></code></pre></div>
@@ -430,7 +430,7 @@ Shapiro-Wilk table in <code>$assumptions$normality</code>, a Q-Q plot in
 <span><span class="co">#&gt; 4   Aug 26 0.9327912 9.032475e-02 &lt;NA&gt;</span></span>
 <span><span class="co">#&gt; 5   Sep 29 0.7837315 4.325436e-05 &lt;NA&gt;</span></span>
 <span><span class="va">kwd</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone, Month."                                                                      </span></span>
+<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone."                                                                             </span></span>
 <span><span class="co">#&gt; [2] "The normality diagnostics are contextual only. Kruskal-Wallis does not assume normality and the test does not depend on them."</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">kwd</span><span class="op">$</span><span class="va">plots</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "box" "qq"</span></span></code></pre></div>
@@ -510,7 +510,7 @@ hint. Anyone who gave up is recorded as <code>Inf</code>:</p>
 <span><span class="co">#&gt; Call: anova_kw(data = puzzle, response = "minutes", groups = "hint")</span></span>
 <span><span class="co">#&gt; Observations used: 24</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Omnibus test</span></span>
+<span><span class="co">#&gt; Omnibus test (Kruskal-Wallis chi-square)</span></span>
 <span><span class="co">#&gt;   term statistic df p_value</span></span>
 <span><span class="co">#&gt; 1 hint     13.13  2 0.00141</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -578,7 +578,7 @@ you may want only the omnibus test. The effect sizes come from H, so
 they are still reported:</p>
 <div class="sourceCode" id="cb23"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/anova_kw.html">anova_kw</a></span><span class="op">(</span><span class="va">aq</span>, <span class="st">"Ozone"</span>, <span class="st">"Month"</span>, posthoc <span class="op">=</span> <span class="cn">FALSE</span>, plots <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone, Month."                                                                                                                           </span></span>
+<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone."                                                                                                                                  </span></span>
 <span><span class="co">#&gt; [2] "Pairwise comparisons were not computed (posthoc = FALSE); there would have been 10. $effect_sizes still reports epsilon squared and eta squared, which come from the omnibus test."</span></span></code></pre></div>
 </div>
 <div class="section level3">
@@ -638,7 +638,7 @@ the note goes away, and the two statistics agree:</p>
 </h2>
 <div class="sourceCode" id="cb27"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">kw</span><span class="op">$</span><span class="va">notes</span></span>
-<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone, Month."</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] "Dropped 37 row(s) with missing values in: Ozone."</span></span></code></pre></div>
 <p>For the ozone fit the only note records the 37 rows dropped for
 missing values, and names the columns that were checked. Other notes you
 have seen above: infinite values kept, the contextual status of the

@@ -85,16 +85,22 @@ anova_bin(
 - ci_method:
 
   Character. `"profile"` (default) for profile-likelihood intervals, or
-  `"wald"`.
+  `"wald"`. Profile intervals are slow with many coefficients; left at
+  the default, a model with more than 50 coefficients gets Wald
+  intervals instead, with a note, except for odds ratios that separation
+  drives to infinity or zero (see Details). The p-values in
+  `$effect_sizes` are Wald p-values, so in small or sparse samples a
+  profile interval can exclude an odds ratio of 1 while the p-value
+  beside it is above `1 - conf_level`, or the reverse; `$notes` names
+  such rows, and `"wald"` intervals always agree with the p-values.
 
 - vcov_type:
 
   Character. `"model"` (default) or an HC type (`"HC0"` to `"HC4"`) for
   robust standard errors, which requires the sandwich package. They
-  reach the coefficient table, the marginal means and the comparisons;
-  the omnibus table uses them only with `test_statistic = "Wald"`, since
-  a likelihood-ratio test compares deviances. `$notes` says which
-  applies.
+  reach `$effect_sizes`, the marginal means and the comparisons; the
+  omnibus table uses them only with `test_statistic = "Wald"`, since a
+  likelihood-ratio test compares deviances. `$notes` says which applies.
 
 - adjust:
 
@@ -123,8 +129,16 @@ anova_bin(
   for missing values. Whole-number weights (some above 1) are read as
   frequency weights, each row standing for that many identical
   observations, and the robust covariance (`vcov_type`) is then that of
-  the data expanded to one row per observation; other weights are
-  treated as sampling weights, with each row as one unit.
+  the data expanded to one row per observation. Other weights are used
+  as given, as [`glm()`](https://rdrr.io/r/stats/glm.html) uses prior
+  weights: the fit, the tests, the intervals and the marginal means
+  treat them as multipliers of each row, like frequencies, so their
+  scale matters (weights averaging 0.01 make 300 rows count as 3
+  observations), and `$notes` says so when they do not average 1. Only
+  the robust covariance, and the sparse-data check (which rescales them
+  to average 1), treat each row as one unit. Sampling weights should
+  therefore be rescaled to average 1, or analysed with a design-based
+  method such as `survey::svyglm()`.
 
 - verbose:
 
@@ -146,9 +160,10 @@ object. Besides the standard components:
   `df`, `p_value`). All of them use the prior weights. When any weight
   is not a whole number, `AIC`, `BIC` and `logLik` are `NA` with a note,
   because R's binomial log-likelihood rounds the weights; the
-  deviance-based statistics are unaffected. `BIC` uses
-  [`nobs()`](https://rdrr.io/r/stats/nobs.html), the number of rows with
-  a non-zero weight.
+  deviance-based statistics are unaffected. `BIC` uses `log(nobs())`,
+  the number of rows with a non-zero weight, or, with frequency weights,
+  the number of observations they represent (their sum), so that it
+  equals the BIC of the expanded data.
 
 - `$effect_sizes`:
 
@@ -160,7 +175,8 @@ object. Besides the standard components:
   interacts with, `"b vs a at site = north"`, and an interaction row
   such as `"(b vs a) x (south vs north)"` is a ratio of odds ratios),
   `odds_ratio`, `conf_low`, `conf_high`, `se_log_or`, `statistic`,
-  `p_value` and `ci_method`.
+  `p_value` and `ci_method` (`"profile"` or `"wald"`, row by row: see
+  Details).
 
 - `$assumptions`:
 
@@ -208,8 +224,29 @@ on that side, and is reported with `conf_high = Inf` (or
 `conf_low = 0`); its finite end is found by profiling the likelihood
 directly, since
 [`stats::confint()`](https://rdrr.io/r/stats/confint.html) cannot step
-from a diverged estimate, and is `NA` when the likelihood rules out no
-value on that side either.
+from a diverged estimate. When the likelihood rules out no value on that
+side either (for example an interaction whose cells are all separated)
+the interval is `(0, Inf)`: the data do not identify that odds ratio at
+all, its point estimate is arbitrary, and `$notes` says so. An end the
+search cannot find is `NA`.
+
+**Interval cost.** A profile-likelihood interval refits the model
+several times for each coefficient. The model has only grouping factors,
+so the refits run over the data collapsed to one weighted row per cell
+and outcome, which has the same likelihood: the number of rows does not
+add to the cost, and individual rows and the same data aggregated with
+counts as weights get the same intervals. The number of coefficients
+does: a factor with 200 levels can take minutes where Wald intervals
+take about a second. Left at its default, `ci_method` therefore gives
+Wald intervals, with a note, when the model has more than 50
+coefficients, as
+[`anova_glm`](https://elkronos.github.io/anovakit/reference/anova_glm.md)
+does. An odds ratio that separation drives to infinity or to zero still
+gets its profile-likelihood interval then, since a Wald interval means
+nothing there. Wald and profile intervals are close when every cell has
+many events and non-events, and can differ noticeably when events are
+rare. Give `ci_method = "profile"` explicitly to profile every
+coefficient.
 
 **Sparse data.** When fewer than about 5 events or non-events are
 expected in a cell under the null hypothesis, the likelihood-ratio
@@ -221,7 +258,8 @@ remedy; an exact test, or the score test, holds its level better.
 the observed proportions alike. A row with weight `w` counts as `w`
 identical observations, so data aggregated to one row per cell and
 outcome, with the count as the weight, give the same results as the
-individual rows (apart from BIC, which R bases on the number of rows).
+individual rows, BIC included: with frequency weights its penalty uses
+the number of observations they represent, not the number of rows.
 
 ## See also
 
@@ -239,8 +277,8 @@ d <- data.frame(g = factor(sample(c("a", "b", "c"), n, replace = TRUE)))
 d$y <- rbinom(n, 1, c(a = 0.2, b = 0.5, c = 0.8)[as.character(d$g)])
 fit <- anova_bin(d, "y", "g")
 fit
-#> Analysis of deviance for a binary response (logistic regression) 
-#> ----------------------------------------------------------------
+#> Analysis of deviance for a binary response (logistic regression, Type II) 
+#> -------------------------------------------------------------------------
 #> Call: anova_bin(data = d, response = "y", groups = "g")
 #> Observations used: 300
 #> 
@@ -278,7 +316,7 @@ anova_bin(agg, "y", "g", weights = "n", plots = FALSE)$model_stats
 #> [1] 344.7904
 #> 
 #> $BIC
-#> [1] 344.1657
+#> [1] 355.9018
 #> 
 #> $logLik
 #> [1] -169.3952

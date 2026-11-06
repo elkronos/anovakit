@@ -202,10 +202,27 @@ Default <code>FALSE</code>.</p></dd>
   <code>$model_additive</code> and <code>$model_interaction</code>, both candidate fits,
   so the one that was not chosen is still available. <code>$assumptions</code>
   also holds <code>normality</code> (Shapiro-Wilk on the residuals) and
-  <code>levene</code> (Levene's test on the residuals across the cells).
+  <code>levene</code> (Levene's test on the residuals across the cells; cells
+  with one or two observations, whose absolute deviations from their median
+  cannot vary, are left out of it, as are cells the model fits exactly by
+  construction or leaves with fewer than 2.5 residual degrees of freedom
+  (the cell's observations minus the sum of their leverages, judged from
+  the design, not from the size of the residuals): so, when every cell has
+  a mean of its own (as with the default <code>interaction = TRUE</code>), every
+  cell of three observations, and under the covariate-by-group interaction
+  every cell with no more than two observations beyond the coefficients of
+  its own; cells of exactly three observations are left out in any case,
+  since the test can hardly reject on them.
+  Left in, such cells make the test reject homoscedastic data about twice
+  as often as its nominal level (two residual degrees of freedom and a
+  slope of their own) or almost never (three observations). <code>$notes</code>
+  names them, with their residual degrees of freedom).
   <code>$data_used</code> holds the analysed columns and the cell factor, with the
   covariates centred when <code>center_covariates = TRUE</code>. The covariate
-  plot shows each covariate on its original scale.</p>
+  plot shows each covariate on its original scale, with the lines of the
+  model that was fitted and their model-based confidence bands; when the
+  additive model is used those lines are parallel, and each group's own
+  least-squares line is added dashed.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -234,12 +251,23 @@ which is held at its mean rather than averaged over its two values. Set
 point you want the intercept (and the Type III group row) to refer to. When
 the covariate mean lies outside the range a group was observed over, that
 group's adjusted mean is an extrapolation along the fitted slope, and
-<code>$notes</code> names the group.</p>
+<code>$notes</code> names the group. Under the covariate-by-group interaction a
+group in which a covariate is constant has no estimable slope, so its
+adjusted mean is in general not estimable: it is left out of <code>$emmeans</code>
+and <code>$posthoc</code>, and <code>$notes</code> names it.</p>
 <p>A covariate that is constant, that is determined by the grouping variables
 (constant within every group, such as a group-level attribute), or that is
 an exact linear combination of the grouping variables and the other
 covariates is refused with an error naming it: its effect cannot be
-separated from the group effect, so there is nothing to adjust for.</p>
+separated from the group effect, so there is nothing to adjust for.
+With <code>center_covariates = FALSE</code>, a covariate whose spread is below
+about 1e-7 of its level (a Unix timestamp spanning a minute, say) is also
+refused, since <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> cannot tell it apart from the intercept
+uncentred; the error says so, and the default centring fits it. A
+somewhat larger spread can still be too small for the covariate-by-group
+columns, which <code><a href="https://rdrr.io/r/stats/lm.html" class="external-link">lm()</a></code> then drops in part; an uncentred fit whose
+models lose coefficients that the centred fit keeps is refused in the same
+way, since the slopes test and <code>$simple_slopes</code> would be wrong.</p>
 <p><strong>Homogeneity of slopes.</strong> The two candidate models are the grouping
 structure with the covariates entered additively, and the same model plus
 the product of every covariate with every grouping term in it, so that under
@@ -247,8 +275,10 @@ the full factorial each cell has its own slope. They are compared by one
 nested F test, joint over all covariates: heterogeneity in any one covariate
 retains the slope terms for all of them. <code>homogeneity_alpha</code> is its
 level. The test is reported as not computable (<code>NA</code>) when the
-covariate-by-group terms add nothing estimable, or when the model without
-them already fits the data exactly. If the slopes differ, the interaction
+covariate-by-group terms add nothing estimable, when the model with them
+leaves no residual degrees of freedom (too few rows per group for the
+slopes to be tested), or when the model without them already fits the data
+exactly; the additive model is then used. If the slopes differ, the interaction
 model is used, and a note explains that the group effect is then a
 comparison at one point on the covariate rather than a constant difference,
 and that <code>$simple_slopes</code> is the thing to read.</p>
@@ -264,10 +294,15 @@ within-group SDs, the default pipeline rejected a true null of equal
 adjusted means for the group row about 11–13% of the time at the 5% level
 (about 34% with 10 per group and means at -2, 0 and 2), against about 5%
 with <code>force_interaction = TRUE</code>; always fitting the additive model
-(<code>force_interaction = FALSE</code>) was worse still. Randomised groups were
-not affected. So when the additive model is used and the covariate means
+(<code>force_interaction = FALSE</code>) was worse still. Randomised groups are
+affected less, but still affected: with the same slopes and equal expected
+covariate means, the default pipeline rejected about 6–7% of the time
+with 20 per group, because chance imbalance in the covariate means and the
+selection step itself still inflate the group row. So the note on the
+additive model chosen by the test says that its p-values do not allow for
+the selection, and when the covariate means also
 differ between groups by more than half a pooled within-group SD,
-<code>$notes</code> says so. Conversely, when the test retains the interaction, the p-values do
+<code>$notes</code> says so as well. Conversely, when the test retains the interaction, the p-values do
 not allow for that choice and can also be too small. <code>force_interaction
 = TRUE</code> avoids the selection step: with centred covariates and <code>type =
 "III"</code>, the group row is then a valid comparison of the groups at the
@@ -278,8 +313,10 @@ which model was fitted and why.</p>
 <code>"model"</code>, the F tests in <code>$anova</code> are Wald F tests
 (<code>car::Anova(vcov. = )</code>) built from the heteroscedasticity-consistent
 covariance, on the model's residual degrees of freedom, so that table has no
-sums of squares. <code>$emmeans</code>, <code>$posthoc</code> and <code>$simple_slopes</code>
-use the same covariance. <code>$effect_sizes</code> are still computed from the
+sums of squares. (<span class="pkg">car</span> refuses those tests for a model with aliased
+coefficients; <code>$anova</code> then keeps the model-based F tests, and
+<code>$notes</code> says so.) <code>$emmeans</code>, <code>$posthoc</code> and
+<code>$simple_slopes</code> use the same covariance. <code>$effect_sizes</code> are still computed from the
 model-based sums of squares, which the covariance does not change, and the
 homogeneity-of-slopes test stays the model-based F test.</p>
     </div>
@@ -308,13 +345,13 @@ homogeneity-of-slopes test stays the model-based F test.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Omnibus test (Type III, F)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        term sum_sq  df statistic   p_value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1  baseline  12400   1    1214.0 &lt; 2.2e-16</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1  baseline  12400   1      1214 &lt; 2.2e-16</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2       grp   1252   1     122.6 &lt; 2.2e-16</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 3 Residuals   1501 147        NA        NA</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Notes</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   - Covariate(s) mean-centred before fitting (baseline: 100.8), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way.</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   - Slopes are consistent with being equal across groups (p = 0.6719), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   - Slopes are consistent with being equal across groups (p = 0.6719), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal. Setting force_interaction = TRUE in advance avoids the selection step.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Plots available: residuals, qq, covariate, emmeans</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   (use plot(x, which = "residuals"))</span>
@@ -334,8 +371,8 @@ homogeneity-of-slopes test stays the model-based F test.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                                   comparison df statistic   p_value homogeneous</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1 additive vs covariate-by-group interaction  1 0.1801101 0.6719033        TRUE</span>
 <span class="r-in"><span><span class="va">fit</span><span class="op">$</span><span class="va">notes</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "Covariate(s) mean-centred before fitting (baseline: 100.8), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way."</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2] "Slopes are consistent with being equal across groups (p = 0.6719), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it." </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "Covariate(s) mean-centred before fitting (baseline: 100.8), so the intercept refers to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way."                                                                                                                                                                                                                                                                                                                                                                                            </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2] "Slopes are consistent with being equal across groups (p = 0.6719), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal. Setting force_interaction = TRUE in advance avoids the selection step."</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Fix the model in advance instead of letting the slopes test choose. With</span></span></span>
 <span class="r-in"><span><span class="co"># the interaction in the model, centring is what keeps the group row</span></span></span>

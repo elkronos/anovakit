@@ -44,7 +44,7 @@ print(fit)
 #> Call: anova_welch(data = d, response = "y", groups = "g", plots = FALSE)
 #> Observations used: 60
 #> 
-#> Omnibus test
+#> Omnibus test (Welch F)
 #>   term statistic num_df den_df p_value
 #> 1    g     0.264      2  37.91  0.7694
 ```
