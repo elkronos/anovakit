@@ -13,15 +13,18 @@
 \item{object}{An \code{\link{anovakit_fit}} object.}
 
 \item{digits}{Number of significant digits for the printed tables. Default
-\code{4}.}
+\code{4} for \code{summary()}; the \code{print()} method uses the value
+stored in the summary object.}
 
 \item{...}{Ignored.}
 
 \item{x}{A \code{summary.anovakit_fit} object.}
 }
 \value{
-An object of class \code{summary.anovakit_fit}, which prints the
-  summary. Its \code{$fit} element is \code{object}.
+\code{summary()} returns an object of class
+  \code{summary.anovakit_fit}, a list holding \code{fit} (the original
+  \code{object}) and \code{digits}. Its \code{print()} method prints the
+  summary and returns \code{x} invisibly.
 }
 \description{
 Everything \code{print} shows, plus assumption checks, effect sizes,

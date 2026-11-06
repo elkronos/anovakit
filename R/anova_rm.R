@@ -175,7 +175,16 @@
 #'   within-subject cell, with a \code{note} giving the reason when a cell
 #'   could not be tested.
 #'
-#' @references Olejnik, S., & Algina, J. (2003). Generalized eta and omega
+#' @references Greenhouse, S. W., & Geisser, S. (1959). On methods in the
+#'   analysis of profile data. \emph{Psychometrika}, 24(2), 95-112.
+#'   \doi{10.1007/BF02289823}
+#'
+#'   Huynh, H., & Feldt, L. S. (1976). Estimation of the Box correction for
+#'   degrees of freedom from sample data in randomized block and split-plot
+#'   designs. \emph{Journal of Educational Statistics}, 1(1), 69-82.
+#'   \doi{10.3102/10769986001001069}
+#'
+#'   Olejnik, S., & Algina, J. (2003). Generalized eta and omega
 #'   squared statistics: measures of effect size for some common research
 #'   designs. \emph{Psychological Methods}, 8(4), 434-447.
 #'

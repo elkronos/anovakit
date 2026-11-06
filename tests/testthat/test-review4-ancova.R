@@ -21,13 +21,15 @@ test_that("output-F1: summary() prints the homogeneity-of-slopes test once", {
   expect_true(any(grepl(format(round(ref$F[2], 3), nsmall = 3), out, fixed = TRUE)))
 
   # anova_rm()'s sphericity table is still printed once as well
-  long <- withr::with_seed(2, data.frame(
-    id = factor(rep(1:8, each = 3)), cond = factor(rep(c("a", "b", "c"), 8)),
-    y = stats::rnorm(24)))
-  frm <- anova_rm(long, "y", "id", within = "cond", plots = FALSE)
-  expect_identical(frm$sphericity, frm$assumptions$sphericity)
-  out_rm <- capture.output(summary(frm))
-  expect_identical(sum(grepl("mauchly_w", out_rm, fixed = TRUE)), 1L)
+  if (requireNamespace("afex", quietly = TRUE)) {
+    long <- withr::with_seed(2, data.frame(
+      id = factor(rep(1:8, each = 3)), cond = factor(rep(c("a", "b", "c"), 8)),
+      y = stats::rnorm(24)))
+    frm <- anova_rm(long, "y", "id", within = "cond", plots = FALSE)
+    expect_identical(frm$sphericity, frm$assumptions$sphericity)
+    out_rm <- capture.output(summary(frm))
+    expect_identical(sum(grepl("mauchly_w", out_rm, fixed = TRUE)), 1L)
+  }
 })
 
 # ancova-F1: a saturated forced-interaction model prints nothing ----------------

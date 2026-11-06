@@ -175,9 +175,11 @@
 #' @references
 #' Mardia, K. V. (1970). Measures of multivariate skewness and kurtosis with
 #' applications. \emph{Biometrika}, 57(3), 519-530.
+#' \doi{10.1093/biomet/57.3.519}
 #'
 #' Box, G. E. P. (1949). A general distribution theory for a class of likelihood
 #' criteria. \emph{Biometrika}, 36(3/4), 317-346.
+#' \doi{10.1093/biomet/36.3-4.317}
 #'
 #' @examples
 #' set.seed(1)

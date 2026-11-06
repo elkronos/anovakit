@@ -167,7 +167,9 @@ test_that("R3-32: a two-column matrix response or covariate is refused clearly i
   expect_error(anova_bin(d, "y", "g", plots = FALSE), msg, fixed = TRUE)
   expect_error(anova_ancova(d, "y", "g", "x", plots = FALSE), msg, fixed = TRUE)
   expect_error(anova_manova(d, c("y", "x"), "g", plots = FALSE), msg, fixed = TRUE)
-  expect_error(anova_rm(d, "y", "id", "t", plots = FALSE), msg, fixed = TRUE)
+  if (requireNamespace("afex", quietly = TRUE)) {
+    expect_error(anova_rm(d, "y", "id", "t", plots = FALSE), msg, fixed = TRUE)
+  }
   expect_error(anova_glm(d, "y", "g", plots = FALSE), "2-column matrix")
 
   d$y1 <- d$y[, 1]
@@ -204,6 +206,7 @@ test_that("R3-45: every function keeps a compact call when called through do.cal
     anova_manova = list(responses = c("x", "y"), groups = "g"),
     anova_rm     = list(response = "x", subject = "id", within = "t")
   )
+  if (!requireNamespace("afex", quietly = TRUE)) calls$anova_rm <- NULL
   for (fn in names(calls)) {
     args <- c(list(data = d), calls[[fn]], list(plots = FALSE))
     f <- do.call(getExportedValue("anovakit", fn), args)
@@ -250,6 +253,8 @@ test_that("R3-56: a non-ASCII character binomial response with an unknown encodi
 })
 
 test_that("R3-30: integer64 columns in anova_rm and anova_manova match the double run and base R", {
+  skip_if_not_installed("bit64")
+  skip_if_not_installed("afex")
   d <- withr::with_seed(1, data.frame(id = factor(rep(1:10, 3)),
                                       t = factor(rep(c("t1", "t2", "t3"), each = 10)),
                                       g = rep(c("a", "b"), 15),

@@ -212,10 +212,13 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
 #'
 #' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
-#'   \code{4}.
+#'   \code{4} for \code{summary()}; the \code{print()} method uses the value
+#'   stored in the summary object.
 #' @param ... Ignored.
-#' @return An object of class \code{summary.anovakit_fit}, which prints the
-#'   summary. Its \code{$fit} element is \code{object}.
+#' @return \code{summary()} returns an object of class
+#'   \code{summary.anovakit_fit}, a list holding \code{fit} (the original
+#'   \code{object}) and \code{digits}. Its \code{print()} method prints the
+#'   summary and returns \code{x} invisibly.
 #' @examples
 #' set.seed(1)
 #' d <- data.frame(g = rep(c("a", "b", "c"), each = 20), y = rnorm(60))

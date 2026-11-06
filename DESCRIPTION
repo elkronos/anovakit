@@ -4,7 +4,7 @@ Version: 0.1.0
 Authors@R: person("Justin", "Chase", email = "jchase.msu@gmail.com",
                   role = c("aut", "cre"))
 Description: Provides a consistent set of wrappers around the analysis of
-    variance designs that applied work most often needs: Welch's analysis of
+    variance (ANOVA) designs that applied work most often needs: Welch's analysis of
     variance (Welch (1951) <doi:10.1093/biomet/38.3-4.330>), the
     Kruskal-Wallis test with Dunn post-hoc comparisons (Dunn (1964)
     <doi:10.1080/00401706.1964.10490181>), analysis of covariance, repeated
@@ -13,8 +13,8 @@ Description: Provides a consistent set of wrappers around the analysis of
     <doi:10.3102/10769986001001069>) corrections, multivariate analysis of
     variance and covariance with Mardia's normality tests (Mardia (1970)
     <doi:10.1093/biomet/57.3.519>) and Box's M (Box (1949)
-    <doi:10.1093/biomet/36.3-4.317>), and analyses of deviance for binary and
-    count responses. Each function validates its input, checks the assumptions
+    <doi:10.1093/biomet/36.3-4.317>), and analyses of deviance for binary, count and
+    other generalised linear model responses. Each function validates its input, checks the assumptions
     that matter for the method it implements, reports effect sizes (with
     confidence intervals for standardised mean differences, odds ratios and
     rate ratios), computes estimated marginal means and pairwise comparisons,
@@ -24,7 +24,7 @@ Description: Provides a consistent set of wrappers around the analysis of
 License: GPL-3
 Encoding: UTF-8
 Language: en-GB
-Depends: R (>= 3.5.0)
+Depends: R (>= 4.1.0)
 Imports:
     car,
     emmeans,
