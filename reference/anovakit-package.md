@@ -164,6 +164,24 @@ to about 1e-14), so [`print()`](https://rdrr.io/r/base/print.html) shows
 those below 1e-10 (1e-12 for Sidak) as a bound; the stored values are
 unchanged.
 
+## Plot theme
+
+Every plot is built on
+[`ggplot2::theme_minimal()`](https://ggplot2.tidyverse.org/reference/ggtheme.html),
+with a bold title, the legend at the bottom and long or numerous x
+labels rotated. To give all of them another base theme, set the option
+`anovakit.theme` once per session (in `.Rprofile`, say) to a complete
+theme or a function returning one:
+
+    options(anovakit.theme = ggplot2::theme_classic(base_size = 13))
+    options(anovakit.theme = ggplot2::theme_get)  # follow ggplot2::theme_set()
+    options(anovakit.theme = NULL)                # back to theme_minimal()
+
+The package's adjustments are added on top of it. The option changes
+only how plots look, never a result, and it applies when a plot is
+built, so a fit made before it was set keeps its plots. A single plot
+can still be changed with `+`, as with any ggplot.
+
 ## See also
 
 [`anovakit_fit`](https://elkronos.github.io/anovakit/reference/anovakit_fit.md)

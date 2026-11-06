@@ -519,6 +519,28 @@ replaces all of that; adding
 [`theme()`](https://ggplot2.tidyverse.org/reference/theme.html) changes
 only the elements you name.
 
+To change the base theme of *every* plot instead, set the
+`anovakit.theme` option once, for example in your `.Rprofile`. It takes
+a complete theme, or a function returning one;
+[`ggplot2::theme_get`](https://ggplot2.tidyverse.org/reference/get_theme.html)
+makes the plots follow whatever
+[`theme_set()`](https://ggplot2.tidyverse.org/reference/get_theme.html)
+says. The package’s own adjustments are still added on top, and no
+number in any fit changes.
+
+``` r
+
+old <- options(anovakit.theme = theme_classic(base_size = 12))
+plot(anova_welch(chickwts, "weight", "feed"), "means")
+```
+
+![](visuals_files/figure-html/theme-option-1.png)
+
+``` r
+
+options(old)
+```
+
 A horizontal layout often suits long group names.
 [`coord_flip()`](https://ggplot2.tidyverse.org/reference/coord_flip.html)
 moves the group labels to the vertical axis but leaves the rotation on

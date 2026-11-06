@@ -97,6 +97,11 @@
 <strong>Packaging.</strong> <code>ggplot2 (&gt;= 3.4.0)</code> and <code>testthat (&gt;= 3.1.8)</code> are declared.</li>
 </ul></div>
 <div class="section level3">
+<h3 id="plot-theme-option-0-1-0">Plot theme option<a class="anchor" aria-label="anchor" href="#plot-theme-option-0-1-0"></a></h3>
+<ul><li>
+<code>options(anovakit.theme = ...)</code> sets the base theme of every plot the package draws: a complete ggplot2 theme, or a function returning one (<code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">ggplot2::theme_get</a></code> follows <code><a href="https://ggplot2.tidyverse.org/reference/get_theme.html" class="external-link">theme_set()</a></code>). Unset, it is <code><a href="https://ggplot2.tidyverse.org/reference/ggtheme.html" class="external-link">theme_minimal()</a></code>, as before. The package’s adjustments (bold title, legend at the bottom, rotated long labels) are added on top, and no result changes. See <code><a href="../reference/anovakit-package.html">?anovakit</a></code> and the plots article.</li>
+</ul></div>
+<div class="section level3">
 <h3 id="changes-made-after-two-further-reviews-before-release-0-1-0">Changes made after two further reviews, before release<a class="anchor" aria-label="anchor" href="#changes-made-after-two-further-reviews-before-release-0-1-0"></a></h3>
 <p>Two more adversarial reviews found about 100 further problems, mostly in edge cases. Each is fixed and has a regression test.</p>
 <ul><li>
