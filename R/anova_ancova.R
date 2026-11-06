@@ -1234,7 +1234,6 @@ anova_ancova <- function(data, response, groups, covariates,
   ready <- .emm_ready(model)
   args <- list(object = ready, specs = .formula(NULL, groups), var = covariate,
                cov.keep = character(0))
-  if (is.null(vcov_matrix)) vcov_matrix <- attr(ready, "emm_vcov")
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
   # Captured, not suppressed: emtrends() reaches summary.lm(), which warns on a
   # near-perfect fit, and that would otherwise reach the console.

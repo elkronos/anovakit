@@ -42,7 +42,8 @@ test_that("countglm-F1: a large level with small real variation is not an exact 
   expect_equal(fg$anova$statistic[1], rg[["F value"]][1], tolerance = 0.05)
   # and both agree with the accurate value, lm() on log(t)
   expect_equal(fg$anova$statistic[1],
-               stats::anova(stats::lm(log(t) ~ g, d))[["F value"]][1], tolerance = 0.05)
+               suppressWarnings(stats::anova(stats::lm(log(t) ~ g, d)))[["F value"]][1],
+               tolerance = 0.05)
   # pressures around 101325 Pa with an sd of 0.05
   dp <- withr::with_seed(5, data.frame(g = gl(3, 10),
     y = 101325 + rep(c(0, 0.03, 0.06), each = 10) + stats::rnorm(30, 0, 0.05)))
