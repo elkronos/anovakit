@@ -1042,7 +1042,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   subtitle <- if (has_ci) {
     sprintf("Error bars are %s%% confidence intervals", .pct(conf_level))
   } else NULL
-  theme <- ggplot2::theme_minimal() +
+  theme <- .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
                    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
                    legend.position = "bottom")

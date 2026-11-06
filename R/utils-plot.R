@@ -4,11 +4,40 @@
 # (.data[[ ]]) rather than the deprecated aes_string(), and returned rather than
 # printed.
 
+#' The base theme of every plot the package draws
+#'
+#' \code{getOption("anovakit.theme")}: a complete ggplot2 theme
+#' (\code{ggplot2::theme_classic()}), or a function returning one, called each
+#' time a plot is drawn (\code{ggplot2::theme_classic}, or
+#' \code{ggplot2::theme_get} to follow \code{ggplot2::theme_set()}). Unset,
+#' \code{ggplot2::theme_minimal()}. The package's own adjustments (bold title,
+#' legend at the bottom, rotated long axis labels) are added on top, so they
+#' apply whatever the base. Only the look changes: no number does.
+#' @noRd
+.gg_base_theme <- function() {
+  opt <- getOption("anovakit.theme")
+  if (is.null(opt)) return(ggplot2::theme_minimal())
+  th <- if (is.function(opt)) {
+    tryCatch(opt(), error = function(e) e)
+  } else opt
+  if (!inherits(th, "theme")) {
+    .stopf("getOption(\"anovakit.theme\") must be a ggplot2 theme, such as ggplot2::theme_classic(), or a function returning one, such as ggplot2::theme_classic; it is %s. Set it with options(anovakit.theme = ...), or to NULL for the default theme_minimal().",
+           if (inherits(th, "error")) {
+             sprintf("a function that failed (%s)", conditionMessage(th))
+           } else if (is.function(opt)) {
+             sprintf("a function returning an object of class %s", paste(class(th), collapse = "/"))
+           } else {
+             sprintf("an object of class %s", paste(class(opt), collapse = "/"))
+           })
+  }
+  th
+}
+
 #' Rotate x labels only when they are long or numerous
 #' @noRd
 .gg_theme_auto <- function(labels) {
   needs_rotation <- length(labels) > 6L || any(nchar(as.character(labels)) > 8L)
-  ggplot2::theme_minimal() +
+  .gg_base_theme() +
     ggplot2::theme(
       plot.title  = ggplot2::element_text(face = "bold"),
       axis.text.x = if (needs_rotation) {
@@ -31,7 +60,7 @@
     ggplot2::stat_qq_line(linetype = "dashed") +
     ggplot2::labs(title = title, subtitle = subtitle,
                   x = "Theoretical quantiles", y = "Sample quantiles") +
-    ggplot2::theme_minimal() +
+    .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
@@ -47,7 +76,7 @@
     ggplot2::geom_point(alpha = 0.7) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
     ggplot2::labs(title = title, x = "Fitted values", y = ylab) +
-    ggplot2::theme_minimal() +
+    .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
@@ -60,7 +89,7 @@
     ggplot2::geom_point(alpha = 0.7) +
     ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
     ggplot2::labs(title = title, x = "Observation", y = "Residuals") +
-    ggplot2::theme_minimal() +
+    .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
 }
 
@@ -306,7 +335,7 @@
     ggplot2::labs(title = sprintf("%s against %s by group", response, covariate),
                   subtitle = subtitle,
                   x = xlab, y = response, colour = "Group") +
-    ggplot2::theme_minimal() +
+    .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
                    legend.position = "bottom")
 }
@@ -346,7 +375,7 @@
     ggplot2::labs(title = "Canonical discriminant analysis",
                   subtitle = sub("Crosses mark group centroids"),
                   x = "Can1", y = "Can2", colour = group_name) +
-    ggplot2::theme_minimal() +
+    .gg_base_theme() +
     ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"),
                    legend.position = "bottom")
 }

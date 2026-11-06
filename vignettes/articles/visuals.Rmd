@@ -380,6 +380,18 @@ or any label is longer than eight characters. Adding a *complete* theme such
 as `theme_bw()` replaces all of that; adding `theme()` changes only the
 elements you name.
 
+To change the base theme of *every* plot instead, set the `anovakit.theme`
+option once, for example in your `.Rprofile`. It takes a complete theme, or a
+function returning one; `ggplot2::theme_get` makes the plots follow whatever
+`theme_set()` says. The package's own adjustments are still added on top, and
+no number in any fit changes.
+
+```{r theme-option, fig.height = 4}
+old <- options(anovakit.theme = theme_classic(base_size = 12))
+plot(anova_welch(chickwts, "weight", "feed"), "means")
+options(old)
+```
+
 A horizontal layout often suits long group names. `coord_flip()` moves the
 group labels to the vertical axis but leaves the rotation on the horizontal
 one, which is now the numeric axis, so undo it there. Note too that `labs()`
