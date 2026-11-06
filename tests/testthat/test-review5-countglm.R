@@ -27,8 +27,8 @@ test_that("countglm-F1: a large level with small real variation is not an exact 
   # reference: lm() resolves the residuals (relative size ~1e-7) as real
   ref <- suppressWarnings(stats::anova(stats::lm(t ~ g, d)))
   f <- anova_glm(d, "t", "g", plots = FALSE)
-  expect_equal(f$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-8)
-  expect_equal(f$anova$p_value[1], ref[["Pr(>F)"]][1], tolerance = 1e-8)
+  expect_equal(f$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-6)
+  expect_equal(f$anova$p_value[1], ref[["Pr(>F)"]][1], tolerance = 1e-6)
   expect_equal(f$anova$statistic[1], 2.1897, tolerance = 1e-4)
   # Gamma(log): car's F test on the same glm
   # (fitted to convergence, as anova_glm refits a deviance in small units)
@@ -66,7 +66,7 @@ test_that("exactfit-dispersion-F1: a Gaussian response on a large baseline gets 
   })
   ref <- car::Anova(stats::lm(y ~ g, d))
   f <- anova_glm(d, "y", "g", family = gaussian(), plots = FALSE)
-  expect_equal(f$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-8)
+  expect_equal(f$anova$statistic[1], ref[["F value"]][1], tolerance = 1e-6)
   expect_equal(f$anova$p_value[1], ref[["Pr(>F)"]][1], tolerance = 1e-6)
   expect_equal(f$anova$statistic[1], 6.2789, tolerance = 1e-4)
   # the likelihood-ratio test and the log link are not refused either

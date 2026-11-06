@@ -159,7 +159,7 @@ plot(anc, "covariate")
 ```
 
 To fix the model in advance instead of letting the slopes test choose it,
-set `force_interaction = TRUE`. The [ANCOVA walkthrough](articles/ancova.html)
+set `force_interaction = TRUE`. The [ANCOVA walkthrough](https://elkronos.github.io/anovakit/articles/ancova.html)
 covers that choice, the slopes test and covariate centring.
 
 ## Arguments every function shares
@@ -189,26 +189,26 @@ are on its help page and in its walkthrough.
 
 ## Where to go next
 
-- [Choose an analysis](articles/choosing.html): which of the eight functions
+- [Choose an analysis](https://elkronos.github.io/anovakit/articles/choosing.html): which of the eight functions
   fits your data.
 - A walkthrough for each function:
-  [Welch](articles/welch.html),
-  [Kruskal-Wallis](articles/kruskal-wallis.html),
-  [ANCOVA](articles/ancova.html),
-  [repeated measures](articles/repeated-measures.html),
-  [MANOVA](articles/manova.html),
-  [binary outcomes](articles/binary.html),
-  [counts and rates](articles/counts.html) and
-  [other GLM families](articles/glm.html).
-- [Working with results](articles/results.html): every component of the
+  [Welch](https://elkronos.github.io/anovakit/articles/welch.html),
+  [Kruskal-Wallis](https://elkronos.github.io/anovakit/articles/kruskal-wallis.html),
+  [ANCOVA](https://elkronos.github.io/anovakit/articles/ancova.html),
+  [repeated measures](https://elkronos.github.io/anovakit/articles/repeated-measures.html),
+  [MANOVA](https://elkronos.github.io/anovakit/articles/manova.html),
+  [binary outcomes](https://elkronos.github.io/anovakit/articles/binary.html),
+  [counts and rates](https://elkronos.github.io/anovakit/articles/counts.html) and
+  [other GLM families](https://elkronos.github.io/anovakit/articles/glm.html).
+- [Working with results](https://elkronos.github.io/anovakit/articles/results.html): every component of the
   returned object, the `emmeans` grid, tables for a report, many analyses at
   once.
-- [Diagnostics](articles/diagnostics.html): what each assumption check
+- [Diagnostics](https://elkronos.github.io/anovakit/articles/diagnostics.html): what each assumption check
   computes and how to read it.
-- [Plots and themes](articles/visuals.html): customising the figures.
-- [Weights and robust standard errors](articles/weights.html): frequency,
+- [Plots and themes](https://elkronos.github.io/anovakit/articles/visuals.html): customising the figures.
+- [Weights and robust standard errors](https://elkronos.github.io/anovakit/articles/weights.html): frequency,
   trial and sampling weights, and `vcov_type`.
-- [Design choices](articles/design.html): why the defaults are what they are.
+- [Design choices](https://elkronos.github.io/anovakit/articles/design.html): why the defaults are what they are.
 
 `?anovakit_fit` documents every component of the returned object, and each
 function's help page documents its own arguments.

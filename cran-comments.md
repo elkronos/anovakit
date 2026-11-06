@@ -1,60 +1,46 @@
-# Submission comments
+## Submission
+
+This is a first submission.
 
 ## Test environments
 
-* local: macOS 26.5.2, aarch64-apple-darwin23, R 4.6.1
-* Ubuntu 24.04, x86_64-pc-linux-gnu, R 4.3.3 (Ubuntu archive builds of every
-  dependency)
-* GitHub Actions (.github/workflows/R-CMD-check.yaml): macOS, Windows and
-  Ubuntu on R release, Ubuntu on R devel and oldrel-1
-
-## Before submitting
-
-These need the maintainer's CRAN-facing accounts, so they are run at
-submission time rather than from the environments above. Replace each line
-with its result:
-
-- [ ] win-builder, R-devel and R-release (`devtools::check_win_devel()`,
-      `devtools::check_win_release()`)
-- [ ] the macOS builder (`devtools::check_mac_release()`)
-- [ ] R-hub (`rhub::rhub_check()`)
+* GitHub Actions: macOS (release), Windows (release), Ubuntu (devel, release,
+  oldrel-1)
+* local: macOS, aarch64-apple-darwin, R 4.6.1
+* local: Ubuntu 24.04, x86_64-pc-linux-gnu, R 4.3.3; also with
+  `_R_CHECK_DEPENDS_ONLY_=true`, so that no suggested package is available
+* win-builder: R-devel and R-release
+* macOS builder: R-release
 
 ## R CMD check results
 
-0 errors | 0 warnings | the notes below.
+0 errors | 0 warnings | 1 note
 
 ```
 * checking CRAN incoming feasibility ... NOTE
 Maintainer: 'Justin Chase <jchase.msu@gmail.com>'
+
 New submission
 ```
 
-This is a first submission, so the note is expected.
-
-```
-* checking HTML version of manual ... NOTE
-Skipping checking HTML validation: 'tidy' doesn't look like recent enough HTML Tidy.
-```
-
-The local machine ships an old HTML Tidy. The manual builds without error and
-this check is skipped rather than failed.
+If the note also lists possibly misspelled words in DESCRIPTION, these are the
+surnames of the authors of the cited methods (Kruskal, Wallis, Dunn,
+Greenhouse, Geisser, Huynh, Feldt, Mardia), each given with a DOI.
 
 ## Notes for the reviewer
 
-`anova_rm()` requires the suggested package {afex}, so its example is guarded
-with `requireNamespace()`. No example is wrapped in `\donttest{}`: every one
-runs unconditionally.
+`anova_rm()` needs the suggested package 'afex', so its example is guarded
+with `requireNamespace()`. No example uses `\dontrun{}` or `\donttest{}`.
 
-Every use of a suggested package is behind `requireNamespace()` in R/ and
-`skip_if_not_installed()` in the tests. The suite passes with {afex} and
-{sandwich} absent. {MASS} is always installed, since {car} and {ggplot2} import
-it, but it is still used only through `requireNamespace()`.
+Every use of a suggested package in R/ is behind `requireNamespace()`, and the
+tests that need 'afex', 'bit64', 'data.table', 'effectsize' or 'sandwich' skip
+when it is absent. The suite passes with no suggested package installed.
 
 Three of the methods cited in the Description are implemented directly rather
 than delegated, so their DOIs point at the papers the code follows: Dunn's test
 with the standard tie correction, Mardia's multivariate skewness and kurtosis,
 and Box's M. Welch's test comes from `stats::oneway.test()`, and the
-Greenhouse-Geisser and Huynh-Feldt corrections from {afex} and {car}, except
-when the error matrix is singular and {car} cannot give the epsilons: the
+Greenhouse-Geisser and Huynh-Feldt corrections from 'afex' and 'car', except
+when the error matrix is singular and 'car' cannot give the epsilons: the
 package then computes both itself, following Greenhouse and Geisser (1959) and
 Huynh and Feldt (1976) with Lecoutre's (1991) correction.

@@ -387,15 +387,23 @@ test_that("emmeans gets anovakit's estimability basis, not estimability's svd of
   m2 <- .emm_ready(m)
   nb <- estimability::nonest.basis(m2$qr)
   expect_identical(dim(nb), c(101L, 80L))
-  # the same non-estimable space as estimability's own basis (where it works)
-  ref <- estimability::nonest.basis(m$qr)
+  # the same non-estimable space as base R's: the null space of X
+  X <- stats::model.matrix(m)
+  qx <- qr(t(X))
+  ref <- qr.Q(qx, complete = TRUE)[, (qx$rank + 1L):ncol(X), drop = FALSE]
   proj <- nb %*% crossprod(nb, ref)
   expect_lt(max(abs(proj - ref)), 1e-8)
-  # and the same marginal means
-  e1 <- summary(emmeans::emmeans(m, ~ A:B))
+  expect_lt(max(abs(X %*% nb)), 1e-8)
+  # and the same marginal means as emmeans' own route, where estimability's
+  # method works (it fails on this model under R 4.6 with estimability 2.0)
   e2 <- summary(emmeans::emmeans(m2, ~ A:B))
-  expect_equal(e2$emmean, e1$emmean, tolerance = 1e-10)
-  expect_equal(e2$SE, e1$SE, tolerance = 1e-10)
+  e1 <- tryCatch(summary(emmeans::emmeans(m, ~ A:B)), error = function(e) NULL)
+  if (!is.null(e1)) {
+    expect_equal(e2$emmean, e1$emmean, tolerance = 1e-10)
+    expect_equal(e2$SE, e1$SE, tolerance = 1e-10)
+  }
+  skip_if_not(exists("nonest.basis.qr", envir = asNamespace("estimability"),
+                     inherits = FALSE))
   # Under R 4.6 estimability 2.0's own method fails on this model ("infinite
   # or missing values in 'x'"); with it failing, anova_ancova() still gives
   # all 20 observed cells.

@@ -176,7 +176,7 @@ Cohen, B. H. (2008). \emph{Explaining Psychological Statistics} (3rd ed.).
 Wiley.
 
 Dunn, O. J. (1964). Multiple comparisons using rank sums.
-\emph{Technometrics}, 6(3), 241-252.
+\emph{Technometrics}, 6(3), 241-252. \doi{10.1080/00401706.1964.10490181}
 
 Tomczak, M., & Tomczak, E. (2014). The need to report effect size
 estimates revisited. An overview of some recommended measures of effect
