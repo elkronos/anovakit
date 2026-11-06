@@ -83,7 +83,7 @@ test_that("R2-ANCOVA-02: estimable incomplete crossed designs are analysed, not 
     expect_equal(f$anova$df[f$anova$term == tm], ref[tm, "Df"], info = tm)
   }
   # 20 of the 100 cells are observed; the empty ones are left out.
-  expect_identical(nrow(f$emmeans), 20L)
+  expect_identical(nrow(f$emmeans), 20L, info = paste(f$notes, collapse = " | "))
   # A design that really has too few rows is still refused, with the
   # observed-cell count as the reason.
   one <- d[!duplicated(d[c("A", "B")]), ]

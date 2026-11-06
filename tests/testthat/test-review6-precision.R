@@ -100,8 +100,13 @@ test_that("Welch's variance-ratio note fires above 4, not at exactly 4", {
   # an overflowed ratio with no omnibus F does not say Welch's test handles it
   d2 <- data.frame(g = rep(c("a", "b"), each = 4),
                    y = c(1e154 * c(1, 2, 4, 3), 1e-154 * c(1, 2, 4, 3)))
-  f2 <- anova_welch(d2, "y", "g", plots = FALSE)
-  if (is.na(f2$anova$statistic[1])) {
+  # Where long double is no wider than double (ARM macOS) the variance of
+  # values of 1e-154 underflows, and the function says so instead.
+  f2 <- tryCatch(anova_welch(d2, "y", "g", plots = FALSE), error = function(e) e)
+  if (inherits(f2, "error")) {
+    expect_match(conditionMessage(f2), "cannot be represented in double precision",
+                 fixed = TRUE)
+  } else if (is.na(f2$anova$statistic[1])) {
     expect_false(any(grepl("Welch's test handles this", f2$notes, fixed = TRUE)))
   }
 })
@@ -208,10 +213,12 @@ test_that("a negative Poisson likelihood-ratio statistic within rounding is show
   g <- factor(rep(c("a", "b", "c"), each = 6))
   d <- data.frame(g = g, y = 1e12 + c(0, 5, 10)[as.integer(g)] + rep(c(-3, -1, 0, 0, 1, 3), 3))
   f <- anova_count(d, "y", "g", model = "poisson", plots = FALSE, posthoc = FALSE)
-  # rounding (about 0.004) is far below the df scale, so it is shown as 0
-  # with p = 1, silently: that is the true answer to within the error
-  expect_identical(f$anova$statistic[1], 0)
-  expect_identical(f$anova$p_value[1], 1)
+  # The true LR statistic is about 3e-10; car's comes out as rounding
+  # error of about +-0.004 (its sign depends on the platform). A negative
+  # one is shown as 0, never below; either way p is 1 to within that error.
+  expect_gte(f$anova$statistic[1], 0)
+  expect_lt(f$anova$statistic[1], 0.01)
+  expect_gt(f$anova$p_value[1], 0.99)
   # an ordinary null effect gets no precision note
   d2 <- data.frame(g = gl(2, 4), y = c(8, 12, 16, 12, 12, 16, 8, 12))
   f2 <- anova_count(d2, "y", "g", model = "poisson", plots = FALSE)
@@ -350,4 +357,20 @@ test_that("barely unequal weights keep the overdispersion note; the weight note 
   q <- anova_glm(d2, "c", "g", family = quasipoisson(), weights = "w",
                  test_statistic = "Wald", plots = FALSE)
   expect_true(any(grepl("so the Wald tests in $anova are inflated", q$notes, fixed = TRUE)))
+})
+
+test_that("glm.nb() failing on counts no more variable than Poisson gives the Poisson limit", {
+  skip_if_not_installed("MASS")
+  # As on ARM macOS, where theta.ml() can return NaN at the theta = Inf boundary.
+  d <- data.frame(y = c(3, 3, 3, 5, 5, 5, 8, 8, 8), g = rep(c("a", "b", "c"), each = 3))
+  real_fit <- .fit_glm
+  local_mocked_bindings(.fit_glm = function(fml, d, family, ...) {
+    if (is.null(family)) stop("missing value where TRUE/FALSE needed")
+    real_fit(fml, d, family, ...)
+  })
+  r <- anova_count(d, "y", "g", model = "negbin", plots = FALSE)
+  expect_identical(r$model_type, "negbin")
+  ref <- stats::anova(stats::glm(y ~ g, stats::poisson(), d), test = "Chisq")
+  expect_equal(r$anova$statistic[1], ref$Deviance[2], tolerance = 1e-6)
+  expect_true(any(grepl("Poisson", r$notes, fixed = TRUE)))
 })

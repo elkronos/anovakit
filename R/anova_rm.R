@@ -858,6 +858,18 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                     p_value = tab[["Pr(>F)"]],
                     term_int = rownames(tab),
                     stringsAsFactors = FALSE, row.names = NULL)
+  # Zero error variance computed in floating point is rounding error, not
+  # exactly 0 (about 1e-31 against effects of order 1 where long double is
+  # no wider than double, as on ARM macOS), and the F statistic is then of
+  # order 1e30. No F test of real data reaches 1e24 (that needs residuals
+  # within 1e-12 of the effects), so such an F is read as zero error
+  # variance, the case .rm_degenerate_notes() reports.
+  rz <- is.finite(out$statistic) & out$statistic > 1e24
+  if (any(rz)) {
+    out$mse[rz] <- 0
+    out$statistic[rz] <- Inf
+    out$p_value[rz] <- NA_real_
+  }
   attr(out, "note") <- .said_note(.rm_unmap_text(got$said, to_user),
                                   "afex's anova() method")
   out

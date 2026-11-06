@@ -29,7 +29,7 @@ test_that("R3-09: a negative binomial fit at an enormous theta gets the Poisson-
   d2 <- data.frame(y = c(3, 3, 3, 5, 5, 5, 8, 8, 8), g = rep(c("a", "b", "c"), each = 3))
   r <- anova_count(d2, "y", "g", model = "negbin", plots = FALSE)
   expect_identical(r$model_type, "negbin")
-  expect_gt(r$model$theta, 1e6)
+  expect_gt(r$model$theta, 1e6, label = paste(r$notes, collapse = " | "))
   ref <- stats::anova(stats::glm(y ~ g, stats::poisson(), d2), test = "Chisq")
   expect_equal(r$anova$statistic[1], ref$Deviance[2], tolerance = 1e-6)
   expect_equal(r$anova$p_value[1], ref$`Pr(>Chi)`[2], tolerance = 1e-6)
