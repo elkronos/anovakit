@@ -94,6 +94,15 @@ changes a user will notice:
   `step()` and `lmtest::lrtest()` work on `fit$model` from any frame.
 * **Packaging.** `ggplot2 (>= 3.4.0)` and `testthat (>= 3.1.8)` are declared.
 
+## Plot theme option
+
+* `options(anovakit.theme = ...)` sets the base theme of every plot the
+  package draws: a complete ggplot2 theme, or a function returning one
+  (`ggplot2::theme_get` follows `theme_set()`). Unset, it is
+  `theme_minimal()`, as before. The package's adjustments (bold title, legend
+  at the bottom, rotated long labels) are added on top, and no result changes.
+  See `?anovakit` and the plots article.
+
 ## Changes made after two further reviews, before release
 
 Two more adversarial reviews found about 100 further problems, mostly in edge

@@ -117,6 +117,20 @@
 #' upper tail is good to about 1e-14), so \code{print()} shows those below
 #' 1e-10 (1e-12 for Sidak) as a bound; the stored values are unchanged.
 #'
+#' @section Plot theme:
+#' Every plot is built on \code{ggplot2::theme_minimal()}, with a bold title,
+#' the legend at the bottom and long or numerous x labels rotated. To give all
+#' of them another base theme, set the option \code{anovakit.theme} once per
+#' session (in \file{.Rprofile}, say) to a complete theme or a function
+#' returning one:
+#' \preformatted{options(anovakit.theme = ggplot2::theme_classic(base_size = 13))
+#' options(anovakit.theme = ggplot2::theme_get)  # follow ggplot2::theme_set()
+#' options(anovakit.theme = NULL)                # back to theme_minimal()}
+#' The package's adjustments are added on top of it. The option changes only
+#' how plots look, never a result, and it applies when a plot is built, so a
+#' fit made before it was set keeps its plots. A single plot can still be
+#' changed with \code{+}, as with any ggplot.
+#'
 #' @seealso \code{\link{anovakit_fit}} for the returned object.
 #' @keywords internal
 "_PACKAGE"
