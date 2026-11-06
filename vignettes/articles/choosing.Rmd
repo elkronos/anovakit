@@ -40,9 +40,13 @@ Answer these in order and stop at the first one that settles it.
    `anova_manova()`.
 
 4. Is there a numeric covariate to adjust for (a baseline score, age, a
-   pre-treatment measurement)? If yes, use `anova_ancova()`. If no, use
-   `anova_welch()`, or `anova_kw()` when the outcome is ordinal or so skewed
-   that a mean is not a useful summary.
+   pre-treatment measurement)? If yes, use `anova_ancova()`. If no, and the
+   groups come from one grouping variable, use `anova_welch()`, or
+   `anova_kw()` when the outcome is ordinal or so skewed that a mean is not a
+   useful summary. With two or more crossed factors whose main effects and
+   interaction you want to test, use `anova_glm()` with its default Gaussian
+   family and `interaction = TRUE`, which gives the classical factorial ANOVA
+   (see [Several grouping variables](#several-grouping-variables)).
 
 ## Common situations
 
@@ -139,7 +143,7 @@ Pearson dispersion is above `overdispersion_threshold` (1.5 by default).
 Set `model` to choose the family yourself. When units were observed for different
 lengths of time or at different sizes, give the exposure as `offset` and the
 results become rates. The [counts walkthrough](counts.html) models insurance
-claims per policy holder this way.
+claims per policyholder this way.
 
 ### `anova_glm()`
 

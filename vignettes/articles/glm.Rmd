@@ -440,7 +440,7 @@ c(gaussian = gau$model_stats$AIC, gamma = gam$model_stats$AIC)
 
 The Gamma model has the lower AIC by
 `r round(gau$model_stats$AIC - gam$model_stats$AIC)`. The
-[diagnostics article](diagnostics.html) covers the checks across the package.
+[diagnostics guide](diagnostics.html) covers the checks across the package.
 
 ## Plots
 
