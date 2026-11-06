@@ -16,8 +16,8 @@
 #' \code{covariates}; Type III fits under sum-to-zero contrasts and tests each
 #' term adjusted for all others. (\code{summary(stats::manova())} would give
 #' sequential, order-dependent tests instead.) When the model has aliased
-#' coefficients -- an empty cell of a crossed design, or collinear covariates
-#' -- \code{car::Manova()} refuses the model, so the Type II tests are
+#' coefficients -- an empty cell of a crossed design -- \code{car::Manova()}
+#' refuses the model, so the Type II tests are
 #' computed by the equivalent model comparisons, and a note says so. Type III
 #' tests are not defined when coefficients are aliased; Type II tests are then
 #' reported throughout, with a note.
@@ -36,7 +36,13 @@
 #' with every grouping term, using the chosen multivariate statistic; the
 #' result is in \code{$slopes_test}, and a note says when it is rejected at
 #' the 0.05 level, since the common-slope adjusted means and comparisons are
-#' then not interpretable as constant group differences.
+#' then not interpretable as constant group differences. A covariate that is
+#' constant, that is determined by the grouping variables (constant within
+#' every group, such as a group-level attribute), or that is an exact linear
+#' combination of the grouping variables and the other covariates is refused
+#' with an error naming it: its effect cannot be separated from the group
+#' effect, and fitting it anyway would silently take degrees of freedom from a
+#' group test.
 #'
 #' \strong{Assumption checks.} Mardia's tests of multivariate skewness and
 #' kurtosis (on the residuals of the multivariate model) and Box's M test of
@@ -50,7 +56,13 @@
 #' rejects too often when the sample is small relative to the square of the
 #' number of responses. Box's M is notoriously sensitive to non-normality:
 #' treat a small p-value as a prompt to look at the group covariances rather
-#' than as a verdict.
+#' than as a verdict. It is not computed, with a note, when a cell has no more
+#' observations than there are responses (the note names the smallest cell),
+#' or when a cell's covariance matrix is singular -- a response constant in a
+#' cell, or an exact linear combination of the others there -- judged on the
+#' correlation scale with a relative eigenvalue tolerance of 1e-12, since
+#' rounding makes the determinant of an exactly singular matrix tiny rather
+#' than zero and Box's M computed from it is an arbitrary, huge number.
 #'
 #' \strong{Univariate follow-ups.} One Type II or III ANOVA is fitted per
 #' response and kept under \code{$univariate}. Their p-values are \emph{not}
@@ -124,7 +136,9 @@
 #'   \code{TRUE}. The homogeneity-of-slopes test is computed whenever there are
 #'   covariates.
 #' @param posthoc Logical. Compute pairwise comparisons within each response.
-#'   Default \code{TRUE}.
+#'   Default \code{TRUE}. They are skipped, with a note, when there would be
+#'   more than 5,000 in total across the responses; a subset can then be
+#'   compared on \code{$univariate[[r]]$emmeans_object}.
 #' @param plots Logical. Build \pkg{ggplot2} objects. They are returned in
 #'   \code{$plots}, never drawn. Default \code{TRUE}.
 #' @param verbose Logical. Emit progress through \code{\link[base]{message}}.
@@ -207,7 +221,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
                          posthoc = TRUE,
                          plots = TRUE,
                          verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_manova")
   test <- match.arg(test)
   type <- match.arg(type)
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -220,6 +234,9 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   if (!is.null(covariates)) .check_columns(data, covariates, "Covariate column(s)")
   .check_roles(list(`a response` = responses, `a grouping variable` = groups,
                     `a covariate` = covariates))
+  data <- .as_plain_columns(data, list(Response = responses,
+                                       `Grouping column` = groups,
+                                       Covariate = covariates))
   for (r in responses) .check_numeric_col(data, r)
   if (!is.null(covariates)) {
     for (cv in covariates) .check_numeric_col(data, cv, role = "Covariate")
@@ -243,6 +260,12 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     notes <- c(notes, "Only one response was supplied, so this is a univariate analysis; there is no multivariate test and no canonical discriminant analysis.")
   }
 
+  ## Covariates ----------------------------------------------------------------
+  # A constant covariate, or one determined by the grouping variables, is
+  # aliased: lm() drops whichever column comes last -- possibly a group
+  # contrast -- and the group test silently loses degrees of freedom.
+  .check_covariates_vary(d, covariates)
+
   ## Centre the covariates ----------------------------------------------------
   # Centring leaves every test and every adjusted mean unchanged (no covariate
   # enters an interaction), but lm()'s pivoting QR declares a covariate whose
@@ -255,6 +278,9 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     notes <- c(notes, sprintf(
       "Covariate(s) mean-centred before fitting (%s), so $emmeans are adjusted means at the covariate mean(s). Centring changes no test.",
       paste(sprintf("%s: %.6g", covariates, covariate_means), collapse = "; ")))
+    # After centring: on the raw scale a covariate with a tiny coefficient of
+    # variation would look collinear with the grouping indicators.
+    .check_covariates_identified(d, covariates, groups, interaction)
   }
 
   cellv <- .cell_vector(d, groups)
@@ -299,7 +325,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   type_used <- type
   if (aliased && identical(type, "III")) {
     type_used <- "II"
-    notes <- c(notes, "The model has aliased coefficients (an empty cell of the design, or collinear covariates), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead, for the multivariate table and the univariate follow-ups alike.")
+    notes <- c(notes, "The model has aliased coefficients (an empty cell of the design), and Type III tests are not defined for it: car refuses them. Type II tests were computed instead, for the multivariate table and the univariate follow-ups alike.")
   }
 
   ## Multivariate tests ---------------------------------------------------------
@@ -310,7 +336,8 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     notes <- c(notes, ssp$note)
     Y <- as.matrix(d[, responses, drop = FALSE])
     tss <- colSums(sweep(Y, 2L, colMeans(Y))^2)
-    mv_table <- tryCatch(.manova_table(ssp, test, tss), error = function(e) e)
+    mv_table <- tryCatch(.manova_table(ssp, test, tss, colSums(Y^2)),
+                         error = function(e) e)
     if (inherits(mv_table, "error")) {
       .stopf("The multivariate test could not be computed: %s. This usually means the responses are collinear, or there are too few residual degrees of freedom for %d responses.",
              conditionMessage(mv_table), length(responses))
@@ -371,7 +398,10 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
       resp_col <- .safe_name(emm$table, "response")
       emm_rows[[r]] <- .cbind_label(emm$table, "response", r)
     }
-    if (!is.null(emm$posthoc)) ph_rows[[r]] <- .cbind_label(emm$posthoc, "response", r)
+    # The comparisons have no grouping column to clash with, but they take the
+    # same label name as $emmeans, so `response` never names the outcome in
+    # one table and a grouping factor in the other.
+    if (!is.null(emm$posthoc)) ph_rows[[r]] <- .cbind_label(emm$posthoc, resp_col, r)
 
     univariate[[r]] <- list(model = m, anova = av$table, effect_sizes = es,
                             emmeans = emm$table, emmeans_object = emm$grid,
@@ -443,7 +473,22 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
           "Pillai's trace is the most robust of the four multivariate statistics to this; consider test = \"Pillai\"."
         }))
     }
-    bm <- .box_m(Ycov, cellv)
+    bm <- if (length(groups) == 1L) .box_m(Ycov, cellv) else {
+      # Names and levels in backticks, so that a comma inside either cannot be
+      # mistaken for the separator between the variables of a cell.
+      first <- match(levels(cellv), cellv)
+      cell_lab <- stats::setNames(sprintf("(%s)", do.call(paste, c(
+        lapply(groups, function(g)
+          sprintf("`%s` = `%s`", g, as.character(d[[g]][first]))),
+        list(sep = ", ")))), levels(cellv))
+      q <- sprintf("`%s`", groups)
+      .box_m(Ycov, cellv,
+             unit = sprintf("cell (combination of %s)",
+                            paste(c(utils::head(q, -2L),
+                                    paste(utils::tail(q, 2L), collapse = " and ")),
+                                  collapse = ", ")),
+             noun = "cell", level_labels = cell_lab)
+    }
     if (is.null(bm)) {
       notes <- c(notes, "Box's M could not be computed: fewer than two cells have complete data.")
     } else {
@@ -575,13 +620,26 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
 .manova_ssp <- function(fit, type = "II") {
   note <- character(0)
   if (!anyNA(stats::coef(fit))) {
+    # car checks the rank of the error SSCP against an ABSOLUTE tolerance, so
+    # responses in small units (of order 1e-5) are refused as "of deficient
+    # rank" although nothing is wrong with them. The tests do not depend on the
+    # units, so, as .car_anova() does for one response, each response is
+    # rescaled to unit standard deviation for car and the matrices are scaled
+    # back.
+    k <- .mlm_rescale_factors(fit)
     got <- .collect_conditions(
-      car::Manova(fit, type = if (identical(type, "III")) 3L else 2L))
+      car::Manova(.rescale_mlm(fit, k),
+                  type = if (identical(type, "III")) 3L else 2L))
     M <- got$value
     if (!inherits(M, "error")) {
       keep <- M$terms != "(Intercept)"
       tl <- M$terms[keep]
-      return(list(SSP = M$SSP[tl], SSPE = M$SSPE,
+      back <- function(S) {
+        out <- S / outer(k, k)
+        dimnames(out) <- dimnames(S)
+        out
+      }
+      return(list(SSP = lapply(M$SSP[tl], back), SSPE = back(M$SSPE),
                   df = stats::setNames(as.numeric(M$df[keep]), tl),
                   error_df = M$error.df, terms = tl, type = type,
                   note = .said_note(got$said, "car::Manova()")))
@@ -626,6 +684,44 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
        error_df = nrow(X) - full$rank, terms = tl, type = type, note = note)
 }
 
+#' The factors that bring a small-unit multivariate model above car's tolerance
+#'
+#' One per response: 1 for all of them unless some response's residual sum of
+#' squares is below 1e-4 (where car's absolute tolerance starts to bite), and
+#' then the reciprocal of each response's standard deviation.
+#' @noRd
+.mlm_rescale_factors <- function(fit) {
+  r <- as.matrix(stats::residuals(fit))
+  ones <- rep(1, ncol(r))
+  y <- as.matrix(stats::fitted(fit)) + r
+  s <- apply(y, 2L, stats::sd)
+  rss <- colSums(r^2)
+  if (!all(is.finite(s) & s > 0) || !all(is.finite(rss)) || min(rss) >= 1e-4) {
+    return(ones)
+  }
+  1 / s
+}
+
+#' Multiply each response of a multivariate linear model by its own constant
+#'
+#' Every quantity car::Manova() reads from an mlm scales column by column, so
+#' its hypothesis and error SSCP matrices scale by \code{outer(k, k)} and the
+#' test statistics are unchanged.
+#' @noRd
+.rescale_mlm <- function(fit, k) {
+  if (all(k == 1)) return(fit)
+  sc <- function(m) if (is.null(m)) NULL else sweep(as.matrix(m), 2L, k, `*`)
+  fit$coefficients <- sc(fit$coefficients)
+  fit$residuals <- sc(fit$residuals)
+  fit$fitted.values <- sc(fit$fitted.values)
+  if (!is.null(fit$effects)) fit$effects <- sc(fit$effects)
+  if (!is.null(fit$model)) {
+    resp <- fit$model[[1L]]
+    fit$model[[1L]] <- structure(sc(resp), dimnames = dimnames(as.matrix(resp)))
+  }
+  fit
+}
+
 #' The multivariate test table from hypothesis and error SSCP matrices
 #'
 #' The eigenvalues of \code{solve(E, H)} are computed on responses scaled to
@@ -634,7 +730,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
 #' approximations are the standard ones (as in \code{summary.manova} and
 #' \pkg{car}).
 #' @noRd
-.manova_table <- function(ssp, test, tss = NULL) {
+.manova_table <- function(ssp, test, tss = NULL, ss0 = NULL) {
   E <- ssp$SSPE
   p <- ncol(E)
   dfe <- ssp$error_df
@@ -644,8 +740,11 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   }
   # A response the model fits exactly leaves an error matrix of rounding
   # errors, which the scaling below would otherwise dress up as information.
-  if (!is.null(tss) && any(diag(E) <= 1e-12 * tss)) {
-    exact <- colnames(E)[diag(E) <= 1e-12 * tss]
+  # A constant response is the extreme case, which a comparison with its total
+  # sum of squares alone misses; see .exact_fit().
+  exact <- if (is.null(tss)) FALSE else .exact_fit(diag(E), tss, ss0)
+  if (any(exact)) {
+    exact <- colnames(E)[exact]
     stop(sprintf("the model fits %s exactly, leaving no residual variation",
                  if (length(exact) > 0L) paste(sprintf("`%s`", exact), collapse = ", ")
                  else "a response"), call. = FALSE)
@@ -674,6 +773,28 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     Pillai = "Pillai's trace", Wilks = "Wilks' lambda",
     `Hotelling-Lawley` = "Hotelling-Lawley trace", Roy = "Roy's largest root"))
   attr(out, "ss_type") <- ssp$type
+  out
+}
+
+#' Which responses a model fits exactly
+#'
+#' A residual sum of squares that is a negligible fraction of the total is
+#' rounding error. For a constant response the total is 0 (or itself rounding
+#' error) while lm() still leaves residuals of about 1e-14, so the relative
+#' comparison alone lets it through (\code{8e-28 <= 1e-12 * 0} is false) and
+#' its rounding noise would be treated as a real response. A response whose
+#' spread is negligible next to its level (total sum of squares below 1e-28
+#' of the uncentred one, a spread below about 1e-14 of the level; rounding the
+#' mean of a constant leaves about 1e-32) is therefore fitted exactly too.
+#'
+#' @param sse residual sums of squares, one per response.
+#' @param tss total (centred) sums of squares.
+#' @param ss0 uncentred sums of squares, or \code{NULL}.
+#' @return logical, one per response.
+#' @noRd
+.exact_fit <- function(sse, tss, ss0 = NULL) {
+  out <- sse <= 1e-12 * tss
+  if (!is.null(ss0)) out <- out | tss <= 1e-28 * ss0
   out
 }
 
@@ -824,7 +945,7 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
     res <- as.matrix(stats::residuals(m_add))
     y <- as.matrix(stats::fitted(m_add)) + res
     tss <- colSums(sweep(y, 2L, colMeans(y))^2)
-    if (any(colSums(res^2) <= 1e-12 * tss)) {
+    if (any(.exact_fit(colSums(res^2), tss, colSums(y^2)))) {
       stop("the common-slope model fits a response exactly", call. = FALSE)
     }
     if (multivariate) stats::anova(m_add, m_int, test = test) else
@@ -844,6 +965,13 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   }
   cmp <- as.data.frame(cmp)
   row <- cmp[2L, , drop = FALSE]
+  # A covariate that does not vary (within the groups) makes its interactions
+  # aliased, so the two models have the same rank: anova() then returns a
+  # comparison on 0 degrees of freedom with a statistic of 0, which is no test
+  # at all and would read as perfectly homogeneous slopes.
+  if (!is.finite(row[["Df"]]) || abs(row[["Df"]]) < 1) {
+    return(list(table = empty(), note = "The homogeneity-of-slopes test could not be computed (the covariate-by-group slopes add no estimable parameters to the common-slope model). Check that each covariate varies within every group."))
+  }
   if (multivariate) {
     tab <- data.frame(comparison = comparison, df = abs(row[["Df"]]),
                       statistic = row[[test]], approx_f = row[["approx F"]],
@@ -859,11 +987,30 @@ anova_manova <- function(data, responses, groups, covariates = NULL,
   row.names(tab) <- NULL
   attr(tab, "test") <- if (multivariate) test else "F"
   note <- .said_note(got$said, "the homogeneity-of-slopes test")
+  # Roy's approximate F is an upper bound when the comparison has more than one
+  # degree of freedom and there is more than one response (as for the terms of
+  # $multivariate), so its p-value is only a lower bound.
+  roy_bound <- multivariate && identical(test, "Roy") &&
+    min(tab$df, NCOL(stats::residuals(m_add))) > 1
+  if (roy_bound) {
+    note <- c(note, "For the homogeneity-of-slopes test, Roy's largest root has only an upper bound for its F statistic (the comparison has more than one degree of freedom and there is more than one response), so its p-value is a lower bound: it is anti-conservative, and `homogeneous` may be FALSE when a calibrated test would not reject. Pillai's trace or Wilks' lambda give calibrated p-values.")
+  }
   if (isFALSE(tab$homogeneous)) {
-    note <- c(note, sprintf(
-      "Homogeneity of regression slopes is rejected (%s = %.4g, approximate F(%g, %g) = %.4g, p = %.3g): the covariate slopes differ across groups. The common-slope %s, its adjusted marginal means and their comparisons then describe groups at the covariate mean only, not constant adjusted differences, and rejections by Mardia's tests or Box's M may be artefacts of the misspecified slopes. Model the covariate-by-group interaction (e.g. with car::Manova on your own model), or analyse each response with anova_ancova().",
-      if (multivariate) test else "F", tab$statistic, tab$num_df, tab$den_df,
-      tab$approx_f, tab$p_value, if (multivariate) "MANCOVA" else "ANCOVA"))
+    # With one response the comparison is an exact F test, and the
+    # multivariate checks (Mardia's tests, Box's M) are not computed.
+    stat <- if (multivariate) {
+      sprintf("%s = %.4g, approximate F(%g, %g) = %.4g, p = %.3g%s", test,
+              tab$statistic, tab$num_df, tab$den_df, tab$approx_f, tab$p_value,
+              if (roy_bound) ", a lower bound" else "")
+    } else {
+      sprintf("F(%g, %g) = %.4g, p = %.3g", tab$num_df, tab$den_df,
+              tab$approx_f, tab$p_value)
+    }
+    note <- c(note, if (multivariate) sprintf(
+      "Homogeneity of regression slopes is rejected (%s): the covariate slopes differ across groups. The common-slope MANCOVA, its adjusted marginal means and their comparisons then describe groups at the covariate mean only, not constant adjusted differences, and rejections by Mardia's tests or Box's M may be artefacts of the misspecified slopes. Model the covariate-by-group interaction (e.g. with car::Manova on your own model), or analyse each response with anova_ancova().",
+      stat) else sprintf(
+      "Homogeneity of regression slopes is rejected (%s): the covariate slopes differ across groups. The common-slope ANCOVA, its adjusted marginal means and their comparisons then describe groups at the covariate mean only, not constant adjusted differences. Use anova_ancova(), which fits the covariate-by-group interaction when the slopes differ and reports each group's slope in $simple_slopes.",
+      stat))
   }
   list(table = tab, note = note)
 }

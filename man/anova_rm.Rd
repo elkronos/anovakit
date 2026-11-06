@@ -56,7 +56,9 @@ Default \code{0.95}.}
 table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. The
 correction actually applied is recorded in
 \code{attr(fit$anova, "correction")} and printed: \code{"none"} when every
-within-subject factor has two levels, where there is nothing to correct.}
+within-subject factor has two levels, where there is nothing to correct,
+and also when sphericity could not be assessed (for instance, the design
+leaves no error degrees of freedom); \code{$notes} then says why.}
 
 \item{posthoc}{Logical. Compute pairwise comparisons. There are
 \code{choose(k, 2)} of them, so this is worth turning off when the number
@@ -79,7 +81,10 @@ accepted; anything else is an error rather than silently ignored.
     rather than manipulated. Generalised eta squared depends on this
     (Olejnik and Algina, 2003).}
   \item{\code{type}}{Sums of squares: \code{3} (or \code{"III"}, the
-    default) or \code{2} (\code{"II"}).}
+    default) or \code{2} (\code{"II"}). With no between-subject
+    factor the two are identical, since the only between-subject term is
+    the intercept; the table keeps the label asked for, and car's message
+    that it substituted the equivalent Type III tests is not relayed.}
   \item{\code{anova_table}}{A list holding only \code{p_adjust_method},
     one of \code{\link[stats]{p.adjust.methods}}, which adjusts the
     p-values of \code{$anova} across its terms. The \code{p_gg} and

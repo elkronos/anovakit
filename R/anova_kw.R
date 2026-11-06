@@ -164,13 +164,15 @@ anova_kw <- function(data, response, groups,
                      posthoc = TRUE,
                      plots = TRUE,
                      verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_kw")
   .check_adjust(adjust, stats::p.adjust.methods, "adjust")
   data <- .as_df(data)
   .check_name(response, "response")
   .check_names(groups, "groups")
   .check_columns(data, response, "Response column")
   .check_columns(data, groups, "Grouping column(s)")
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups))
   .check_numeric_col(data, response)
   .check_roles(list(`the response` = response, `a grouping variable` = groups))
   .check_conf_level(conf_level)
@@ -232,6 +234,7 @@ anova_kw <- function(data, response, groups,
     p_value   = unname(kw$p.value),
     stringsAsFactors = FALSE
   )
+  attr(anova_tab, "statistic") <- "Kruskal-Wallis chi-square"
 
   ## Effect sizes ------------------------------------------------------------
   n <- length(y)
@@ -288,7 +291,8 @@ anova_kw <- function(data, response, groups,
   assumptions <- list()
   if (diagnostics) {
     .say(verbose, "Computing optional normality diagnostics.")
-    assumptions$normality <- .normality_by_group(y, d[[cell]])
+    assumptions$normality <- .normality_by_group(y, d[[cell]],
+                                                  unit = "observation")
     notes <- c(notes, "The normality diagnostics are contextual only. Kruskal-Wallis does not assume normality and the test does not depend on them.",
                .normality_skip_notes(assumptions$normality))
   }

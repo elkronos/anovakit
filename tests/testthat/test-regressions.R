@@ -220,7 +220,7 @@ test_that("a factor response with a binomial family does not crash the plots", {
   expect_false("box" %in% names(fit$plots))
 
   # and a factor response with a Gaussian family is refused with a useful message
-  expect_error(anova_glm(d, "fy", "A"), "must be numeric for a gaussian family")
+  expect_error(anova_glm(d, "fy", "A"), "must be numeric for the gaussian family")
 })
 
 test_that("weights are named as a column and stay aligned when rows are dropped", {
@@ -347,10 +347,13 @@ test_that("an ill-determined negative binomial theta is reported as such", {
     anova_count(d, "y", "g", model = "negbin", plots = FALSE))
 
   expect_identical(fit$model_type, "negbin")
-  # This fixture hits MASS's iteration limit, so the one message it must get
-  # is the non-convergence note (read from fit$th.warn, not from warning text)
+  # This fixture hits MASS's iteration limit with the regression converged:
+  # theta has run off to the Poisson boundary, so the message it must get is
+  # the collapse note, not a false "did not converge" (R2-BINCOUNT-03).
   expect_false(is.null(fit$model$th.warn))
-  expect_true(any(grepl("did not converge", fit$notes)))
+  expect_true(isTRUE(fit$model$converged))
+  expect_true(any(grepl("collapsed towards it", fit$notes)))
+  expect_false(any(grepl("did not converge", fit$notes)))
   expect_false(any(grepl("dispersion parameter theta =", fit$notes)))
   # and the note must not present a runaway theta as a three-decimal estimate
   runaway <- fit$model$theta > 1000 ||

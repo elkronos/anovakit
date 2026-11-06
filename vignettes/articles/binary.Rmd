@@ -222,6 +222,16 @@ data.frame(comparison = fit$effect_sizes$comparison,
 They part company in small samples and, above all, under separation, where
 only the profile interval means anything (see [Separation](#separation)).
 
+Profiling refits the model several times for each coefficient. The model
+has only grouping factors, so the refits run on the data collapsed to one
+weighted row per cell and outcome, which has the same likelihood: the number
+of rows does not add to the cost, but the number of coefficients does. Left at
+its default, `ci_method` gives Wald intervals instead, with a note, when the
+model has more than 50 coefficients. That holds under separation too, except
+that an odds ratio separation drives to infinity or to zero still gets its
+profile interval, since a Wald interval means nothing there.
+`ci_method = "profile"` given explicitly always profiles every coefficient.
+
 ### Choosing the reference level
 
 `reference` takes a named list, one level per factor:

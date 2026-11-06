@@ -33,13 +33,24 @@
 #' point you want the intercept (and the Type III group row) to refer to. When
 #' the covariate mean lies outside the range a group was observed over, that
 #' group's adjusted mean is an extrapolation along the fitted slope, and
-#' \code{$notes} names the group.
+#' \code{$notes} names the group. Under the covariate-by-group interaction a
+#' group in which a covariate is constant has no estimable slope, so its
+#' adjusted mean is in general not estimable: it is left out of \code{$emmeans}
+#' and \code{$posthoc}, and \code{$notes} names it.
 #'
 #' A covariate that is constant, that is determined by the grouping variables
 #' (constant within every group, such as a group-level attribute), or that is
 #' an exact linear combination of the grouping variables and the other
 #' covariates is refused with an error naming it: its effect cannot be
 #' separated from the group effect, so there is nothing to adjust for.
+#' With \code{center_covariates = FALSE}, a covariate whose spread is below
+#' about 1e-7 of its level (a Unix timestamp spanning a minute, say) is also
+#' refused, since \code{lm()} cannot tell it apart from the intercept
+#' uncentred; the error says so, and the default centring fits it. A
+#' somewhat larger spread can still be too small for the covariate-by-group
+#' columns, which \code{lm()} then drops in part; an uncentred fit whose
+#' models lose coefficients that the centred fit keeps is refused in the same
+#' way, since the slopes test and \code{$simple_slopes} would be wrong.
 #'
 #' \strong{Homogeneity of slopes.} The two candidate models are the grouping
 #' structure with the covariates entered additively, and the same model plus
@@ -48,8 +59,10 @@
 #' nested F test, joint over all covariates: heterogeneity in any one covariate
 #' retains the slope terms for all of them. \code{homogeneity_alpha} is its
 #' level. The test is reported as not computable (\code{NA}) when the
-#' covariate-by-group terms add nothing estimable, or when the model without
-#' them already fits the data exactly. If the slopes differ, the interaction
+#' covariate-by-group terms add nothing estimable, when the model with them
+#' leaves no residual degrees of freedom (too few rows per group for the
+#' slopes to be tested), or when the model without them already fits the data
+#' exactly; the additive model is then used. If the slopes differ, the interaction
 #' model is used, and a note explains that the group effect is then a
 #' comparison at one point on the covariate rather than a constant difference,
 #' and that \code{$simple_slopes} is the thing to read.
@@ -66,10 +79,15 @@
 #' adjusted means for the group row about 11--13\% of the time at the 5\% level
 #' (about 34\% with 10 per group and means at -2, 0 and 2), against about 5\%
 #' with \code{force_interaction = TRUE}; always fitting the additive model
-#' (\code{force_interaction = FALSE}) was worse still. Randomised groups were
-#' not affected. So when the additive model is used and the covariate means
+#' (\code{force_interaction = FALSE}) was worse still. Randomised groups are
+#' affected less, but still affected: with the same slopes and equal expected
+#' covariate means, the default pipeline rejected about 6--7\% of the time
+#' with 20 per group, because chance imbalance in the covariate means and the
+#' selection step itself still inflate the group row. So the note on the
+#' additive model chosen by the test says that its p-values do not allow for
+#' the selection, and when the covariate means also
 #' differ between groups by more than half a pooled within-group SD,
-#' \code{$notes} says so. Conversely, when the test retains the interaction, the p-values do
+#' \code{$notes} says so as well. Conversely, when the test retains the interaction, the p-values do
 #' not allow for that choice and can also be too small. \code{force_interaction
 #' = TRUE} avoids the selection step: with centred covariates and \code{type =
 #' "III"}, the group row is then a valid comparison of the groups at the
@@ -81,8 +99,10 @@
 #' \code{"model"}, the F tests in \code{$anova} are Wald F tests
 #' (\code{car::Anova(vcov. = )}) built from the heteroscedasticity-consistent
 #' covariance, on the model's residual degrees of freedom, so that table has no
-#' sums of squares. \code{$emmeans}, \code{$posthoc} and \code{$simple_slopes}
-#' use the same covariance. \code{$effect_sizes} are still computed from the
+#' sums of squares. (\pkg{car} refuses those tests for a model with aliased
+#' coefficients; \code{$anova} then keeps the model-based F tests, and
+#' \code{$notes} says so.) \code{$emmeans}, \code{$posthoc} and
+#' \code{$simple_slopes} use the same covariance. \code{$effect_sizes} are still computed from the
 #' model-based sums of squares, which the covariance does not change, and the
 #' homogeneity-of-slopes test stays the model-based F test.
 #'
@@ -143,10 +163,27 @@
 #'   \code{$model_additive} and \code{$model_interaction}, both candidate fits,
 #'   so the one that was not chosen is still available. \code{$assumptions}
 #'   also holds \code{normality} (Shapiro-Wilk on the residuals) and
-#'   \code{levene} (Levene's test on the residuals across the cells).
+#'   \code{levene} (Levene's test on the residuals across the cells; cells
+#'   with one or two observations, whose absolute deviations from their median
+#'   cannot vary, are left out of it, as are cells the model fits exactly by
+#'   construction or leaves with fewer than 2.5 residual degrees of freedom
+#'   (the cell's observations minus the sum of their leverages, judged from
+#'   the design, not from the size of the residuals): so, when every cell has
+#'   a mean of its own (as with the default \code{interaction = TRUE}), every
+#'   cell of three observations, and under the covariate-by-group interaction
+#'   every cell with no more than two observations beyond the coefficients of
+#'   its own; cells of exactly three observations are left out in any case,
+#'   since the test can hardly reject on them.
+#'   Left in, such cells make the test reject homoscedastic data about twice
+#'   as often as its nominal level (two residual degrees of freedom and a
+#'   slope of their own) or almost never (three observations). \code{$notes}
+#'   names them, with their residual degrees of freedom).
 #'   \code{$data_used} holds the analysed columns and the cell factor, with the
 #'   covariates centred when \code{center_covariates = TRUE}. The covariate
-#'   plot shows each covariate on its original scale.
+#'   plot shows each covariate on its original scale, with the lines of the
+#'   model that was fitted and their model-based confidence bands; when the
+#'   additive model is used those lines are parallel, and each group's own
+#'   least-squares line is added dashed.
 #'
 #' @seealso \code{\link{anova_welch}} when there is no covariate,
 #'   \code{\link{anova_manova}} for several responses at once.
@@ -200,7 +237,7 @@ anova_ancova <- function(data, response, groups, covariates,
                          posthoc = TRUE,
                          plots = TRUE,
                          verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_ancova")
   type <- match.arg(type)
   .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -213,6 +250,9 @@ anova_ancova <- function(data, response, groups, covariates,
   .check_columns(data, covariates, "Covariate column(s)")
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `a covariate` = covariates))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups,
+                                       Covariate = covariates))
   .check_numeric_col(data, response)
   for (cv in covariates) .check_numeric_col(data, cv, role = "Covariate")
   .check_conf_level(conf_level)
@@ -239,12 +279,7 @@ anova_ancova <- function(data, response, groups, covariates,
   cell <- added$cell
 
   ## Covariates ----------------------------------------------------------------
-  for (cv in covariates) {
-    if (length(unique(d[[cv]])) < 2L) {
-      .stopf("Covariate `%s` has the same value (%s) in every analysed row, so there is nothing to adjust for. Drop it from `covariates`.",
-             cv, format(d[[cv]][1L]))
-    }
-  }
+  .check_covariates_vary(d, covariates)
   covariate_means <- vapply(covariates, function(cv) mean(d[[cv]]), numeric(1))
   covariate_ranges <- vapply(covariates, function(cv) range(d[[cv]]), numeric(2))
   # The plots show the covariates in the units they were measured in; the
@@ -261,19 +296,43 @@ anova_ancova <- function(data, response, groups, covariates,
 
   g_terms <- .group_terms(groups, interaction)
   cv_terms <- .bq(covariates)
-  # More coefficients than rows cannot be estimated, and a model matrix far
-  # wider than the data takes lm() minutes to pivot; refuse it up front.
+  # The complete crossing can have more coefficients than there are rows and
+  # still be estimable: in an incomplete design (each site sees only some
+  # arms) most level combinations are empty, their coefficients are aliased,
+  # and the rank -- the number of OBSERVED combinations, plus the covariates
+  # -- is what has to fit in the data. Only a rank above the row count makes
+  # the model inestimable. Separately, a model matrix far wider than the data
+  # takes lm() and emmeans minutes; that is refused for what it is.
   n_coef <- 1 + length(covariates) + .n_group_coefs(d, groups, interaction)
   if (n_coef > nrow(d)) {
-    .stopf("The model needs %s coefficients but there are only %d rows, so it cannot be estimated: %s. Use interaction = FALSE (or a lower interaction order), fewer grouping variables, or fewer levels.",
-           format(n_coef, big.mark = ","), nrow(d),
-           if (length(groups) > 1L && !.is_additive(interaction)) {
-             sprintf("the interactions of %s alone have %s level combinations",
-                     paste(sprintf("`%s`", groups), collapse = ", "),
-                     format(prod(vapply(groups, function(g)
-                       nlevels(droplevels(as.factor(d[[g]]))), numeric(1))),
-                       big.mark = ","))
-           } else "each level of a grouping variable needs its own coefficient")
+    G <- .top_cell_indicators(d, groups, interaction)
+    crossed <- length(groups) > 1L && !.is_additive(interaction)
+    n_cells <- prod(vapply(groups, function(g)
+      nlevels(droplevels(as.factor(d[[g]]))), numeric(1)))
+    # One top-order term (a single factor, or the full factorial): its cell
+    # indicators are disjoint, so their number is the rank.
+    r_g <- if (length(groups) == 1L || (crossed && isTRUE(interaction))) ncol(G) else
+      qr(G, tol = 1e-7)$rank
+    n_est <- r_g + length(covariates)
+    if (n_est > nrow(d)) {
+      .stopf("The model needs %s estimable coefficients but there are only %d rows, so it cannot be estimated: %s. Use interaction = FALSE (or a lower interaction order), fewer grouping variables, or fewer levels.",
+             format(n_est, big.mark = ","), nrow(d),
+             if (crossed) {
+               sprintf("the observed level combinations of %s alone need %s",
+                       paste(sprintf("`%s`", groups), collapse = ", "),
+                       format(r_g, big.mark = ","))
+             } else "each level of a grouping variable needs its own coefficient")
+    }
+    # About 1000 columns for fewer rows than that already take tens of
+    # seconds (the covariate-by-group model is wider still); far wider
+    # matrices take minutes.
+    if (n_coef > 1000) {
+      .stopf("The complete crossing of %s has %s level combinations, so the model has %s coefficients but there are only %d rows (%s of the combinations are observed). A model matrix that much wider than the data takes minutes to fit and summarise. Use interaction = FALSE (or a lower interaction order), fewer grouping variables, or fewer levels.",
+             paste(sprintf("`%s`", groups), collapse = ", "),
+             format(n_cells, big.mark = ","), format(n_coef, big.mark = ","),
+             nrow(d), format(nlevels(base::interaction(d[groups], drop = TRUE)),
+                             big.mark = ","))
+    }
   }
   .check_covariates_identified(d, covariates, groups, interaction)
 
@@ -292,6 +351,10 @@ anova_ancova <- function(data, response, groups, covariates,
   m_add <- fits$additive
   m_int <- fits$interaction
   notes <- c(notes, fits$notes)
+  if (!center_covariates) {
+    .check_uncentred_rank(m_add, m_int, d, fml_add, fml_int, covariates,
+                          covariate_means, type)
+  }
 
   slopes <- .slopes_comparison(m_add, m_int)
   notes <- c(notes, slopes$note)
@@ -326,17 +389,21 @@ anova_ancova <- function(data, response, groups, covariates,
   # the intercept (and, with the interaction under Type III, the group row)
   # refer to the covariate's zero.
   shifts_group_row <- use_interaction && identical(type, "III")
+  # Enough digits to separate the mean from the range end points when the
+  # covariate's level is large beside its spread.
+  fmt_cv <- function(cv, v) .fmt_cov(v, d_raw[[cv]])
+  means_txt <- paste(vapply(covariates, function(cv) sprintf(
+    "%s: %s", cv, fmt_cv(cv, covariate_means[[cv]])), character(1)),
+    collapse = "; ")
   notes <- c(notes, if (center_covariates) {
     sprintf("Covariate(s) mean-centred before fitting (%s), so %s to the covariate mean rather than to covariate = 0. $emmeans are evaluated at the covariate mean either way.",
-            paste(sprintf("%s: %.4g", covariates, covariate_means),
-                  collapse = "; "),
+            means_txt,
             if (shifts_group_row) "the intercept and the Type III group row refer"
             else "the intercept refers")
   } else {
     outside <- covariates[covariate_ranges[1L, ] > 0 | covariate_ranges[2L, ] < 0]
     sprintf("Covariate(s) were NOT centred, so the intercept refers to covariate = 0; $emmeans and $posthoc are still evaluated at the covariate mean (%s).%s%s Observed ranges: %s.",
-            paste(sprintf("%s: %.4g", covariates, covariate_means),
-                  collapse = "; "),
+            means_txt,
             if (shifts_group_row)
               " The Type III group row of the ANOVA table also tests the groups at covariate = 0; read $emmeans instead."
             else
@@ -345,9 +412,10 @@ anova_ancova <- function(data, response, groups, covariates,
               " Zero lies outside the observed range of %s, so the intercept%s describes a point the data never reach.",
               paste(outside, collapse = ", "),
               if (shifts_group_row) " (and that group row)" else "") else "",
-            paste(sprintf("%s [%.4g, %.4g]", covariates,
-                          covariate_ranges[1L, ], covariate_ranges[2L, ]),
-                  collapse = "; "))
+            paste(vapply(covariates, function(cv) sprintf(
+              "%s [%s, %s]", cv, fmt_cv(cv, covariate_ranges[1L, cv]),
+              fmt_cv(cv, covariate_ranges[2L, cv])), character(1)),
+              collapse = "; "))
   })
   .say(verbose, "Using the %s model.",
        if (use_interaction) "covariate-by-group interaction" else "additive")
@@ -358,7 +426,8 @@ anova_ancova <- function(data, response, groups, covariates,
   # the test did not find.
   slopes_txt <- if (!is.na(slopes_p)) sprintf("gave p = %.4g", slopes_p) else
     if (slopes$exact) "could not be computed (the fit is exact)" else
-      "could not be computed"
+      if (slopes$saturated) "could not be computed (the model with covariate-by-group terms leaves no residual degrees of freedom)" else
+        "could not be computed"
   where <- if (!identical(type, "III")) "that ignores the interaction (Type II)" else
     if (center_covariates) "at the covariate mean" else "at covariate = 0"
   read_instead <- sprintf(
@@ -375,11 +444,16 @@ anova_ancova <- function(data, response, groups, covariates,
   } else if (is.null(force_interaction)) {
     if (is.na(slopes_p) && slopes$exact) {
       "The homogeneity-of-slopes test could not be computed because the model without covariate-by-group terms already fits the data exactly (its residual sum of squares is rounding error), so the additive model was used."
+    } else if (is.na(slopes_p) && slopes$saturated) {
+      "The homogeneity-of-slopes test could not be computed because the model with covariate-by-group terms has as many estimable coefficients as there are rows, leaving no residual degrees of freedom to test the slopes against, so the additive model was used. Testing the slopes needs more observations per group."
     } else if (is.na(slopes_p)) {
       "The homogeneity-of-slopes test could not be computed, so the additive model was used. Check that the covariate varies within every group."
     } else {
-      sprintf("Slopes are consistent with being equal across groups (p = %.4g), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it.",
-              slopes_p)
+      sprintf("Slopes are consistent with being equal across groups (p = %.4g), so the additive model was used. A non-significant test is not proof of equal slopes, only an absence of evidence against it, and the p-values below do not allow for the model having been chosen by a test on these same data: if the slopes do differ, the group row and $posthoc can reject more often than their nominal level, somewhat so even when the groups were randomised and far more so when the groups' covariate means are unequal.%s",
+              slopes_p,
+              if (identical(type, "III") && center_covariates)
+                " Setting force_interaction = TRUE in advance avoids the selection step."
+              else " Set force_interaction in advance to avoid the selection step.")
     }
   } else {
     sprintf("The additive model was fitted because force_interaction = FALSE; the homogeneity-of-slopes test %s.",
@@ -396,11 +470,16 @@ anova_ancova <- function(data, response, groups, covariates,
   if (!use_interaction) {
     notes <- c(notes, .imbalance_note(d_raw, covariates, cell))
   }
-  notes <- c(notes, .extrapolation_note(d_raw, covariates, cell,
-                                        covariate_means))
+  # Under group-specific slopes a cell whose covariate is constant has no
+  # estimable slope, so its mean at the covariate mean is not extrapolated
+  # but not estimable at all; $emmeans leaves it out with its own note.
+  notes <- c(notes, .extrapolation_note(
+    d_raw, covariates, cell, covariate_means,
+    exclude = if (use_interaction) .nonest_cells(model, groups) else character(0)))
 
   ## Covariance ----------------------------------------------------------------
-  rv <- .robust_vcov(model, vcov_type)
+  # anova_welch() cannot adjust for covariates, so it is no alternative here.
+  rv <- .robust_vcov(model, vcov_type, welch_hint = FALSE)
   notes <- c(notes, rv$note)
   robust <- !is.null(rv$matrix)
 
@@ -408,11 +487,18 @@ anova_ancova <- function(data, response, groups, covariates,
   av <- .car_anova(model, type = type)
   notes <- c(notes, av$note)
   anova_tab <- av$table
+  # Whether $anova really holds the robust Wald tests: car refuses them for a
+  # model with aliased coefficients, and the table then stays model-based
+  # while the covariance still reaches $emmeans, $posthoc and $simple_slopes.
+  robust_anova <- FALSE
   if (robust) {
     rob <- .robust_anova(model, type, rv$matrix, vcov_type,
                          fallback = !is.null(av$table))
     notes <- c(notes, rob$note)
-    if (!is.null(rob$table)) anova_tab <- rob$table
+    if (!is.null(rob$table)) {
+      anova_tab <- rob$table
+      robust_anova <- TRUE
+    }
   }
   y <- stats::model.response(stats::model.frame(model))
   eff <- .partial_eta_squared(av$raw, df_error = stats::df.residual(model),
@@ -427,8 +513,9 @@ anova_ancova <- function(data, response, groups, covariates,
   res <- stats::residuals(model)
   norm <- .check_normality(res)
   notes <- c(notes, norm$note)
-  lev <- .levene_on_model(model, d, cell,
-                          vcov_type = if (robust) vcov_type else "model")
+  lev <- .levene_on_model(model, d, cell, vcov_type = vcov_type,
+                          robust = robust, slopes = use_interaction,
+                          robust_anova = robust_anova)
   notes <- c(notes, lev$note)
 
   ## Marginal means, comparisons and slopes ----------------------------------
@@ -440,16 +527,32 @@ anova_ancova <- function(data, response, groups, covariates,
 
   simple_slopes <- NULL
   if (use_interaction) {
+    # Only a grouping column can be called `covariate` (or emm_covariate); it
+    # keeps its name, as in every other clash, and the label column takes the
+    # emm_ prefix instead.
+    lab <- "covariate"
+    if (lab %in% groups) {
+      k <- 1L
+      lab <- "emm_covariate"
+      while (lab %in% groups) {
+        k <- k + 1L
+        lab <- paste0("emm_covariate", k)
+      }
+    }
     parts <- lapply(covariates, function(cv) {
       ss <- .emtrends_table(model, groups, cv, conf_level,
                             vcov_matrix = rv$matrix, protect = groups)
       notes <<- c(notes, ss$note)
-      if (is.null(ss$table)) NULL else .cbind_label(ss$table, "covariate", cv)
+      if (is.null(ss$table)) NULL else .cbind_label(ss$table, lab, cv)
     })
     parts <- parts[!vapply(parts, is.null, logical(1))]
     if (length(parts) > 0L) {
       simple_slopes <- do.call(rbind, parts)
       row.names(simple_slopes) <- NULL
+      if (lab != "covariate") {
+        notes <- c(notes, .renamed_note(structure(
+          list(), renamed = sprintf("covariate -> %s", lab))))
+      }
     }
   }
 
@@ -461,8 +564,29 @@ anova_ancova <- function(data, response, groups, covariates,
     plot_list$qq <- .plot_qq(res)
     for (cv in covariates) {
       nm <- if (length(covariates) == 1L) "covariate" else paste0("covariate_", cv)
+      # The lines are the fitted model's, so the plot shows the model the
+      # results come from: parallel lines when the additive model was used.
+      lines <- .covariate_lines(
+        model, d, response, cv, covariates, cell,
+        shift = if (center_covariates) covariate_means[[cv]] else 0,
+        conf_level = conf_level)
+      what <- sprintf("Solid lines are the fitted %s%s",
+                      if (use_interaction) "model, with a slope for each group"
+                      else "additive model, with one common slope",
+                      if (length(covariates) > 1L)
+                        ", other covariates held at their mean" else "")
+      sub <- paste0(what, if (!is.null(lines) && !any(is.finite(lines[[attr(lines, "band")[1L]]])))
+        "; the model has no residual degrees of freedom, so there are no bands"
+        else sprintf("; bands are %s%% confidence intervals for them%s",
+                     .pct(conf_level), if (robust) " (model-based)" else ""),
+        if (!use_interaction) sprintf("; dashed lines are each group's own least-squares line%s",
+                                      if (length(covariates) > 1L)
+                                        " on this covariate alone" else "")
+        else "")
       plot_list[[nm]] <- .plot_covariate(d_raw, response, cv, cell,
-                                         conf_level = conf_level)
+                                         conf_level = conf_level,
+                                         lines = lines, subtitle = sub,
+                                         own_lines = !use_interaction)
     }
     if (!is.null(emm$table)) {
       plot_list$emmeans <- .plot_emmeans(
@@ -499,6 +623,27 @@ anova_ancova <- function(data, response, groups, covariates,
   )
 }
 
+#' Refuse covariates that do not vary
+#'
+#' A covariate counts as constant when its range is at most \code{1e-12} times
+#' its largest absolute value: one that differs only by rounding error (0.3
+#' and 0.1 + 0.2) has two distinct values, but fitting it takes a degree of
+#' freedom from the error term for a column of noise, and its own test is
+#' meaningless.
+#' @noRd
+.check_covariates_vary <- function(d, covariates) {
+  for (cv in covariates) {
+    x <- d[[cv]]
+    spread <- diff(range(x))
+    if (spread <= 1e-12 * max(abs(x))) {
+      .stopf("Covariate `%s` has the same value (%s) in every analysed row%s, so there is nothing to adjust for. Drop it from `covariates`.",
+             cv, format(x[1L]),
+             if (spread > 0) " up to rounding error" else "")
+    }
+  }
+  invisible(NULL)
+}
+
 #' Refuse covariates whose effect cannot be separated from the groups
 #'
 #' A covariate that is a function of the grouping variables -- a group-level
@@ -514,19 +659,35 @@ anova_ancova <- function(data, response, groups, covariates,
   # block of at most n disjoint indicators per term. The model matrix itself
   # can have far more columns than rows (three 22-level factors give 10648),
   # and a pivoting QR on that takes minutes.
-  order_max <- if (length(groups) == 1L || isFALSE(interaction)) 1L else
-    if (isTRUE(interaction)) length(groups) else min(as.integer(interaction), length(groups))
-  top <- utils::combn(groups, order_max, simplify = FALSE)
-  G <- do.call(cbind, lapply(top, function(v) {
-    cell <- base::interaction(d[v], drop = TRUE, lex.order = TRUE)
-    outer(as.integer(cell), seq_len(nlevels(cell)), "==") + 0
-  }))
-  C <- as.matrix(d[covariates])
+  G <- .top_cell_indicators(d, groups, interaction)
+  C_fit <- as.matrix(d[covariates])
+  # The structural question is asked of the centred columns. Subtracting a
+  # constant changes no rank in exact arithmetic (the constant is in the span
+  # of the cell indicators), but an uncentred covariate whose spread is tiny
+  # beside its level -- a Unix timestamp spanning a minute -- looks numerically
+  # like a multiple of the intercept, and would be misreported as constant
+  # within every group.
+  C <- sweep(C_fit, 2L, colMeans(C_fit))
   # The same tolerance lm() uses to declare a column aliased.
   rk <- function(M) qr(M, tol = 1e-7)$rank
   r_g <- rk(G)
   r_all <- rk(cbind(G, C))
-  if (r_all == r_g + ncol(C)) return(invisible(TRUE))
+  if (r_all == r_g + ncol(C)) {
+    if (rk(cbind(G, C_fit)) == r_g + ncol(C)) return(invisible(TRUE))
+    # Identified once centred, aliased as given: only an uncentred fit
+    # (center_covariates = FALSE) can get here, and lm() would drop the
+    # covariate as numerically indistinguishable from the intercept.
+    offset <- covariates[vapply(seq_along(covariates), function(j)
+      rk(cbind(G, C_fit[, j])) == r_g, logical(1))]
+    if (length(offset) == 0L) offset <- covariates
+    .stopf("Covariate(s) %s vary too little relative to their distance from zero to be fitted uncentred: their spread is below about 1e-7 of their level (%s), so lm() cannot tell them apart from the intercept and would drop them. They do vary within the groups. Use center_covariates = TRUE (the default; it changes neither $emmeans, $posthoc nor the additive model's tests), or subtract a reference value from the column yourself.",
+           paste(sprintf("`%s`", offset), collapse = ", "),
+           paste(vapply(offset, function(cv) {
+             x <- C_fit[, cv]
+             sprintf("%s: range %s", cv, paste(.fmt_cov(range(x), x),
+                                               collapse = " to "))
+           }, character(1)), collapse = "; "))
+  }
   by_groups <- character(0)
   by_others <- character(0)
   for (j in seq_along(covariates)) {
@@ -548,6 +709,23 @@ anova_ancova <- function(data, response, groups, covariates,
   }
   .stopf("%s Drop the offending covariate(s) from `covariates`.",
          paste(msg, collapse = " "))
+}
+
+#' Indicators of the observed cells of the highest-order grouping terms
+#'
+#' The grouping terms are hierarchical, so these columns span the same space
+#' as the group part of the model matrix (intercept included), while having at
+#' most n columns per top-order term however many level combinations the
+#' complete crossing has.
+#' @noRd
+.top_cell_indicators <- function(d, groups, interaction) {
+  order_max <- if (length(groups) == 1L || isFALSE(interaction)) 1L else
+    if (isTRUE(interaction)) length(groups) else min(as.integer(interaction), length(groups))
+  top <- utils::combn(groups, order_max, simplify = FALSE)
+  do.call(cbind, lapply(top, function(v) {
+    cell <- base::interaction(d[v], drop = TRUE, lex.order = TRUE)
+    outer(as.integer(cell), seq_len(nlevels(cell)), "==") + 0
+  }))
 }
 
 #' Fit both candidate models, keeping their coefficient names distinct
@@ -612,13 +790,65 @@ anova_ancova <- function(data, response, groups, covariates,
        notes = c(.said_note(unique(fits$said), "stats::lm()"), notes))
 }
 
+#' Refuse an uncentred fit that loses coefficients only because it is uncentred
+#'
+#' Centring a covariate changes no rank in exact arithmetic, in either model:
+#' the covariate-by-group columns of the centred model are those of the
+#' uncentred one minus a multiple of the group indicators. Numerically it can:
+#' a covariate whose spread is small beside its level (a Unix timestamp
+#' spanning minutes) makes its products with the group indicators nearly
+#' multiples of the indicators themselves, and \code{lm()} drops some of them
+#' as aliased. \code{.check_covariates_identified()} asks this of the additive
+#' design only; the covariate-by-group design is wider and fails first. The
+#' homogeneity-of-slopes test, \code{$simple_slopes} and the interaction
+#' model's table would then all be computed from the wrong model, so the
+#' models are refitted on centred copies of the covariates and the call is
+#' refused when either loses rank uncentred.
+#' @param d the frame the models were fitted on (covariates not centred).
+#' @noRd
+.check_uncentred_rank <- function(m_add, m_int, d, fml_add, fml_int,
+                                  covariates, covariate_means, type) {
+  dc <- d
+  for (cv in covariates) dc[[cv]] <- dc[[cv]] - covariate_means[[cv]]
+  centred_rank <- function(fml) {
+    got <- .collect_conditions(.fit_with_contrasts(
+      function() .fit_lm(fml, dc), type = type))
+    if (inherits(got$value, "error")) NA_integer_ else got$value$rank
+  }
+  lost <- character(0)
+  for (m in list(list(m_add, fml_add), list(m_int, fml_int))) {
+    rc <- centred_rank(m[[2L]])
+    if (!is.na(rc) && m[[1L]]$rank < rc) {
+      cf <- stats::coef(m[[1L]])
+      lost <- c(lost, names(cf)[is.na(cf)])
+    }
+  }
+  if (length(lost) == 0L) return(invisible(TRUE))
+  lost <- unique(gsub("`", "", lost, fixed = TRUE))
+  parts <- strsplit(lost, ":", fixed = TRUE)
+  involved <- covariates[vapply(covariates, function(cv)
+    any(vapply(parts, function(p) cv %in% p, logical(1))), logical(1))]
+  if (length(involved) == 0L) involved <- covariates
+  .stopf("Covariate(s) %s vary too little relative to their distance from zero to be fitted uncentred: their spread is small beside their level (%s), so lm() drops coefficient(s) it can estimate once the covariate is centred (%s), and the homogeneity-of-slopes test, $simple_slopes and the covariate-by-group model's ANOVA table would be computed from the wrong model. Use center_covariates = TRUE (the default; it changes neither $emmeans, $posthoc nor the additive model's tests), or subtract a reference value from the column yourself.",
+         paste(sprintf("`%s`", involved), collapse = ", "),
+         paste(vapply(involved, function(cv) {
+           x <- d[[cv]]
+           sprintf("%s: range %s", cv, paste(.fmt_cov(range(x), x),
+                                             collapse = " to "))
+         }, character(1)), collapse = "; "),
+         .abbrev(lost))
+}
+
 #' The homogeneity-of-slopes F test, guarded against an exact fit
 #'
 #' \code{stats::anova()} compares two residual sums of squares with no check
 #' that there is any residual variation to compare: on data that lie exactly on
 #' parallel lines both are rounding error, their ratio is noise, and a
 #' reordering of the rows can flip the conclusion. The test is reported as not
-#' computable instead.
+#' computable instead. So it is when the model with the covariate-by-group
+#' terms has no residual degrees of freedom: there is then no error variance
+#' to test against, and \code{anova()} returns NaN, which is reported as NA
+#' (with \code{saturated = TRUE}, so the note can give that reason).
 #' @noRd
 .slopes_comparison <- function(m_add, m_int) {
   rss_add <- stats::deviance(m_add)
@@ -629,14 +859,17 @@ anova_ancova <- function(data, response, groups, covariates,
   cmp <- got$value
   if (inherits(cmp, "error")) {
     return(list(df = NA_real_, statistic = NA_real_, p_value = NA_real_,
-                exact = exact, note = sprintf(
+                exact = exact, saturated = FALSE, note = sprintf(
                   "The homogeneity-of-slopes comparison failed: %s",
                   conditionMessage(cmp))))
   }
+  saturated <- isTRUE(stats::df.residual(m_int) == 0)
   out <- list(df = cmp[["Df"]][2L], statistic = cmp[["F"]][2L],
               p_value = cmp[["Pr(>F)"]][2L], exact = exact,
-              note = character(0))
-  if (exact) {
+              saturated = saturated, note = character(0))
+  # NaN (0/0, as with no residual df or no slope terms) is reported as NA.
+  if (exact || saturated || !is.finite(out$statistic) ||
+      !is.finite(out$p_value)) {
     out$statistic <- NA_real_
     out$p_value <- NA_real_
   }
@@ -693,24 +926,132 @@ anova_ancova <- function(data, response, groups, covariates,
           paste(sprintf("%s %.2f", covariates[big], gap[big]), collapse = ", "))
 }
 
-#' A note when the covariate mean lies outside a group's observed range
+#' Format covariate values with enough digits to resolve their spread
+#'
+#' Four significant digits are not enough when a covariate's level is large
+#' beside its spread (calendar years, timestamps, temperatures in kelvin):
+#' 2020.18, 2020.40 and 2020.58 all print as 2020. Four digits are kept for
+#' the spread itself, plus one for every whole power of ten by which the
+#' largest absolute value exceeds it, so ordinary covariates keep four.
+#' @param x the values to format.
+#' @param ref the observed values of the covariate, which set the resolution.
 #' @noRd
-.extrapolation_note <- function(d, covariates, cell, ref) {
+.fmt_cov <- function(x, ref) {
+  ref <- ref[is.finite(ref)]
+  spread <- if (length(ref) > 1L) diff(range(ref)) else 0
+  top <- if (length(ref) > 0L) max(abs(ref)) else 0
+  extra <- if (spread > 0 && top > 0) max(0, floor(log10(top / spread))) else 0
+  sprintf("%.*g", as.integer(min(15, 4 + extra)), x)
+}
+
+#' A note when the covariate mean lies outside a group's observed range
+#' @param exclude cell labels whose mean is not estimable: nothing is
+#'   extrapolated for them, so the note must not describe them.
+#' @noRd
+.extrapolation_note <- function(d, covariates, cell, ref,
+                                exclude = character(0)) {
   g <- droplevels(as.factor(d[[cell]]))
   bits <- character(0)
   for (cv in covariates) {
     lo <- tapply(d[[cv]], g, min)
     hi <- tapply(d[[cv]], g, max)
-    out <- which(ref[[cv]] < lo | ref[[cv]] > hi)
+    out <- which((ref[[cv]] < lo | ref[[cv]] > hi) & !names(lo) %in% exclude)
     if (length(out) > 0L) {
+      f <- function(v) .fmt_cov(v, d[[cv]])
       bits <- c(bits, sprintf(
-        "%s = %.4g lies outside the range observed in %s", cv, ref[[cv]],
-        .abbrev(sprintf("%s [%.4g, %.4g]", names(lo)[out], lo[out], hi[out]))))
+        "%s = %s lies outside the range observed in %s", cv, f(ref[[cv]]),
+        .abbrev(sprintf("%s [%s, %s]", names(lo)[out], f(lo[out]), f(hi[out])))))
     }
   }
   if (length(bits) == 0L) return(character(0))
   sprintf("$emmeans are evaluated at the covariate mean, but %s. The adjusted means there are extrapolations along the fitted slope to covariate values none of those observations have, so they and the comparisons that involve them rest on the model's linearity rather than on data.",
           paste(bits, collapse = "; "))
+}
+
+#' The cells whose mean at the covariate mean is not estimable
+#'
+#' Read from emmeans' own cell grid, which marks them non-estimable, so the
+#' cells named here are exactly the ones \code{.emm_block()} leaves out.
+#' @return character vector of cell labels, as \code{.add_cell()} builds them.
+#' @noRd
+.nonest_cells <- function(model, groups) {
+  e <- .emmeans_grid(model, groups, type = "link")
+  if (is.null(e$grid)) return(character(0))
+  # Only the estimates are read, so no intervals or tests are asked for: with
+  # no residual degrees of freedom their critical value is qt(, df = 0),
+  # whose "NaNs produced" warning would otherwise reach the console.
+  old <- .emm_options_guard()
+  on.exit(options(emmeans = old), add = TRUE)
+  s <- as.data.frame(suppressWarnings(suppressMessages(
+    summary(e$grid, infer = c(FALSE, FALSE)))))
+  # The estimate is the first column after the grid factors, whatever a
+  # grouping column happens to be called.
+  est <- s[[length(groups) + 1L]]
+  lab <- do.call(paste, c(lapply(s[groups], as.character), sep = " : "))
+  lab[is.na(est)]
+}
+
+#' The fitted model's lines for the covariate plot
+#'
+#' One line per observed cell, over the range of the covariate observed in that
+#' cell, from the model that was actually fitted: parallel lines for the
+#' additive model, one slope per cell with the interaction. Every other
+#' covariate is held at its mean, as in \code{$emmeans}. The bands are the
+#' model-based confidence intervals of \code{predict.lm()}; a model with no
+#' residual degrees of freedom has none.
+#' @param d the frame the model was fitted on (covariates centred or not).
+#' @param shift what was subtracted from the covariate, added back so the
+#'   lines are on the covariate's original scale.
+#' @return a data frame with the covariate, cell and response columns and
+#'   the band's lower and upper limits, named \code{.lwr} and \code{.upr}
+#'   unless another column already is, and given in \code{attr(, "band")};
+#'   \code{NULL} when nothing can be drawn.
+#' @noRd
+.covariate_lines <- function(model, d, response, covariate, covariates, cell,
+                             shift = 0, conf_level = 0.95, n_points = 40L) {
+  g <- droplevels(as.factor(d[[cell]]))
+  nd <- do.call(rbind, lapply(levels(g), function(lv) {
+    rows <- which(g == lv)
+    x <- d[[covariate]][rows]
+    if (!(max(x) > min(x))) return(NULL)
+    out <- d[rep(rows[1L], n_points), , drop = FALSE]
+    out[[covariate]] <- seq(min(x), max(x), length.out = n_points)
+    for (o in setdiff(covariates, covariate)) out[[o]] <- mean(d[[o]])
+    out
+  }))
+  if (is.null(nd)) return(NULL)
+  band <- stats::df.residual(model) > 0
+  # predict() warns on a rank-deficient fit; the observed cells' lines are
+  # estimable whenever the covariate's slope is, which the model guarantees.
+  pr <- .collect_conditions(stats::predict(
+    model, nd, interval = if (band) "confidence" else "none",
+    level = conf_level))$value
+  if (inherits(pr, "error")) return(NULL)
+  pr <- as.matrix(pr)
+  out <- data.frame(nd[[covariate]] + shift, nd[[cell]], pr[, 1L],
+                    if (band) pr[, "lwr"] else NA_real_,
+                    if (band) pr[, "upr"] else NA_real_)
+  # The band columns take names no user column has, so a response or
+  # covariate called .lwr or .upr keeps the frame uniquely named; their names
+  # are in attr(, "band").
+  taken <- stats::setNames(nm = c(covariate, cell, response))
+  lwr <- .safe_name(taken, ".lwr")
+  upr <- .safe_name(c(taken, stats::setNames(nm = lwr)), ".upr")
+  names(out) <- c(covariate, cell, response, lwr, upr)
+  attr(out, "band") <- c(lwr, upr)
+  row.names(out) <- NULL
+  out
+}
+
+# Prints a residual df that is below 2.5 so that it reads below 2.5: with
+# three significant digits, or as many more as it takes (2.4997 is not
+# printed as 2.5).
+.rdf_below <- function(x) {
+  for (k in 3:15) {
+    v <- signif(x, k)
+    if (v < 2.5) return(as.character(v))
+  }
+  as.character(x)
 }
 
 #' Levene's test on the residuals of a fitted model
@@ -720,14 +1061,41 @@ anova_ancova <- function(data, response, groups, covariates,
 #' the model has dropped incomplete cases.
 #'
 #' Levene's statistic is an ANOVA of the absolute deviations from the group
-#' medians. When those do not vary within any group -- every group has at most
-#' two observations, whose deviations from their median are equal -- that
-#' ANOVA has no residual variation and its F is a ratio of rounding errors
-#' (about 1e31), so the test is skipped.
-#' @param vcov_type the covariance used for the other results, which decides
-#'   what a rejection note recommends.
+#' medians. A cell with one observation has a deviation of exactly zero, and
+#' a cell with two has two equal deviations: such cells add between-cell
+#' variation to that ANOVA and no within-cell variation, so with some of them
+#' in the test it rejects homoscedastic data far too often, and with only
+#' them its F is a ratio of rounding errors. A cell the model fits exactly by
+#' construction (residual degrees of freedom zero up to rounding, as with a
+#' slope for each cell and no more observations than coefficients of its own)
+#' is the same. A cell left with fewer than 2.5 residual degrees of freedom
+#' is little better: its residuals are shaped by the design more than by the
+#' spread, and in simulations under homoscedastic data cells with two
+#' residual degrees of freedom and a slope of their own make the test reject
+#' about twice as often as its nominal level. A cell's residual degrees of
+#' freedom are its number of observations minus the sum of its leverages,
+#' which depends on the design only: a cell whose residuals happen to be
+#' zero because its response is constant stays in the test, where it is
+#' evidence of unequal spread. A cell of exactly three observations is left
+#' out whatever its residual degrees of freedom (under additive factors it
+#' can keep more than 2.5): the median of three residuals is the middle one,
+#' so one of its three absolute deviations is zero whatever the data, and
+#' cells of three make the test all but unable to reject, even when the
+#' spread differs threefold. The test is therefore run on the cells with at
+#' least four observations and at least 2.5 residual degrees of freedom, and
+#' skipped when fewer than two such cells remain.
+#' @param vcov_type the covariance the caller requested.
+#' @param robust whether that covariance was actually used for the other
+#'   results; together with \code{vcov_type} it decides what a rejection note
+#'   says.
+#' @param slopes whether \code{$simple_slopes} is part of the fit.
+#' @param robust_anova whether \code{$anova} holds the robust Wald tests; when
+#'   they could not be computed it is model-based although the covariance
+#'   still reaches the other results, and the note must say so.
 #' @noRd
-.levene_on_model <- function(model, d, cell, vcov_type = "model") {
+.levene_on_model <- function(model, d, cell, vcov_type = "model",
+                             robust = !identical(vcov_type, "model"),
+                             slopes = TRUE, robust_anova = robust) {
   res <- stats::residuals(model)
   rows <- as.integer(names(res))
   if (anyNA(rows) || length(rows) != length(res)) {
@@ -743,34 +1111,106 @@ anova_ancova <- function(data, response, groups, covariates,
       "Levene's test was skipped: fewer than two populated groups."))
   }
   r <- as.numeric(res)
+  n_g <- table(g)
+  small <- names(n_g)[n_g < 3L]
+  # A larger cell the model fits exactly by construction (as with a slope for
+  # each cell when the cell has no more observations than coefficients of its
+  # own), or leaves with fewer than 2.5 residual degrees of freedom, is no
+  # more informative than a small one: in simulations under homoscedastic
+  # data, cells with two residual df and a slope of their own make the test
+  # reject about twice as often as its nominal level, and cells of three
+  # observations make it all but unable to reject (those are left out below
+  # whatever their residual df). This is judged from the
+  # design (the cell's observations minus the sum of its leverages), never
+  # from the size of the residuals: a cell whose response is constant has
+  # zero residuals too, and is strong evidence of unequal variances. "Exact"
+  # means a residual df of zero up to rounding, so that the residuals really
+  # are zero whatever the response; a fractional one below 2.5 is "thin".
+  h <- tryCatch(as.numeric(stats::hatvalues(model)), error = function(e) NULL)
+  rdf <- if (!is.null(h) && length(h) == length(r) && all(is.finite(h)))
+    tapply(1 - h, g, sum) else NULL
+  big <- setdiff(names(n_g), small)
+  exact <- if (is.null(rdf)) character(0) else
+    big[rdf[big] < 1e-6]
+  # A cell of exactly three observations is left out whatever its residual
+  # df: the middle residual is the cell's median, so one of its three
+  # absolute deviations is zero whatever the data, and in simulations such
+  # cells leave the test all but unable to reject (size and power near 0),
+  # also under additive factors, where a cell of three keeps more than 2.5
+  # residual df.
+  # (A cell of three that is also "thin" is reported as thin.)
+  thin <- if (is.null(rdf)) character(0) else
+    setdiff(big[rdf[big] < 2.5], exact)
+  three <- setdiff(big[n_g[big] == 3L], c(exact, thin))
+  n_left <- length(n_g) - length(small) - length(exact) - length(three) -
+    length(thin)
+  keep <- !(as.character(g) %in% c(small, exact, three, thin))
+  min_n <- if (length(three) > 0L) "four" else "three"
+  cond <- if (length(exact) + length(thin) == 0L) "" else
+    if (length(exact) > 0L && length(thin) > 0L)
+    " that the model neither fits exactly nor leaves with fewer than 2.5 residual degrees of freedom" else if (length(exact) > 0L)
+    " that the model does not fit exactly" else
+    " that the model leaves with at least 2.5 residual degrees of freedom"
+  exact_note <- if (length(exact) > 0L) sprintf(
+    "Levene's test leaves out %d group(s) that the fitted model fits exactly by construction (%s), as when a group has no more observations than the model has coefficients for it (such as a slope for each group): their residuals are zero whatever the response and, like a group of one or two, carry no information about the spread; they would make the test reject far too often.",
+    length(exact), .abbrev(exact))
+  three_note <- if (length(three) > 0L) sprintf(
+    "Levene's test leaves out %d group(s) of exactly three observations (%s): the median of three residuals is the middle one, so one of the group's three absolute deviations from its median is zero whatever the data, and groups of three leave the test all but unable to reject, even when the spread differs severalfold; a non-rejection from them would not be evidence of equal variances.",
+    length(three), .abbrev(three))
+  thin_note <- if (length(thin) > 0L) sprintf(
+    "Levene's test leaves out %d group(s) that the fitted model leaves with fewer than 2.5 residual degrees of freedom (%s; a group's residual degrees of freedom are its observations minus the sum of their leverages, so they depend on the design, not on the response): the leverage of their observations is so high that the design shapes their residuals more than the spread does, and their absolute deviations from their median carry little information about it; left in, groups with two residual degrees of freedom and a slope of their own, for example, make the test reject homoscedastic data about twice as often as its nominal level.",
+    length(thin), .abbrev(sprintf("%s with %s", thin,
+                                  vapply(rdf[thin], .rdf_below, ""))))
+  if (n_left < 2L) {
+    return(list(table = NULL, note = c(sprintf(
+      "Levene's test was skipped: it needs at least two groups with %s or more observations%s, and %s. A group with one or two observations has absolute deviations from its median that cannot vary, so it carries no information about the spread for this test.",
+      min_n, cond,
+      if (n_left == 1L) "only one group has that many" else
+        "no group has that many"), exact_note, three_note, thin_note)))
+  }
+  excluded <- c(
+    if (length(small) > 0L) sprintf(
+      "Levene's test uses only the %d groups with at least %s observations%s; %d group(s) with one or two (%s) were left out, since their absolute deviations from their median cannot vary and would make the test reject far too often.",
+      n_left, min_n, cond, length(small), .abbrev(small)),
+    exact_note, three_note, thin_note)
+  r <- r[keep]
+  g <- droplevels(g[keep])
   z <- abs(r - stats::ave(r, g, FUN = stats::median))
   ss_within <- sum((z - stats::ave(z, g))^2)
   ss_z <- sum(z^2)
   if (!is.finite(ss_within) || !is.finite(ss_z) || ss_z == 0 ||
       ss_within <= 1e-10 * ss_z) {
     return(list(table = NULL, note =
-      "Levene's test was skipped: the absolute deviations from the group medians do not vary within any group (as happens when no group has more than two observations), so its F statistic is undefined."))
+      "Levene's test was skipped: the absolute deviations from the group medians do not vary within any group, so its F statistic is undefined."))
   }
   tmp <- data.frame(res = r, grp = g)
   got <- .collect_conditions(car::leveneTest(res ~ grp, data = tmp))
   out <- got$value
   if (inherits(out, "error")) {
-    return(list(table = NULL, note = sprintf(
-      "Levene's test failed: %s", conditionMessage(out))))
+    return(list(table = NULL, note = c(excluded, sprintf(
+      "Levene's test failed: %s", conditionMessage(out)))))
   }
   tab <- as.data.frame(out)
   res_tab <- data.frame(
     df1 = tab[["Df"]][1L], df2 = tab[["Df"]][2L],
     statistic = tab[["F value"]][1L], p_value = tab[["Pr(>F)"]][1L],
     stringsAsFactors = FALSE)
-  note <- .said_note(got$said, "car::leveneTest()")
+  note <- c(excluded, .said_note(got$said, "car::leveneTest()"))
+  results <- if (slopes) "$emmeans, $posthoc and $simple_slopes" else
+    "$emmeans and $posthoc"
   if (!is.na(res_tab$p_value) && res_tab$p_value < 0.05) {
     note <- c(note, if (identical(vcov_type, "model")) {
-      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g). The F tests in $anova and the intervals and tests in $emmeans, $posthoc and $simple_slopes all use the pooled residual variance; vcov_type = \"HC3\" bases them on a heteroscedasticity-consistent covariance instead (the homogeneity-of-slopes test stays model-based).",
-              res_tab$p_value)
+      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g). The F tests in $anova and the intervals and tests in %s all use the pooled residual variance; vcov_type = \"HC3\" bases them on a heteroscedasticity-consistent covariance instead (the homogeneity-of-slopes test stays model-based).",
+              res_tab$p_value, results)
+    } else if (!robust) {
+      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g). The %s covariance requested through vcov_type could not be used for this fit (see the note on it), so the F tests in $anova and the intervals and tests in %s use the pooled residual variance and do not allow for this. Where the robust covariance was refused because of rows with leverage 1, it becomes available only with more observations in the groups or cells concerned, or without them.",
+              res_tab$p_value, vcov_type, results)
+    } else if (robust_anova) {
+      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g); the %s covariance requested through vcov_type already allows for this in $anova, %s (the homogeneity-of-slopes test is model-based).",
+              res_tab$p_value, vcov_type, results)
     } else {
-      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g); the %s covariance requested through vcov_type already allows for this in $anova, $emmeans, $posthoc and $simple_slopes (the homogeneity-of-slopes test is model-based).",
-              res_tab$p_value, vcov_type)
+      sprintf("Levene's test rejects equality of residual variances across groups (p = %.3g); the %s covariance requested through vcov_type allows for this in %s, but the F tests in $anova (whose robust version could not be computed) and the homogeneity-of-slopes test use the pooled residual variance.",
+              res_tab$p_value, vcov_type, results)
     })
   }
   list(table = res_tab, note = note)
@@ -791,7 +1231,8 @@ anova_ancova <- function(data, response, groups, covariates,
                             vcov_matrix = NULL, protect = character(0)) {
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  args <- list(object = model, specs = .formula(NULL, groups), var = covariate,
+  ready <- .emm_ready(model)
+  args <- list(object = ready, specs = .formula(NULL, groups), var = covariate,
                cov.keep = character(0))
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
   # Captured, not suppressed: emtrends() reaches summary.lm(), which warns on a

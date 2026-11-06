@@ -95,10 +95,27 @@ An \code{\link{anovakit_fit}} object, with five extra components:
   \code{$model_additive} and \code{$model_interaction}, both candidate fits,
   so the one that was not chosen is still available. \code{$assumptions}
   also holds \code{normality} (Shapiro-Wilk on the residuals) and
-  \code{levene} (Levene's test on the residuals across the cells).
+  \code{levene} (Levene's test on the residuals across the cells; cells
+  with one or two observations, whose absolute deviations from their median
+  cannot vary, are left out of it, as are cells the model fits exactly by
+  construction or leaves with fewer than 2.5 residual degrees of freedom
+  (the cell's observations minus the sum of their leverages, judged from
+  the design, not from the size of the residuals): so, when every cell has
+  a mean of its own (as with the default \code{interaction = TRUE}), every
+  cell of three observations, and under the covariate-by-group interaction
+  every cell with no more than two observations beyond the coefficients of
+  its own; cells of exactly three observations are left out in any case,
+  since the test can hardly reject on them.
+  Left in, such cells make the test reject homoscedastic data about twice
+  as often as its nominal level (two residual degrees of freedom and a
+  slope of their own) or almost never (three observations). \code{$notes}
+  names them, with their residual degrees of freedom).
   \code{$data_used} holds the analysed columns and the cell factor, with the
   covariates centred when \code{center_covariates = TRUE}. The covariate
-  plot shows each covariate on its original scale.
+  plot shows each covariate on its original scale, with the lines of the
+  model that was fitted and their model-based confidence bands; when the
+  additive model is used those lines are parallel, and each group's own
+  least-squares line is added dashed.
 }
 \description{
 Compares the mean of a numeric response across groups while adjusting for one
@@ -134,13 +151,24 @@ which is held at its mean rather than averaged over its two values. Set
 point you want the intercept (and the Type III group row) to refer to. When
 the covariate mean lies outside the range a group was observed over, that
 group's adjusted mean is an extrapolation along the fitted slope, and
-\code{$notes} names the group.
+\code{$notes} names the group. Under the covariate-by-group interaction a
+group in which a covariate is constant has no estimable slope, so its
+adjusted mean is in general not estimable: it is left out of \code{$emmeans}
+and \code{$posthoc}, and \code{$notes} names it.
 
 A covariate that is constant, that is determined by the grouping variables
 (constant within every group, such as a group-level attribute), or that is
 an exact linear combination of the grouping variables and the other
 covariates is refused with an error naming it: its effect cannot be
 separated from the group effect, so there is nothing to adjust for.
+With \code{center_covariates = FALSE}, a covariate whose spread is below
+about 1e-7 of its level (a Unix timestamp spanning a minute, say) is also
+refused, since \code{lm()} cannot tell it apart from the intercept
+uncentred; the error says so, and the default centring fits it. A
+somewhat larger spread can still be too small for the covariate-by-group
+columns, which \code{lm()} then drops in part; an uncentred fit whose
+models lose coefficients that the centred fit keeps is refused in the same
+way, since the slopes test and \code{$simple_slopes} would be wrong.
 
 \strong{Homogeneity of slopes.} The two candidate models are the grouping
 structure with the covariates entered additively, and the same model plus
@@ -149,8 +177,10 @@ the full factorial each cell has its own slope. They are compared by one
 nested F test, joint over all covariates: heterogeneity in any one covariate
 retains the slope terms for all of them. \code{homogeneity_alpha} is its
 level. The test is reported as not computable (\code{NA}) when the
-covariate-by-group terms add nothing estimable, or when the model without
-them already fits the data exactly. If the slopes differ, the interaction
+covariate-by-group terms add nothing estimable, when the model with them
+leaves no residual degrees of freedom (too few rows per group for the
+slopes to be tested), or when the model without them already fits the data
+exactly; the additive model is then used. If the slopes differ, the interaction
 model is used, and a note explains that the group effect is then a
 comparison at one point on the covariate rather than a constant difference,
 and that \code{$simple_slopes} is the thing to read.
@@ -167,10 +197,15 @@ within-group SDs, the default pipeline rejected a true null of equal
 adjusted means for the group row about 11--13\% of the time at the 5\% level
 (about 34\% with 10 per group and means at -2, 0 and 2), against about 5\%
 with \code{force_interaction = TRUE}; always fitting the additive model
-(\code{force_interaction = FALSE}) was worse still. Randomised groups were
-not affected. So when the additive model is used and the covariate means
+(\code{force_interaction = FALSE}) was worse still. Randomised groups are
+affected less, but still affected: with the same slopes and equal expected
+covariate means, the default pipeline rejected about 6--7\% of the time
+with 20 per group, because chance imbalance in the covariate means and the
+selection step itself still inflate the group row. So the note on the
+additive model chosen by the test says that its p-values do not allow for
+the selection, and when the covariate means also
 differ between groups by more than half a pooled within-group SD,
-\code{$notes} says so. Conversely, when the test retains the interaction, the p-values do
+\code{$notes} says so as well. Conversely, when the test retains the interaction, the p-values do
 not allow for that choice and can also be too small. \code{force_interaction
 = TRUE} avoids the selection step: with centred covariates and \code{type =
 "III"}, the group row is then a valid comparison of the groups at the
@@ -182,8 +217,10 @@ which model was fitted and why.
 \code{"model"}, the F tests in \code{$anova} are Wald F tests
 (\code{car::Anova(vcov. = )}) built from the heteroscedasticity-consistent
 covariance, on the model's residual degrees of freedom, so that table has no
-sums of squares. \code{$emmeans}, \code{$posthoc} and \code{$simple_slopes}
-use the same covariance. \code{$effect_sizes} are still computed from the
+sums of squares. (\pkg{car} refuses those tests for a model with aliased
+coefficients; \code{$anova} then keeps the model-based F tests, and
+\code{$notes} says so.) \code{$emmeans}, \code{$posthoc} and
+\code{$simple_slopes} use the same covariance. \code{$effect_sizes} are still computed from the
 model-based sums of squares, which the covariance does not change, and the
 homogeneity-of-slopes test stays the model-based F test.
 }

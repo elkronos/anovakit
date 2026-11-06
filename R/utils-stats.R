@@ -11,20 +11,23 @@
 #'
 #' @param x numeric vector, or a matrix (which is flattened explicitly rather
 #'   than left to \code{shapiro.test}'s recycling behaviour).
+#' @param unit what the values are, for the notes: \code{"residual"} after a
+#'   model fit, \code{"observation"} when raw group values are tested.
 #' @return list with \code{test} (an \code{htest} or \code{NULL}), \code{n} and
 #'   \code{note} (character, possibly empty).
 #' @noRd
-.check_normality <- function(x) {
+.check_normality <- function(x, unit = c("residual", "observation")) {
+  unit <- match.arg(unit)
   x <- as.numeric(x)
   x <- x[is.finite(x)]                  # drops NA, NaN and +/-Inf alike
   n <- length(x)
   if (n < 3L) {
     return(list(test = NULL, n = n, note = sprintf(
-      "Shapiro-Wilk skipped: %d usable residual(s), at least 3 are required.", n)))
+      "Shapiro-Wilk skipped: %d usable %s(s), at least 3 are required.", n, unit)))
   }
   if (n > 5000L) {
     return(list(test = NULL, n = n, note = sprintf(
-      "Shapiro-Wilk skipped: %d residuals exceeds the 5000 the test supports. Inspect the Q-Q plot instead.", n)))
+      "Shapiro-Wilk skipped: %d %ss exceeds the 5000 the test supports. Inspect the Q-Q plot instead.", n, unit)))
   }
   sdx <- stats::sd(x)
   if (!is.finite(sdx) || sdx == 0) {
@@ -48,14 +51,18 @@
 #' residuals across groups with different spreads produces a mixture that fails
 #' normality tests even when every group is normal.
 #'
-#' @param values numeric response.
+#' @param values numeric response, or residuals.
 #' @param cell factor of group memberships.
+#' @param unit passed to \code{.check_normality()}: \code{"observation"} for
+#'   raw group values (Welch, Kruskal-Wallis), \code{"residual"} for residuals.
 #' @noRd
-.normality_by_group <- function(values, cell) {
+.normality_by_group <- function(values, cell,
+                                unit = c("residual", "observation")) {
+  unit <- match.arg(unit)
   cell <- droplevels(as.factor(cell))
   rows <- lapply(levels(cell), function(lv) {
     v <- values[cell == lv]
-    nm <- .check_normality(v)
+    nm <- .check_normality(v, unit = unit)
     data.frame(
       group     = lv,
       n         = nm$n,        # the number the test actually used, not length(v)
@@ -271,14 +278,30 @@
 
 #' Box's M test for homogeneity of covariance matrices
 #'
+#' A covariance matrix counts as singular when, after scaling its responses to
+#' unit variance, its smallest eigenvalue is at most \code{1e-12} times its
+#' largest (the tolerance \code{.mardia_test()} uses). An exactly singular
+#' matrix rarely has a determinant of exactly zero in floating point: a
+#' response that is a linear combination of the others within one group gives
+#' a log-determinant of about -37 from rounding alone, and Box's M computed
+#' from it is an arbitrary, huge number.
+#'
 #' @param Y numeric matrix of responses.
 #' @param group factor of group memberships.
+#' @param unit what every level of \code{group} is, for the notes:
+#'   \code{"group"}, or e.g. \code{"cell (combination of `A` and `B`)"}.
+#' @param noun the short name of one level (\code{"group"} or \code{"cell"}).
+#' @param level_labels optional character vector naming each level of
+#'   \code{group} in the notes, e.g. \code{"(`A` = `1`, `B` = `3`)"} (names
+#'   are the levels); defaults to the level in backticks. Labels must not
+#'   contain \code{"; "} outside backticks, since it separates them.
 #' @return list with \code{statistic}, \code{df}, \code{p_value} and
 #'   \code{note}, or \code{NULL} when it cannot be computed.
 #' @references Box, G. E. P. (1949). A general distribution theory for a class
 #'   of likelihood criteria. \emph{Biometrika}, 36(3/4), 317-346.
 #' @noRd
-.box_m <- function(Y, group) {
+.box_m <- function(Y, group, unit = "group", noun = "group",
+                   level_labels = NULL) {
   Y <- as.matrix(Y)
   group <- droplevels(as.factor(group))
   ok <- stats::complete.cases(Y) & !is.na(group)
@@ -287,16 +310,41 @@
   if (k < 2L) return(NULL)
   ns <- as.integer(table(group))
   if (any(ns <= p)) {
+    lv <- levels(group)
+    lab <- if (is.null(level_labels)) sprintf("`%s`", lv) else
+      unname(level_labels[lv])
+    small <- which(ns == min(ns))
+    # Every cell sharing the minimum is counted; at most three are named, and
+    # "; " separates them, since ", " can occur inside a label.
+    which_small <- if (length(small) == 1L) {
+      sprintf("%s %s has %d", noun, lab[small], min(ns))
+    } else {
+      shown <- utils::head(small, 3L)
+      sprintf("%d %ss have %d: %s%s", length(small), noun, min(ns),
+              paste(lab[shown], collapse = "; "),
+              if (length(small) > 3L)
+                sprintf("; and %d more", length(small) - 3L) else "")
+    }
     return(list(statistic = NA_real_, df = NA_real_, p_value = NA_real_,
                 note = sprintf(
-                  "Box's M not computed: every group needs more than %d observations (smallest group has %d).",
-                  p, min(ns))))
+                  "Box's M not computed: every %s needs more than %d observations, and %s.",
+                  unit, p, which_small)))
   }
   covs <- lapply(levels(group), function(g) stats::cov(Y[group == g, , drop = FALSE]))
   pooled <- Reduce(`+`, Map(function(S, n) (n - 1) * S, covs, ns)) / (N - k)
+  # Singular up to rounding, judged on the correlation scale so that responses
+  # on very different scales do not look singular.
+  near_singular <- function(S) {
+    v <- diag(S)
+    if (any(!is.finite(v) | v <= 0)) return(TRUE)
+    R <- S / sqrt(outer(v, v))
+    ev <- eigen((R + t(R)) / 2, symmetric = TRUE, only.values = TRUE)$values
+    min(ev) <= max(ev) * 1e-12
+  }
   dets <- vapply(covs, function(S) determinant(S, logarithm = TRUE)$modulus, numeric(1))
   det_pooled <- determinant(pooled, logarithm = TRUE)$modulus
-  if (!all(is.finite(c(dets, det_pooled)))) {
+  if (!all(is.finite(c(dets, det_pooled))) ||
+      any(vapply(c(covs, list(pooled)), near_singular, logical(1)))) {
     return(list(statistic = NA_real_, df = NA_real_, p_value = NA_real_,
                 note = "Box's M not computed: at least one covariance matrix is singular."))
   }
@@ -432,10 +480,17 @@
 #' moderate standard error and is not flagged, and neither is a rare but
 #' well-determined event rate in a large sample.
 #'
+#' The note describes the omnibus test the caller reports. A Wald omnibus test
+#' is built from the same diverged coefficients and their standard errors, so
+#' it collapses in the same way (its p-value near 1); a likelihood-ratio or F
+#' test compares deviances and does not.
+#'
 #' @param fit a fitted binomial, Poisson or negative binomial GLM.
+#' @param test_statistic the omnibus test in \code{$anova}: \code{"LR"},
+#'   \code{"Wald"} or \code{"F"}.
 #' @return a character note, or \code{character(0)}.
 #' @noRd
-.check_separation <- function(fit) {
+.check_separation <- function(fit, test_statistic = "LR") {
   fam <- tryCatch(stats::family(fit)$family, error = function(e) "")
   is_count <- inherits(fit, "negbin") ||
     fam %in% c("poisson", "quasipoisson") || grepl("^Negative Binomial", fam)
@@ -483,6 +538,22 @@
             paste(gsub("`", "", runaway, fixed = TRUE), collapse = ", "))
   } else ""
 
+  omnibus <- if (identical(test_statistic, "Wald")) {
+    paste0("The Wald omnibus test in $anova is built from the same coefficients ",
+           "and is affected in the same way: its p-value can be near 1 however ",
+           "large the effect, so it should not be used; ",
+           # a quasi family has no likelihood, and its deviance test is an F test
+           if (grepl("^quasi", fam)) "test_statistic = \"F\" gives an F test" else
+             "test_statistic = \"LR\" gives a likelihood-ratio test",
+           ", which compares deviances",
+           if (is_count) "." else ", although with events this sparse it is liberal.")
+  } else if (identical(test_statistic, "F")) {
+    if (is_count) "The F omnibus test, which compares deviances, remains usable." else
+      "With events this sparse the F omnibus test, which compares deviances, is liberal."
+  } else {
+    if (is_count) "The likelihood-ratio omnibus test remains usable." else
+      "With events this sparse the likelihood-ratio omnibus test is also liberal."
+  }
   if (is_count) {
     return(paste0(
       "No events were observed in ", where, ", so the fitted rate there is ",
@@ -490,7 +561,7 @@
       "identified: it will be near zero or enormous, its interval unbounded on one ",
       "side, and its Wald p-value near 1 no matter how large the difference is; ",
       "the same goes for that cell's marginal mean and the comparisons involving it. ",
-      "The likelihood-ratio omnibus test remains usable. Consider collapsing the ",
+      omnibus, " Consider collapsing the ",
       "level, or an exact or penalised method for the affected comparisons."))
   }
   paste0(
@@ -499,7 +570,7 @@
     " An affected odds ratio is not identified: it will be enormous, its ",
     "interval will be unbounded on one side, and its Wald p-value will be near 1 ",
     "no matter how strong the association is; the same goes for that cell's ",
-    "marginal probability and the comparisons involving it. With events this sparse the ",
-    "likelihood-ratio omnibus test is also liberal. Consider a penalised fit such ",
+    "marginal probability and the comparisons involving it. ", omnibus,
+    " Consider a penalised fit such ",
     "as logistf::logistf(), or collapsing the offending level.")
 }

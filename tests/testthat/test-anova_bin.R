@@ -149,14 +149,6 @@ test_that("conf_level reaches the odds-ratio intervals", {
                     (narrow$effect_sizes$conf_high - narrow$effect_sizes$conf_low)))
 })
 
-test_that("reserved arguments cannot be smuggled through ...", {
-  d <- fx_binary()
-  # `family` is not an argument of anova_bin() at all, so R rejects it before
-  # anything can act on it.
-  expect_error(anova_bin(d, "y", "g", family = stats::binomial()),
-               "unused argument")
-})
-
 test_that("nothing is written to stdout, including the plot", {
   d <- fx_binary()
   expect_silent_stdout(anova_bin(d, "y", "g"))

@@ -251,7 +251,7 @@ test_that("the variance-ratio note fires on the variance ratio, not the SD ratio
   v <- tapply(d$y, d$g, stats::var)
   expect_gt(max(v) / min(v), 4)
   fit <- anova_welch(d, "y", "g", plots = FALSE)
-  expect_true(any(grepl(sprintf("%.1f times the smallest", max(v) / min(v)),
+  expect_true(any(grepl(sprintf("%.3g times the smallest", max(v) / min(v)),
                         fit$notes, fixed = TRUE)))
 })
 

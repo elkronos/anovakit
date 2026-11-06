@@ -54,7 +54,8 @@
   type <- match.arg(type)
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
-  args <- list(object = fit,
+  ready <- .emm_ready(fit)
+  args <- list(object = ready,
                specs = .formula(NULL, specs, quote_terms = TRUE))
   if (type == "response") args$type <- "response"
   if (!is.null(vcov_matrix)) args$vcov. <- vcov_matrix
@@ -85,6 +86,57 @@
   list(grid = grid, note = .said_note(got$said, "emmeans"))
 }
 
+#' A model emmeans can build an estimability basis for
+#'
+#' emmeans asks \code{estimability::nonest.basis()} for the basis of the
+#' non-estimable functions of a model with aliased coefficients. estimability
+#' 2.0 computes it from \code{svd()} of the QR's R factor with every right
+#' singular vector, which fails ("infinite or missing values in 'x'") under R
+#' 4.6 when the model has more coefficients than rows (an incomplete crossed
+#' design whose interaction has many empty cells). The basis is the null
+#' space of the weighted model matrix, so it is computed here, from the
+#' eigenvectors of X'X (square and symmetric) belonging to its p - rank
+#' smallest eigenvalues, and handed to emmeans through the model's QR, which
+#' gets a class whose \code{nonest.basis()} method returns it. Nothing else
+#' about the fit changes, so every other computation is the one emmeans
+#' always does.
+#' @noRd
+.emm_ready <- function(fit) {
+  q <- fit$qr
+  if (!inherits(fit, "lm") || !is.qr(q) || !anyNA(stats::coef(fit))) return(fit)
+  nb <- .null_basis(fit)
+  if (is.null(nb)) return(fit)
+  attr(q, "anovakit_nbasis") <- nb
+  class(q) <- c("anovakit_qr", class(q))
+  fit$qr <- q
+  fit
+}
+
+#' The null space of a model's weighted model matrix
+#' @return a p x (p - rank) matrix with orthonormal columns, rows in the order
+#'   of the coefficients, or \code{NULL}.
+#' @noRd
+.null_basis <- function(fit) {
+  X <- tryCatch(stats::model.matrix(fit), error = function(e) NULL)
+  if (is.null(X)) return(NULL)
+  w <- fit$weights
+  if (is.null(w)) w <- rep(1, nrow(X))
+  if (length(w) != nrow(X)) return(NULL)
+  keep <- w > 0
+  Xw <- X[keep, , drop = FALSE] * sqrt(w[keep])
+  p <- ncol(Xw)
+  r <- fit$rank
+  if (is.null(r) || r >= p) return(NULL)
+  e <- tryCatch(eigen(crossprod(Xw), symmetric = TRUE), error = function(e) NULL)
+  if (is.null(e)) return(NULL)
+  nb <- e$vectors[, (r + 1L):p, drop = FALSE]
+  rownames(nb) <- colnames(X)
+  nb
+}
+
+#' @exportS3Method estimability::nonest.basis
+nonest.basis.anovakit_qr <- function(x, ...) attr(x, "anovakit_nbasis")
+
 #' Standard column names used across the package
 #'
 #' emmeans names its estimate column \code{emmean}, \code{response},
@@ -99,10 +151,16 @@
 #' itself being renamed, the statistic gets an \code{emm_} prefix instead, and
 #' the collision is reported so nobody has to notice it from the column order.
 #'
+#' @param protect grouping columns of this table, kept as they are.
+#' @param reserve names no statistic may be renamed onto, although this table
+#'   need not hold them (the other factors' columns, when per-factor tables
+#'   are stacked). A reserved name that is not protected is not a grouping
+#'   column of this table: a column of that name is emmeans' own statistic
+#'   and is renamed like any other.
 #' @return the data frame, with a \code{"renamed"} attribute naming any column
 #'   that had to take a prefixed name.
 #' @noRd
-.normalise_emm_names <- function(df, protect = character(0)) {
+.normalise_emm_names <- function(df, protect = character(0), reserve = protect) {
   df <- as.data.frame(df)
   ren <- c(
     emmean = "estimate", response = "estimate", rate = "estimate",
@@ -130,7 +188,7 @@
   # table does not hold it: the per-factor tables of an additive model are
   # stacked with every grouping column, and a statistic called like another
   # factor would be written over by that factor's placeholder.
-  fixed <- union(nm[-idx], protect)
+  fixed <- union(nm[-idx], union(protect, reserve))
   displaced <- character(0)
   new <- nm
   for (i in idx) {
@@ -210,7 +268,8 @@
 #'   factors were averaged over, for instance) and which \code{as.data.frame()}
 #'   discards.
 #' @noRd
-.emmeans_table <- function(grid, conf_level = 0.95, protect = character(0)) {
+.emmeans_table <- function(grid, conf_level = 0.95, protect = character(0),
+                           reserve = protect) {
   if (is.null(grid)) return(list(table = NULL, note = character(0), mesg = character(0)))
   old <- .emm_options_guard()
   on.exit(options(emmeans = old), add = TRUE)
@@ -223,7 +282,8 @@
       "Estimated marginal means could not be summarised: %s",
       conditionMessage(s))))
   }
-  tab <- .normalise_emm_names(as.data.frame(s), protect = protect)
+  tab <- .normalise_emm_names(as.data.frame(s), protect = protect,
+                              reserve = reserve)
   list(table = tab, note = .renamed_note(tab),
        mesg = as.character(attr(s, "mesg")))
 }
@@ -293,6 +353,9 @@
   }
   out <- .normalise_emm_names(as.data.frame(s))
   note <- .renamed_note(out)
+  if ("contrast" %in% names(out)) {
+    out$contrast <- .ratio_labels(out$contrast, ct@grid$contrast)
+  }
   if (ratios && "estimate" %in% names(out) && !"ratio" %in% names(out)) {
     names(out)[names(out) == "estimate"] <- "ratio"
   }
@@ -323,6 +386,103 @@
   list(table = out, note = note)
 }
 
+#' Ratio labels that keep the level labels intact
+#'
+#' For a log or logit link emmeans labels a back-transformed contrast by
+#' replacing every " - " in its link-scale label with " / ", including those
+#' inside a level label: "(a - b) - c" becomes "(a / b) / c", and a level
+#' "a - b" can no longer be told from a level "a / b". Only the separator
+#' between the two sides is replaced here, the one outside every pair of
+#' parentheses. A label is left as emmeans gave it unless it is exactly the
+#' blanket rewrite of the link-scale label and that has one such separator.
+#' @param shown the contrast labels of the summary.
+#' @param link the link-scale labels, in the same order.
+#' @noRd
+.ratio_labels <- function(shown, link) {
+  was_factor <- is.factor(shown)
+  shown_chr <- as.character(shown)
+  link <- as.character(link)
+  if (length(link) != length(shown_chr) || identical(shown_chr, link)) return(shown)
+  fixed <- vapply(seq_along(link), function(i) {
+    l <- link[i]
+    if (is.na(l) || !identical(gsub(" - ", " / ", l, fixed = TRUE), shown_chr[i])) {
+      return(shown_chr[i])
+    }
+    ch <- strsplit(l, "", fixed = TRUE)[[1L]]
+    depth <- cumsum((ch == "(") - (ch == ")"))
+    at <- gregexpr(" - ", l, fixed = TRUE)[[1L]]
+    top <- at[at > 0L & depth[pmax(at, 1L)] == 0L]
+    if (length(top) != 1L) return(shown_chr[i])
+    paste0(substr(l, 1L, top - 1L), " / ", substr(l, top + 3L, nchar(l)))
+  }, character(1))
+  if (was_factor) factor(fixed, levels = unique(fixed)) else fixed
+}
+
+#' Note the empty level combinations an additive model averages over
+#'
+#' With every coefficient estimable, an additive model estimates every level
+#' combination, the empty ones by extrapolation from the main effects, and
+#' each factor's marginal means average over them. With aliased coefficients
+#' -- one grouping factor nested in another, for one -- some empty
+#' combinations are not estimable; emmeans then averages a nested factor over
+#' the observed combinations only, and a mean that would need such a cell is
+#' not estimable (and left out, with its own note). Which empty combinations
+#' are estimable is read from the reference grid without nesting, and only
+#' when some coefficient is aliased, so the full grid is not built otherwise.
+#' @return a note, or \code{character(0)}.
+#' @noRd
+.additive_empty_note <- function(model, data, groups) {
+  ec <- .empty_cells(data, groups)
+  if (ec$n_empty <= 0) return(character(0))
+  head <- sprintf("%s of the %s possible group combination(s) contain no data",
+                  .count_text(ec$n_empty), .count_text(ec$n_possible))
+  extrap <- "The additive model still estimates them from the main effects, so the marginal means in $emmeans, which average over them, rely on there being no interaction."
+  cf <- tryCatch(stats::coef(model), error = function(e) NULL)
+  if (is.null(cf) || !anyNA(cf)) {
+    return(sprintf("%s: %s. %s", head, .empty_cells_text(ec), extrap))
+  }
+  est <- .cell_estimable(model, groups)
+  all_empty <- if (is.null(est)) NULL else .empty_cells(data, groups, max_labels = Inf)
+  ok <- if (is.null(all_empty)) NULL else est[all_empty$labels]
+  if (is.null(ok) || anyNA(ok)) {
+    return(sprintf(
+      "%s: %s. Some coefficients of the model are aliased, so not every one of them need be estimable; the notes on the marginal means say which means could not be computed.",
+      head, .empty_cells_text(ec)))
+  }
+  lab <- names(ok)
+  nonest <- sprintf(
+    "The additive model cannot estimate %s, because coefficients of the model are aliased (as when one grouping factor is nested in another)%s. No marginal mean in $emmeans averages over %s: emmeans averages a factor nested in another over the observed combinations only, and a mean that would need one of them is left out (see the other notes).",
+    if (all(!ok)) "them" else sprintf("%d of them", sum(!ok)),
+    if (all(!ok)) "" else paste0(": ", .abbrev(lab[!ok])),
+    if (all(!ok)) "them" else "these")
+  if (all(!ok)) {
+    return(sprintf("%s: %s. %s", head, .abbrev(lab), nonest))
+  }
+  if (all(ok)) {
+    return(sprintf("%s: %s. %s", head, .abbrev(lab), extrap))
+  }
+  sprintf("%s. %d of them the additive model estimates from the main effects: %s; the marginal means in $emmeans that average over these rely on there being no interaction. %s",
+          head, sum(ok), .abbrev(lab[ok]), nonest)
+}
+
+#' Which level combinations of the grouping factors a model can estimate
+#' @return named logical (names: the levels joined with " : "), or NULL when
+#'   the reference grid could not be built.
+#' @noRd
+.cell_estimable <- function(model, groups) {
+  old <- .emm_options_guard()
+  on.exit(options(emmeans = old), add = TRUE)
+  got <- .collect_conditions(emmeans::ref_grid(.emm_ready(model), nesting = NULL,
+                                               cov.keep = character(0)))
+  rg <- got$value
+  if (inherits(rg, "error") || !all(groups %in% names(rg@grid))) return(NULL)
+  p <- tryCatch(suppressWarnings(suppressMessages(stats::predict(rg))),
+                error = function(e) NULL)
+  if (is.null(p) || length(p) != nrow(rg@grid)) return(NULL)
+  key <- do.call(paste, c(unname(lapply(rg@grid[groups], as.character)), sep = " : "))
+  vapply(split(!is.na(p), factor(key, levels = unique(key))), all, logical(1))
+}
+
 #' Marginal means and pairwise comparisons for the grouping factors of a model
 #'
 #' When the grouping factors enter a model additively, a comparison between
@@ -338,7 +498,14 @@
 #'
 #' Cells of the grid that contain no data are either not estimable (dropped,
 #' with a note) or, under a model without the full interaction, estimated by
-#' extrapolation from the other cells (kept, with a note naming them).
+#' extrapolation from the other cells (kept, with a note naming them). In an
+#' additive model the per-factor means average over such cells, and a note
+#' names them too. A mean that is not estimable although it has data (an
+#' aliased coefficient, such as the slope of a covariate that is constant within
+#' a group under group-specific slopes) is dropped from the table, on either
+#' path, with a note naming it, and so is any comparison that is not estimable.
+#' Comparisons are computed among the estimable cells only, so that a
+#' family-wide adjustment (Scheffe's rank, for one) counts only them.
 #'
 #' @param model fitted model.
 #' @param groups grouping factor names.
@@ -360,16 +527,43 @@
   regrid <- type == "response" && !link %in% c("identity", "log", "logit")
 
   if (per_factor) {
+    # A level combination with no data is still in the grid each factor's
+    # means average over when the additive model can estimate it.
+    if (!is.null(data) && all(groups %in% names(data))) {
+      notes <- c(notes, .additive_empty_note(model, data, groups))
+    }
     grids <- stats::setNames(vector("list", length(groups)), groups)
     tabs <- list()
+    nonest_lab <- character(0)
     for (g in groups) {
       e <- .emmeans_grid(model, g, type = type, vcov_matrix = vcov_matrix, ...)
       notes <- c(notes, e$note)
       grids[g] <- list(e$grid)
-      t <- .emmeans_table(e$grid, conf_level, protect = groups)
+      # Only g is a column of g's table. Protecting every grouping name would
+      # keep emmeans' own `SE`, `df` or `rate` from being renamed whenever
+      # another factor is called that, and stacking would then write that
+      # factor's NA placeholder over the statistic. The other names are still
+      # reserved, so no statistic is renamed onto one of them.
+      t <- .emmeans_table(e$grid, conf_level, protect = g, reserve = groups)
       notes <- c(notes, t$note)
-      if (!is.null(t$table)) tabs[[g]] <- t$table
+      if (!is.null(t$table)) {
+        # A factor's marginal mean averages over the other factors' cells, so
+        # one non-estimable cell makes it non-estimable too (see the cell path
+        # below); such rows are dropped and named rather than kept as NA.
+        ec <- .emm_col(t$table, "estimate", groups)
+        na_est <- if (is.null(ec)) FALSE else is.na(t$table[[ec]])
+        if (any(na_est)) {
+          nonest_lab <- c(nonest_lab, sprintf(
+            "%s = %s", g, as.character(t$table[[g]][na_est])))
+          at <- attributes(t$table)[c("renamed")]
+          t$table <- t$table[!na_est, , drop = FALSE]
+          row.names(t$table) <- NULL
+          if (!is.null(at$renamed)) attr(t$table, "renamed") <- at$renamed
+        }
+        if (nrow(t$table) > 0L) tabs[[g]] <- t$table
+      }
     }
+    if (length(nonest_lab) > 0L) notes <- c(notes, .nonest_note(nonest_lab))
     table <- NULL
     term_col <- NULL
     if (length(tabs) > 0L) {
@@ -400,7 +594,7 @@
     } else if (is.null(table)) {
       notes <- c(notes, .no_emm_posthoc_note())
     } else if (n_comp * n_each > max_comparisons) {
-      notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
+      notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons, n_each))
     } else {
       phs <- list()
       for (g in groups) {
@@ -408,7 +602,8 @@
         pr <- .emmeans_pairs(grids[[g]], adjust = adjust, conf_level = conf_level,
                              ratios = ratios, regrid = regrid)
         notes <- c(notes, pr$note)
-        if (!is.null(pr$table)) phs[[g]] <- .cbind_label(pr$table, "term", g)
+        pt <- .drop_nonest_pairs(pr$table)
+        if (!is.null(pt)) phs[[g]] <- .cbind_label(pt, "term", g)
       }
       if (length(phs) > 0L) {
         ph <- do.call(rbind, unname(phs))
@@ -455,10 +650,23 @@
     }
   }
   if (!is.null(table) && !is.null(est_col)) {
-    # A non-estimable cell that is not empty cannot arise from data, but
-    # emmeans can still mark one (a fully aliased contrast); drop it too.
-    table <- table[!is.na(table[[est_col]]), , drop = FALSE]
-    row.names(table) <- NULL
+    # A cell that holds data can still be non-estimable: in an ANCOVA with
+    # group-specific slopes, a covariate that is constant within the cell
+    # leaves its slope, and so its mean at the covariate mean, undetermined.
+    # Such cells are dropped too, and named, as the empty ones are above.
+    na_est <- is.na(table[[est_col]])
+    if (any(na_est)) {
+      lab <- do.call(paste, c(lapply(table[na_est, groups, drop = FALSE],
+                                     as.character), sep = " : "))
+      notes <- c(notes, .nonest_note(lab))
+      if (posthoc && sum(!na_est) < 2L) {
+        notes <- c(notes, "Pairwise comparisons were not computed because fewer than two marginal means are estimable.")
+      }
+      at <- attributes(table)[c("renamed")]
+      table <- table[!na_est, , drop = FALSE]
+      row.names(table) <- NULL
+      if (!is.null(at$renamed)) attr(table, "renamed") <- at$renamed
+    }
   }
 
   n_cells <- NROW(table)
@@ -469,20 +677,47 @@
   } else if (is.null(table)) {
     notes <- c(notes, .no_emm_posthoc_note())
   } else if (n_cells >= 2L && n_comp * n_each > max_comparisons) {
-    notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons))
+    notes <- c(notes, .too_many_note(n_comp * n_each, max_comparisons, n_each))
   } else if (n_cells >= 2L) {
-    pr <- .emmeans_pairs(e$grid, adjust = adjust, conf_level = conf_level,
+    # Contrast only the estimable cells. A non-estimable cell left in the grid
+    # gives NA comparisons that are dropped below, but it still counts in the
+    # family emmeans adjusts over: Scheffe's rank would be that of the full
+    # grid, and every adjusted p-value and interval too conservative.
+    pgrid <- e$grid
+    est <- tryCatch(suppressWarnings(suppressMessages(stats::predict(pgrid))),
+                    error = function(err) NULL)
+    if (!is.null(est) && length(est) == nrow(pgrid@grid) && any(is.na(est))) {
+      pgrid <- pgrid[which(!is.na(est))]
+    }
+    pr <- .emmeans_pairs(pgrid, adjust = adjust, conf_level = conf_level,
                          ratios = ratios, regrid = regrid)
     notes <- c(notes, pr$note)
-    ph <- pr$table
-    if (!is.null(ph)) {
-      ec <- intersect(c("estimate", "ratio", "emm_estimate"), names(ph))[1L]
-      if (!is.na(ec)) ph <- ph[!is.na(ph[[ec]]), , drop = FALSE]
-      row.names(ph) <- NULL
-    }
+    ph <- .drop_nonest_pairs(pr$table)
   }
   list(grid = e$grid, table = table, posthoc = ph, notes = unique(notes),
        per_factor = FALSE)
+}
+
+#' Drop the comparisons emmeans marks as non-estimable
+#'
+#' A comparison between a non-estimable mean and another is usually
+#' non-estimable too, but not always (the undetermined part can cancel in the
+#' difference), so the rows are filtered on their own estimate.
+#' @return the table without those rows, or \code{NULL} when none is left.
+#' @noRd
+.drop_nonest_pairs <- function(ph) {
+  if (is.null(ph)) return(NULL)
+  ec <- intersect(c("estimate", "ratio", "emm_estimate"), names(ph))[1L]
+  if (!is.na(ec)) ph <- ph[!is.na(ph[[ec]]), , drop = FALSE]
+  row.names(ph) <- NULL
+  if (nrow(ph) == 0L) NULL else ph
+}
+
+#' The note for marginal means that hold data but are not estimable
+#' @noRd
+.nonest_note <- function(lab) {
+  sprintf("The marginal mean(s) of %s are not estimable under this model although there are data for them (a coefficient they depend on is aliased, as when a covariate whose slope differs by group is constant within a group), so they are left out of $emmeans; $posthoc keeps only the comparisons that are estimable.",
+          .abbrev(lab))
 }
 
 #' The notes for comparisons and a plot that need marginal means which could
@@ -501,11 +736,20 @@
 }
 
 #' The note for comparisons skipped because there would be too many
+#'
+#' @param each how many times the set of comparisons would be made (one per
+#'   response in \code{\link{anova_manova}}). The limit counts them all, so the
+#'   note says so; and there the top-level \code{$emmeans_object} is
+#'   \code{NULL}, the grids being under \code{$univariate[[response]]}.
 #' @noRd
-.too_many_note <- function(n, limit) {
-  sprintf("Pairwise comparisons were skipped: there would be %s, more than the %s this function computes by default (the time and memory emmeans needs grow with the fourth power of the number of cells). Compare a subset with emmeans::contrast() on $emmeans_object, or set posthoc = FALSE.",
-          format(n, scientific = FALSE, big.mark = ","),
-          format(limit, big.mark = ","))
+.too_many_note <- function(n, limit, each = 1L) {
+  fmt <- function(x) format(x, scientific = FALSE, big.mark = ",")
+  sprintf("Pairwise comparisons were skipped: there would be %s%s, more than the %s this function computes by default (the time and memory emmeans needs grow with the fourth power of the number of cells). Compare a subset with emmeans::contrast() on %s, or set posthoc = FALSE.",
+          fmt(n),
+          if (each > 1) sprintf(" (%s for each of the %d responses)",
+                                fmt(n / each), as.integer(each)) else "",
+          format(limit, big.mark = ","),
+          if (each > 1) "$univariate[[response]]$emmeans_object" else "$emmeans_object")
 }
 
 #' Multiplicity adjustment methods accepted by emmeans
@@ -550,9 +794,13 @@
 #' @param vcov_type \code{"model"} or an HC type such as \code{"HC0"}.
 #' @param freq_weights whether the prior weights count identical
 #'   observations; the sandwich is then that of the expanded data.
+#' @param welch_hint whether the small-sample note may point to
+#'   \code{anova_welch()}. Only where it is a like-for-like alternative: it
+#'   cannot adjust for covariates, so an ANCOVA passes \code{FALSE}.
 #' @return list with \code{matrix} (or \code{NULL}) and \code{note}.
 #' @noRd
-.robust_vcov <- function(model, vcov_type = "model", freq_weights = FALSE) {
+.robust_vcov <- function(model, vcov_type = "model", freq_weights = FALSE,
+                         welch_hint = TRUE) {
   if (identical(vcov_type, "model")) {
     return(list(matrix = NULL, note = character(0)))
   }
@@ -621,7 +869,9 @@
   }
   if (!inherits(model, "glm") ||
       identical(tryCatch(stats::family(model)$family, error = function(e) ""), "gaussian")) {
-    notes <- c(notes, "Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative, and for a one-way design anova_welch() is better calibrated.")
+    notes <- c(notes, paste0(
+      "Comparisons that use robust standard errors keep the residual degrees of freedom of the model; with very small groups of unequal variance they can be anti-conservative",
+      if (welch_hint) ", and for a one-way design anova_welch() is better calibrated." else "."))
   }
   list(matrix = V, note = notes)
 }

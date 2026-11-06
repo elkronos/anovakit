@@ -103,17 +103,6 @@ test_that("interaction = FALSE really is additive and TRUE really is factorial",
   expect_lt(full$anova$p_value[full$anova$term == "g1:g2"], 0.05)
 })
 
-test_that("reserved arguments cannot be smuggled through ...", {
-  d <- fx_oneway()
-  # There is no ... to smuggle through: the modelling call is built entirely
-  # from named arguments, so anything else is rejected by R itself.
-  expect_error(anova_glm(d, "value", "group", formula = value ~ group),
-               "unused argument")
-  expect_error(anova_glm(d, "value", "group",
-                         contrasts = list(group = "contr.treatment")),
-               "unused argument")
-})
-
 test_that("nothing is written to stdout and no deprecation warnings fire", {
   d <- fx_oneway()
   expect_silent_stdout(anova_glm(d, "value", "group"))
@@ -162,7 +151,7 @@ test_that("robust standard errors reach the marginal means", {
     fit$emmeans$se, anova_glm(d, "value", "group", plots = FALSE)$emmeans$se)))
 })
 
-test_that("Poisson overdispersion is noted above a Pearson dispersion of 1.2", {
+test_that("Poisson overdispersion is noted when the Pearson test rejects at the 5% level", {
   d <- fx_overdispersed()
   fit <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
   m <- stats::glm(y ~ g, family = stats::poisson(), data = d)

@@ -265,22 +265,17 @@ test_that("F071: mixed syntactic and non-syntactic names give the same adjusted 
   expect_true(f$canonical_term %in% f$multivariate$term)
 })
 
-test_that("F072: collinear covariates leave Box's M, the structure coefficients and the plot intact", {
+test_that("F072: collinear covariates are refused up front (R3-48 supersedes the aliased fit)", {
+  # Collinear covariates used to be fitted with an aliased coefficient. Since
+  # R3-48 anova_manova(), like anova_ancova(), refuses them with an error that
+  # names the covariate, so no aliased MANCOVA is ever reported.
   d <- mv_fx()
   d$months <- d$age * 12
-  r <- anova_manova(d, c("score1", "score2"), "g", covariates = c("age", "months"))
-  one <- anova_manova(d, c("score1", "score2"), "g", covariates = "age")
-  expect_false(is.null(r$assumptions$box_m))
-  expect_equal(r$assumptions$box_m, one$assumptions$box_m)
-  expect_true(all(is.finite(as.matrix(r$assumptions$structure_coefficients[, -1L]))))
-  expect_true(all(is.finite(as.matrix(r$plots$canonical$data[, c("Can1", "Can2")]))))
-  # The group test is unaffected by the aliasing
-  ref <- stats_row(summary(stats::manova(cbind(score1, score2) ~ age + months + g,
-                                          data = d)), "g")
-  expect_equal(r$multivariate$p_value[r$multivariate$term == "g"], ref[["p"]])
-  # The aliasing note does not call a covariate an empty cell
-  expect_true(any(grepl("aliased", r$notes)))
-  expect_false(any(grepl("cells are empty", r$notes)))
+  # Reference: lm() itself cannot estimate `months` alongside `age`.
+  expect_true(is.na(stats::coef(stats::lm(score1 ~ age + months + g, d))[["months"]]))
+  expect_error(anova_manova(d, c("score1", "score2"), "g",
+                            covariates = c("age", "months")),
+               "`months` are an exact linear combination")
 })
 
 test_that("F072: an aliased Type III model falls back to Type II throughout, with a note", {
