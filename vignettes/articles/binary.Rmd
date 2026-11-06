@@ -345,7 +345,7 @@ women applicants. When fewer than about 5 events or non-events are expected in
 a cell, `$notes` warns that the likelihood-ratio test is liberal. No cell here
 comes close; the separation example below shows the note.
 
-The [diagnostics article](diagnostics.html) covers the checks across the
+The [diagnostics guide](diagnostics.html) covers the checks across the
 package.
 
 ### Separation
@@ -535,63 +535,29 @@ mainly because it can use a robust covariance (next section).
 `weights` names a column of prior weights. Whole-number weights, some above 1,
 are frequency weights: a row with weight `w` counts as `w` identical
 observations, so the 24-row table `ucb` gives the same results as
-`applicants`, with one row per applicant. `vcov_type` asks for
-heteroskedasticity-consistent (sandwich) standard errors, `"HC0"` to `"HC4"`,
-which need the sandwich package. With frequency weights they too are
-computed as they would be on the expanded data. `one_row` was fitted on
+`applicants`, with one row per applicant. `one_row` was fitted on
 `applicants` [above](#checking-assumptions):
 
-```{r weights-hc3}
-hc_table <- anova_bin(ucb, "Admit", c("Gender", "Dept"), weights = "Freq",
-                      success = "Admitted", vcov_type = "HC3", plots = FALSE)
-hc_rows <- anova_bin(applicants, "Admit", c("Gender", "Dept"),
-                     success = "Admitted", vcov_type = "HC3", plots = FALSE)
+```{r weights}
 all.equal(fit$anova, one_row$anova)
 c(table = fit$model_stats$BIC, applicants = one_row$model_stats$BIC)
-data.frame(comparison = fit$effect_sizes$comparison,
-           se_table = fit$effect_sizes$se_log_or,
-           se_applicants = one_row$effect_sizes$se_log_or,
-           hc3_table = hc_table$effect_sizes$se_log_or,
-           hc3_applicants = hc_rows$effect_sizes$se_log_or)
 ```
 
-```{r weights-naive, include = FALSE}
-naive <- sqrt(diag(sandwich::vcovHC(fit$model, type = "HC3")))[-1]
-naive_ratio <- unname(naive / hc_table$effect_sizes$se_log_or)
-```
+BIC is the same because its penalty uses the
+`r format(sum(ucb$Freq), big.mark = ",")` observations the weights represent,
+not the 24 rows.
 
-The model-based standard errors agree to five or more significant figures (the
-rest is `glm()`'s convergence tolerance), and BIC is the same because its
-penalty uses the `r format(sum(ucb$Freq), big.mark = ",")` observations the
-weights represent, not the 24 rows. The HC3 standard errors from the table
-and from one row per applicant are the same, and close to the model-based
-ones. `sandwich::vcovHC()` applied to the weighted table directly would treat
-each row as one unit, and here gives standard errors
-`r floor(min(naive_ratio))` to `r ceiling(max(naive_ratio))` times too large.
-
-The notes record what the robust covariance was used for:
-
-```{r weights-hc3-notes}
-grep("robust", hc_table$notes, value = TRUE, ignore.case = TRUE)
-```
-
-Robust standard errors reach the odds ratios, the marginal means and the
-comparisons. The likelihood-ratio omnibus test compares deviances and does
-not use them; set `test_statistic = "Wald"` for an omnibus test that does. The
-odds-ratio intervals become Wald intervals, since a profile likelihood cannot
-use a sandwich covariance.
-
-Weights that are not whole numbers are not frequencies. They are used as
-given, as `glm()` uses prior weights, so their scale matters, and `$notes`
-says so. `AIC`, `BIC` and `logLik` in `$model_stats` are then `NA`, with a
-note, because R's binomial log-likelihood rounds the weights; McFadden's R
-squared and `lr_vs_null` come from the deviances and are still reported.
-Unequal weights of this kind also inflate the likelihood-ratio statistics. A
-further note estimates by how much and recommends `vcov_type = "HC3"`. Two
-more notes pass on the "non-integer #successes" warnings from `glm()` and
-`car::Anova()`.
-[Weights and robust standard errors](weights.html) sets out the rules for
-every kind of weight and for `vcov_type` across the package.
+`vcov_type` (`"HC0"` to `"HC4"`) gives heteroscedasticity-consistent
+(sandwich) standard errors, which need the sandwich package, for the odds
+ratios, whose intervals then become Wald intervals, and for the marginal
+probabilities and the comparisons. The omnibus test uses them only with
+`test_statistic = "Wald"`. With frequency weights they are computed as on the
+expanded data. Weights that are not whole numbers are used as given, as
+`glm()` uses prior weights, so their scale matters; `$notes` says so when they
+do not average 1 (within about 10%). `AIC`, `BIC` and `logLik` are then `NA`,
+with a note. [Weights and robust standard errors](weights.html) covers how
+frequency weights enter the sandwich, weights that are not whole numbers, and
+when the model-based covariance is used instead.
 
 ### `conf_level` and `posthoc`
 
@@ -658,9 +624,9 @@ A write-up of the adjusted analysis might read:
 
 - `?anova_bin` for every argument, and `?anovakit_fit` for the returned
   object.
-- [Counts and rates with `anova_count()`](counts.html), the companion function
+- [Counts and rates: `anova_count()`](counts.html), the companion function
   for count responses.
-- [Generalised linear models with `anova_glm()`](glm.html) for other families.
+- [Any GLM family: `anova_glm()`](glm.html) for other families.
 - [Weights and robust standard errors](weights.html).
 - [Working with results](results.html) and [Diagnostics](diagnostics.html).
 - [Plots and themes](visuals.html).

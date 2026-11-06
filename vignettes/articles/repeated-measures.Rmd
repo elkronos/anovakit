@@ -427,7 +427,7 @@ day-10 weighing, so its other 11 rows go too.
 whole subjects is too costly, a mixed model (for example with lme4 or afex's
 `mixed()`) can use incomplete subjects; `anova_rm()` cannot.
 
-### When sphericity fails badly
+## When sphericity fails badly
 
 The `chick` fit also shows how badly sphericity can fail. Weights spread out
 as chicks grow, so the variance of the differences grows with the gap between
@@ -626,6 +626,15 @@ m <- function(t, p) em$estimate[em$treatment == t & em$phase == p]
 > `r f2(m("A", "fup"))` for treatment A and `r f2(m("B", "pre"))` to
 > `r f2(m("B", "fup"))` for treatment B.
 
+## References
+
+O'Brien, R. G., & Kaiser, M. K. (1985). MANOVA method for analyzing repeated
+measures designs: An extensive primer. *Psychological Bulletin*, 97, 316-333.
+
+Olejnik, S., & Algina, J. (2003). Generalized eta and omega squared statistics:
+measures of effect size for some common research designs. *Psychological
+Methods*, 8(4), 434-447.
+
 ## See also
 
 - `?anova_rm` for every argument, including the details of the sphericity
@@ -639,10 +648,3 @@ m <- function(t, p) em$estimate[em$treatment == t & em$phase == p]
 - `anova_manova()` ([walkthrough](manova.html)) for several different
   responses analysed together.
 - [Diagnostics](diagnostics.html) and [Plots and themes](visuals.html).
-
-O'Brien, R. G., & Kaiser, M. K. (1985). MANOVA method for analyzing repeated
-measures designs: An extensive primer. *Psychological Bulletin*, 97, 316-333.
-
-Olejnik, S., & Algina, J. (2003). Generalized eta and omega squared statistics:
-measures of effect size for some common research designs. *Psychological
-Methods*, 8(4), 434-447.

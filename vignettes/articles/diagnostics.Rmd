@@ -309,7 +309,7 @@ them into one figure.
 ## Equal variances
 
 The remedy for unequal variances in a model that pools them is a
-heteroskedasticity-consistent ("robust") covariance, set with `vcov_type`.
+heteroscedasticity-consistent ("robust") covariance, set with `vcov_type`.
 [Weights and robust standard errors](weights.html#robust-standard-errors-with-vcov_type)
 covers which HC type to use and which results it reaches.
 
@@ -329,7 +329,7 @@ the reason to use Welch's test. It matters when you fit the same comparison
 with a method that pools the variance. `anova_glm()` with its default
 Gaussian family does, and its model-based standard errors for the six spray
 means are then identical. `vcov_type = "HC3"` gives each mean a
-heteroskedasticity-consistent standard error, and `test_statistic = "Wald"`
+heteroscedasticity-consistent standard error, and `test_statistic = "Wald"`
 makes the omnibus test use it too:
 
 ```{r ins-glm}
@@ -364,7 +364,7 @@ residual standard deviation of male heart weights is about
 `r f2(tapply(residuals(cats$model), cats$data_used$Sex, sd)[["M"]] / tapply(residuals(cats$model), cats$data_used$Sex, sd)[["F"]])`
 times that of females. The note names the remedy. With `vcov_type = "HC3"`
 the F tests in `$anova` become Wald F tests built from a
-heteroskedasticity-consistent covariance, and the marginal means, comparisons
+heteroscedasticity-consistent covariance, and the marginal means, comparisons
 and covariate slopes use it too.
 
 ```{r cats-hc3}
@@ -380,7 +380,7 @@ The slopes test chose the interaction model here (see
 [Homogeneity of regression slopes](#homogeneity-of-regression-slopes)), so
 each sex has its own slope. With the pooled variance the female slope's
 standard error is overstated and the male one's understated; the
-heteroskedasticity-consistent covariance corrects both. The
+heteroscedasticity-consistent covariance corrects both. The
 homogeneity-of-slopes test itself stays the model-based F test, as the notes
 say.
 
@@ -454,7 +454,7 @@ rather than at its slope. When the additive model is used and the covariate
 means differ between groups by more than half a pooled within-group standard
 deviation, a note warns that a slope difference the test missed would bias
 the adjusted comparisons. When the covariate mean lies outside the range a
-group was observed over, that group's adjusted mean is an extrapolation, and
+group was observed over, that group's marginal mean is an extrapolation, and
 a note names it. Cars with more cylinders are heavier, so both fire in
 `mtcars`:
 
@@ -465,7 +465,7 @@ note_with(mt_anc, "covariate means differ|outside the range")
 ```
 
 No argument can repair covariates that barely overlap between groups: the
-adjusted means there rest on the model's straight line rather than on data.
+marginal means there rest on the model's straight line rather than on data.
 Report them as such, or restrict the comparison to the range the groups share.
 
 ### `anova_manova()` with covariates
@@ -482,7 +482,7 @@ mcv$slopes_test
 note_with(mcv, "^Homogeneity")
 ```
 
-The common-slope adjusted means then describe the groups at the covariate
+The common-slope marginal means then describe the groups at the covariate
 mean only, and rejections by Mardia's tests or Box's M may be artefacts of the
 misspecified slopes. `anova_manova()` does not fit the covariate-by-group
 model itself; analyse each response with `anova_ancova()`, which does:
@@ -810,8 +810,10 @@ interval, or collapse the level.
 
 ## Sparse cells and cell counts
 
-Many checks are about how much information each cell holds. The package
-reports it in several ways.
+The checks below flag cells or groups too small for a test to be trusted:
+expected events in `anova_bin()`, events and empty combinations in
+`anova_count()`, and group sizes for the normality tests and the
+multivariate checks.
 
 ### Expected events in a binary model
 
@@ -904,7 +906,7 @@ remedies.
 
 ## Leverage and robust standard errors
 
-A heteroskedasticity-consistent covariance estimates each observation's
+A heteroscedasticity-consistent covariance estimates each observation's
 contribution to the variance from its own residual. An observation that is
 alone in its cell has leverage 1: the model fits it exactly, its residual is
 zero by construction, and the sandwich would give that cell a standard error

@@ -81,9 +81,6 @@ articles:
   - anovakit
   - articles/choosing
 - title: "One outcome, independent groups"
-  desc: >
-    A walkthrough per function: the data, the fit, the output, effect sizes,
-    comparisons, assumption checks, plots, options and a write-up.
   contents:
   - articles/welch
   - articles/kruskal-wallis
@@ -98,7 +95,7 @@ articles:
   - articles/counts
   - articles/glm
 - title: Guides
-  desc: Topics that apply to every function.
+  desc: Topics that cut across the functions.
   contents:
   - articles/results
   - articles/diagnostics

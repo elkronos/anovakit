@@ -488,8 +488,8 @@ kw$notes
 ```
 
 For the ozone fit the only note records the `r kw$n_removed` rows dropped for
-missing values, and names the columns that were checked. `anova_kw()` also
-writes a note when:
+missing values, and names the column that held them (`Ozone`). `anova_kw()`
+also writes a note when:
 
 - infinite values were kept and ranked ([Infinite values](#infinite-values));
 - values differ only by rounding error and were ranked as distinct

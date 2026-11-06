@@ -216,18 +216,9 @@ or subject):
 try(anova_glm(warpbreaks, "breaks", "tension", weights = "breaks"))
 ```
 
-Prior weights are given as a column name rather than a vector, so they are
-subsetted with the data and stay aligned when a row is dropped. Rows with a
-weight of zero contribute nothing to the fit. They are dropped and counted in
-`$n_removed`, so that row counts, robust standard errors and information
-criteria agree with the fit:
-
-```{r zero-weights}
-w <- warpbreaks
-w$wt <- 1
-w$wt[1:3] <- 0
-anova_glm(w, "breaks", "tension", weights = "wt", plots = FALSE)$n_removed
-```
+Weights are named as a column too, so they stay aligned with the rows;
+[Weights and robust standard errors](weights.html#zero-weights) explains what
+happens to zero weights.
 
 ## Global settings do not change results
 
@@ -237,14 +228,8 @@ the type, the contrasts and the emmeans model are all set explicitly. The
 `emmeans::emm_options()` settings that change a result (adjustment, sidedness,
 null, degrees of freedom, scale) are cleared for the duration of the fit; only
 computational limits such as `rg.limit` are kept, so you can still let a large
-grid through.
-
-The
-global `contrasts` option can change how a Type II model's coefficients are
-coded, but not its tests, marginal means or comparisons; `type = "III"` always
-fits under sum-to-zero contrasts, and odds and rate ratios always come from a
-treatment-coded fit. Here an `emm_options()` setting that turns off every
-adjustment leaves the Tukey adjustment in place:
+grid through. Here an `emm_options()` setting that turns off every adjustment
+leaves the Tukey adjustment in place:
 
 ```{r emm-options}
 emmeans::emm_options(contrast = list(adjust = "none"))
@@ -252,6 +237,11 @@ tension <- anova_glm(warpbreaks, "breaks", "tension", plots = FALSE)
 tension$posthoc[, c("contrast", "p_value", "p_adjusted", "adjustment")]
 emmeans::emm_options(contrast = NULL)
 ```
+
+The global `contrasts` option can change how a Type II model's coefficients are
+coded, but not its tests, marginal means or comparisons; `type = "III"` always
+fits under sum-to-zero contrasts, and odds and rate ratios always come from a
+treatment-coded fit.
 
 The only option of its own that anovakit reads is `anovakit.theme`, which
 sets the base theme of every plot and changes no result; the [plots

@@ -183,6 +183,11 @@ against its reference (first) level:
 print(fit$effect_sizes, digits = 3)
 ```
 
+`anova_count()` has no `reference` argument. To compare against another
+level, reorder the factor before fitting, for example
+`w <- warpbreaks; w$tension <- relevel(w$tension, "M")`. The tension ratios
+then compare L and H with M. The omnibus table is unchanged.
+
 An IRR is the ratio of two expected counts (or two rates, with an offset): 1
 means no difference, 0.5 half as many, 2 twice as many. `factor` names the
 grouping variable and `comparison` says what is compared. In a model with an
@@ -330,7 +335,7 @@ fit$assumptions
 
 The model also assumes independent counts and that the log rate is additive
 in the terms included, which the interaction test checks for the grouping
-factors. The [diagnostics article](diagnostics.html) covers the checks across
+factors. The [diagnostics guide](diagnostics.html) covers the checks across
 the package.
 
 ### A group with no events
@@ -554,40 +559,16 @@ original rows. A table that stands for more than 200,000 observations is not
 expanded: the boxes are then built from one row per table row, and a note
 says so.
 
-Weights that are not whole numbers are not frequencies. The tests and
-intervals use them as given, so their scale matters. The dispersion that
-chooses the model is computed with them rescaled to average 1, so the choice
-of model does not depend on their scale, and a note says so.
-
-`vcov_type` asks for heteroskedasticity-consistent (sandwich) standard errors,
-`"HC0"` to `"HC4"`, from the sandwich package. They reach the rate ratios,
-the marginal means and the comparisons. A likelihood-ratio test compares
-deviances and cannot use them, so the omnibus table uses them only with
-`test_statistic = "Wald"`:
-
-```{r vcov}
-robust <- anova_count(warpbreaks, "breaks", c("wool", "tension"),
-                      interaction = TRUE, vcov_type = "HC3",
-                      test_statistic = "Wald", plots = FALSE)
-robust$anova
-data.frame(comparison = fit$effect_sizes$comparison,
-           model_low = fit$effect_sizes$conf_low,
-           model_high = fit$effect_sizes$conf_high,
-           hc3_low = robust$effect_sizes$conf_low,
-           hc3_high = robust$effect_sizes$conf_high)
-grep("robust", robust$notes, value = TRUE)
-```
-
-The robust intervals are wider here. With 9 looms a cell the sandwich
-estimate is noisy, and it serves better as a check on the model-based
-standard errors than as a replacement for them. With frequency weights, the
-sandwich covariance is computed as it would be on the expanded data.
-
-When fitted values lie on the boundary (a group with no events, as
-[above](#a-group-with-no-events)), the sandwich collapses towards zero, and
-the function uses the model-based covariance instead, with a note.
-[Weights and robust standard errors](weights.html) sets out the rules for
-every kind of weight and for `vcov_type` across the package.
+Weights that are not whole numbers are not frequencies. They are used as
+given, so their scale matters, and the dispersion that chooses the model is
+computed with them rescaled to average 1. `vcov_type` (`"HC0"` to `"HC4"`)
+gives heteroscedasticity-consistent (sandwich) standard errors for the rate
+ratios, the marginal means and the comparisons, and for the omnibus table only
+with `test_statistic = "Wald"`. With frequency weights they are computed as on
+the expanded data. [Weights and robust standard errors](weights.html) has an
+example on `warpbreaks`, the rules for every kind of weight, and the cases
+where the model-based covariance is used instead, such as a group with no
+events ([above](#a-group-with-no-events)).
 
 ### `type`, `adjust`, `conf_level` and `posthoc`
 
@@ -662,9 +643,9 @@ A write-up might read:
 
 - `?anova_count` for every argument, and `?anovakit_fit` for the returned
   object.
-- [Binary outcomes with `anova_bin()`](binary.html), the companion function
+- [Binary outcomes: `anova_bin()`](binary.html), the companion function
   for yes/no responses.
-- [Generalised linear models with `anova_glm()`](glm.html) for other families.
+- [Any GLM family: `anova_glm()`](glm.html) for other families.
 - [Weights and robust standard errors](weights.html).
 - [Working with results](results.html) and [Diagnostics](diagnostics.html).
 - [Plots and themes](visuals.html).

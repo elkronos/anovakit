@@ -34,7 +34,7 @@ so without it `vignette("anovakit")` is not available.
 | `anova_manova()` | two or more numeric | Several outcomes analysed jointly, with or without covariates. |
 | `anova_bin()` | binary | Logistic regression, odds ratios, marginal probabilities. |
 | `anova_count()` | counts | Poisson, quasi-Poisson or negative binomial, with exposure offsets. |
-| `anova_glm()` | anything | Any other GLM family. |
+| `anova_glm()` | anything | A classical factorial ANOVA with main effects and interactions, Type II or III (the default Gaussian family), or any other GLM family. |
 
 Six take `data, response, groups`, with columns named as character strings.
 `anova_manova()` takes `responses` (plural), and `anova_rm()` takes `response`

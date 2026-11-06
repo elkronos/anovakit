@@ -107,7 +107,7 @@ means.
 When `anova_count()` has an exposure `offset`, counts from units observed for
 different lengths of time are not comparable, so its `observed` plot shows
 rates instead, count divided by exposure. `MASS::Insurance` records claims
-against the number of policy holders:
+against the number of policyholders:
 
 ```{r observed-rates}
 ins <- anova_count(MASS::Insurance, "Claims", "Age", offset = "Holders")
@@ -147,7 +147,7 @@ plot(fits$ancova, "emmeans")
 
 `anova_glm()` with an interaction plots one line per level of the second
 factor, so lines that are not parallel are the interaction. In the tooth
-growth data the advantage of orange juice over vitamin C at the two lower
+growth data the advantage of orange juice over ascorbic acid at the two lower
 doses has gone at the highest:
 
 ```{r glm-emmeans}
@@ -236,11 +236,12 @@ plot(fits$kw, "qq")
 
 ### Residuals against fitted values
 
-The model-based functions pair a Q-Q plot with a plot of residuals against
-fitted values. In a model with only grouping variables the fitted values take
-one value per cell, so the points line up in vertical strips; compare the
-strips' spread. `anova_glm()` plots deviance residuals, which for a Gaussian
-model are the ordinary residuals:
+`anova_ancova()`, `anova_glm()`, `anova_rm()` and `anova_manova()` pair a Q-Q
+plot with a plot of residuals against fitted values; `anova_bin()` and
+`anova_count()` build neither. In a model with only grouping variables the
+fitted values take one value per cell, so the points line up in vertical
+strips; compare the strips' spread. `anova_glm()` plots deviance residuals,
+which for a Gaussian model are the ordinary residuals:
 
 ```{r glm-resid, fig.show = "hold", out.width = "50%", fig.width = 5, fig.height = 4}
 plot(fits$glm, "residuals")

@@ -1,5 +1,9 @@
 ---
 title: "Get started with anovakit"
+description: >
+  One analysis from start to finish (Welch's ANOVA on mtcars, then the same
+  question with a covariate in anova_ancova()), and the arguments every
+  function shares.
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Get started with anovakit}
@@ -133,7 +137,7 @@ notes record four things:
   within-group standard deviations, which makes the adjusted comparisons
   sensitive to a slope difference the test may have missed.
 - The heaviest 4-cylinder car weighs `r f3(wt_max4)`, less than the average
-  car, so the adjusted mean for that group is an extrapolation.
+  car, so the marginal mean for that group is an extrapolation.
 
 These are observational data, and the notes say how far the adjusted
 comparison leans on the model. The marginal means and comparisons are in the
@@ -173,7 +177,7 @@ same thing wherever they appear:
 | `plots` | all eight | `TRUE` | `FALSE` skips building the figures, which is faster. |
 | `verbose` | all eight | `FALSE` | Progress messages through `message()`. |
 | `interaction` | ancova, manova, bin, count, glm | `FALSE` (`TRUE` in ancova) | Additive, full factorial, or interactions up to a given order. |
-| `type` | ancova, manova, bin, count, glm | `"II"` (`"III"` in ancova) | Type II or Type III tests; `"III"` fits the model under sum-to-zero contrasts. |
+| `type` | ancova, rm (through `...`), manova, bin, count, glm | `"II"` (`"III"` in ancova and rm) | Type II or Type III tests; `"III"` fits the model under sum-to-zero contrasts. |
 | `covariates` | ancova, manova | none in manova (required in ancova) | Numeric columns to adjust for. |
 | `vcov_type` | ancova, bin, count, glm | `"model"` | `"HC0"` to `"HC4"` gives sandwich standard errors. |
 | `weights` | bin, count, glm | `NULL` | Prior weights, named as a column. |

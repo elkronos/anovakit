@@ -389,11 +389,11 @@ mc$n_removed
 dropped (the notes say which columns). The multivariate table now has a row
 for the covariate as well as for `Sex`.
 
-### Centring and adjusted means
+### Centring and marginal means
 
 Covariates are mean-centred before fitting. Centring changes no test here. It
 keeps a covariate with a large offset and a small spread from being mistaken
-for a constant, and it puts the adjusted means at the covariate means, which
+for a constant, and it puts the marginal means at the covariate means, which
 are kept in `$covariate_means`:
 
 ```{r mancova-means}
@@ -427,7 +427,7 @@ mc$slopes_test
 
 The slopes are consistent with being equal here (p =
 `r round(mc$slopes_test$p_value, 2)`). When the test rejects at the 0.05
-level, a note says so. The common-slope adjusted means then describe the
+level, a note says so. The common-slope marginal means then describe the
 groups at the covariate mean only, and the note advises modelling the
 interaction yourself or analysing each response with `anova_ancova()`, which
 chooses between the two models and reports per-group slopes.
@@ -594,6 +594,14 @@ Report the statistic you used, the F approximation and its degrees of
 freedom, and say that the univariate follow-ups and their comparisons were not
 adjusted across responses.
 
+## References
+
+Box, G. E. P. (1949). A general distribution theory for a class of likelihood
+criteria. *Biometrika*, 36(3/4), 317-346.
+
+Mardia, K. V. (1970). Measures of multivariate skewness and kurtosis with
+applications. *Biometrika*, 57(3), 519-530.
+
 ## See also
 
 - `?anova_manova` for every argument and the details of each computation.
@@ -601,14 +609,7 @@ adjusted across responses.
   emmeans grids.
 - [ANCOVA: `anova_ancova()`](ancova.html) for one response with covariates,
   including the choice between common and separate slopes.
-- [Analysis of deviance: `anova_glm()`](glm.html) for one response in any
-  family.
+- [Any GLM family: `anova_glm()`](glm.html) for one response in any family.
 - [Repeated measures: `anova_rm()`](repeated-measures.html) when the
   "responses" are the same measurement taken repeatedly.
 - [Diagnostics](diagnostics.html) and [Plots and themes](visuals.html).
-
-Box, G. E. P. (1949). A general distribution theory for a class of likelihood
-criteria. *Biometrika*, 36(3/4), 317-346.
-
-Mardia, K. V. (1970). Measures of multivariate skewness and kurtosis with
-applications. *Biometrika*, 57(3), 519-530.

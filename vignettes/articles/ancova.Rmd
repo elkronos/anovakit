@@ -333,7 +333,7 @@ are parallel and each group's own least-squares line is added dashed, so the
 plot shows whether parallel lines are a fair description. Here they are not:
 the control group's line is almost flat while the two treatment lines rise.
 
-Check too whether the groups cover the same range of the covariate. Adjusted
+Check too whether the groups cover the same range of the covariate. Marginal
 means for a group observed only at one end are extrapolations, and `$notes`
 names such a group. With several covariates there is one plot per covariate,
 named `covariate_<name>`.
