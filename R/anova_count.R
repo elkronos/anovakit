@@ -15,10 +15,23 @@
 #' \eqn{\phi} above 1: its likelihood-ratio and Wald statistics are inflated by
 #' about \eqn{\phi} and its intervals are too narrow, so at \eqn{\phi = 1.5} a
 #' nominal 5\% test on 1 degree of freedom rejects about 11\% of true null
-#' hypotheses, however large the sample. \code{$notes} then gives the
-#' dispersion and the size of the effect; use \code{model = "quasipoisson"} or
-#' \code{"negbin"} when that matters. When the Poisson model has no residual
-#' degrees of freedom the dispersion cannot be computed, and \code{$notes} says
+#' hypotheses (and one on 2 degrees of freedom about 14\%), however large the
+#' sample. \code{$notes} then gives the dispersion and the size of the effect
+#' when the Pearson test of overdispersion is significant. When it is not,
+#' that test may simply lack power -- at 10 per group a true dispersion of 1.4
+#' passes it about two times in three, while the Poisson tests reject about
+#' 10\% of true null hypotheses -- so \code{$notes} gives the upper 95\%
+#' confidence bound of the dispersion and what a dispersion that large would
+#' cost, whenever a nominal 5\% test would then reject 7.5\% or more of true
+#' null hypotheses. With small samples that is most Poisson fits; with large
+#' ones the bound is close to the estimate and the note is rare. The
+#' inference itself is not corrected;
+#' use \code{model = "quasipoisson"} or \code{"negbin"} when that matters.
+#' With a robust covariance (\code{vcov_type}) the intervals and comparisons
+#' do not assume a dispersion of 1, and the note says that only a
+#' likelihood-ratio omnibus test still does. When the Poisson model has no
+#' residual degrees of freedom the dispersion cannot be computed, and
+#' \code{$notes} says
 #' that overdispersion was not checked. Which model was used, and why, is
 #' always recorded in \code{$notes} and in \code{$model_type}. Set \code{model}
 #' explicitly to take the decision out of the function's hands: an explicit
@@ -34,6 +47,14 @@
 #' and 95\% intervals cover about 90\%; the excess fades by about 30 per group.
 #' The note on theta states the size of the problem for the smallest group in
 #' the data, whether theta is well determined, and whether the fit converged.
+#' A very large theta means the negative binomial has collapsed to the
+#' Poisson model, and the note says so, but only when the likelihood really
+#' is highest at that Poisson limit; on sparse, overdispersed data
+#' \code{MASS::glm.nb()} can drive theta up although a small theta fits far
+#' better, and that fit is reported as not converged. Above a theta of about
+#' \eqn{10^6} the negative binomial deviance cannot be computed accurately, so
+#' the likelihood-ratio and F tests are those of the Poisson fit, the limit
+#' they converge to, and \code{$notes} says so.
 #' Convergence is read from the fitted object, so the note is the same in
 #' every session language.
 #'
@@ -53,9 +74,37 @@
 #' Pearson dispersion (the one the model choice is made on, reported in
 #' \code{$dispersion}) divides by the number of observations they represent
 #' minus the number of parameters rather than by the number of rows, which
-#' would inflate it by up to the ratio of the two. A quasi-Poisson fit and an
-#' F test estimate their dispersion from the rows all the same, so for those
-#' expand a frequency table to one row per observation; \code{$notes} says so.
+#' would inflate it by up to the ratio of the two. The model's residual
+#' degrees of freedom are counted in observations too, so a quasi-Poisson fit
+#' or an F test on a frequency table gives the same dispersion, tests and
+#' intervals as the data expanded to one row per observation; there is no need
+#' to expand it, and \code{$notes} says so.
+#'
+#' Weights that are not whole numbers are used as given in the fit, the tests
+#' and the intervals, as \code{glm()} uses prior weights: their scale matters
+#' (multiplying every weight by 10 multiplies each likelihood-ratio and Wald
+#' statistic by about 10), and \code{$notes} says so when they do not average
+#' 1. Sampling weights should therefore be rescaled to average 1, or analysed
+#' with a design-based method such as \code{survey::svyglm()}. The Pearson
+#' dispersion the model choice is made on is computed with such weights
+#' rescaled to average 1, so the choice between Poisson and negative binomial
+#' does not depend on their arbitrary scale. With the weights as given the
+#' tests are inflated by that dispersion times the weight when the weights
+#' are equal; when they are unequal, by an amount that depends on where the
+#' heavy rows fall, which \code{$notes} gives from the sandwich covariance
+#' for each term (assuming the weights are not inverse variances, which
+#' would not inflate the tests), for a kept Poisson model, a negative
+#' binomial one and any F test.
+#'
+#' Counts on a large level with little variation (1e9 varying by a few
+#' units) are beyond what the Poisson and negative binomial deviances can
+#' resolve in double precision. A likelihood-ratio or F test that rounding
+#' could move by more than a fifth of its size or of its size under the
+#' null hypothesis (its degrees of freedom for a chi-square, 1 for an F),
+#' whichever is larger, is then NA, and one it could move by more than 2\%
+#' of that gets a note (a negative statistic within its rounding error is
+#' shown as 0, with p = 1); \code{test_statistic = "Wald"}, which does not use
+#' the deviance, can still test them.
 #'
 #' \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 #' treatment-coded parameterisation of the fitted model, whatever \code{type}
@@ -77,7 +126,9 @@
 #' @param data A data frame, or anything inheriting from one, such as a
 #'   \code{data.table} or a tibble.
 #' @param response Character. Name of the count column. Must be non-negative
-#'   whole numbers, not all zero.
+#'   whole numbers, not all zero, and, for \code{model = "negbin"} or
+#'   \code{"quasipoisson"}, not all equal (as a rate, with an
+#'   \code{offset}).
 #' @param groups Character vector. One or more grouping columns.
 #' @param offset Optional character. Name of a strictly positive exposure
 #'   column, entered as a log offset. It cannot also be the response, a
@@ -101,16 +152,17 @@
 #'   in place of \code{"LR"}. For a Poisson or negative binomial model,
 #'   \code{"F"} makes \code{car::Anova()} estimate a dispersion from the Pearson
 #'   residuals, so the table becomes a quasi-likelihood F test while
-#'   \code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1;
-#'   \code{$notes} gives the dispersion the F test used. Use
+#'   \code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1
+#'   (unless \code{vcov_type} gives them a robust covariance, which assumes
+#'   none); \code{$notes} gives the dispersion the F test used. Use
 #'   \code{model = "quasipoisson"} for quasi-likelihood inference throughout.
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
 #'   Default \code{0.95}.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 #'   marginal means and the comparisons; the omnibus table uses them only with
-#'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+#'   \code{test_statistic = "Wald"}, since likelihood-ratio and F tests compare
 #'   deviances. \code{$notes} says which applies.
 #' @param adjust Character. Multiplicity adjustment for the pairwise
 #'   comparisons, applied by \pkg{emmeans}. One of \code{"tukey"},
@@ -138,7 +190,8 @@
 #'   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
 #'   of the \emph{Poisson} fit (the statistic the model choice was made on) and
 #'   \code{$model_dispersion} that of the model actually returned (both with
-#'   the frequency-weight denominator when the weights are frequencies).
+#'   the frequency-weight denominator when the weights are frequencies, and
+#'   with weights that are not whole numbers rescaled to average 1).
 #'   \code{$effect_sizes} holds incidence rate ratios against the reference
 #'   level, with columns \code{term} (the treatment-coded coefficient),
 #'   \code{factor} and \code{comparison} (what it compares), \code{IRR},
@@ -148,10 +201,10 @@
 #'   \code{model_dispersion} (as above) and \code{cell_counts}, the number of
 #'   observations in each cell (with frequency weights, \code{n} counts the
 #'   observations and \code{rows} the rows of the table). \code{$plots} holds
-#'   \code{emmeans}, the marginal rates with their intervals, and
-#'   \code{observed}, box plots of the observed counts by cell -- of the
-#'   observed rates, count divided by exposure, when there is an
-#'   \code{offset}.
+#'   \code{emmeans}, the marginal rates with their intervals (when the
+#'   marginal means could be computed), and \code{observed}, box plots of the
+#'   observed counts by cell -- of the observed rates, count divided by
+#'   exposure, when there is an \code{offset}.
 #'
 #' @seealso \code{\link{anova_bin}} for binary responses.
 #'
@@ -190,7 +243,7 @@ anova_count <- function(data, response, groups,
                         plots = TRUE,
                         weights = NULL,
                         verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_count")
   model <- match.arg(model)
   type <- match.arg(type)
   test_statistic <- match.arg(test_statistic)
@@ -209,6 +262,9 @@ anova_count <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the exposure offset` = offset, `the weights` = weights))
+  data <- .as_plain_columns(data, list(Response = response, `Grouping column` = groups,
+                                       `Offset column` = offset,
+                                       `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -226,7 +282,7 @@ anova_count <- function(data, response, groups,
   prep <- .prepare_frame(data, cols, factors = groups, keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
-  zw <- .drop_zero_weights(d, weights)
+  zw <- .drop_zero_weights(d, weights, groups)
   d <- zw$data
   n_removed <- prep$n_removed + zw$n_removed
   notes <- c(notes, zw$notes)
@@ -240,6 +296,7 @@ anova_count <- function(data, response, groups,
              offset)
     }
   }
+  .check_constant_rate(d, response, offset, model)
 
   freq_w <- .frequency_weights(d, weights)
   notes <- c(notes, .sparse_cell_note(d, groups, response, interaction,
@@ -256,9 +313,17 @@ anova_count <- function(data, response, groups,
   ## Poisson first, to measure dispersion -------------------------------------
   # Wrapped like every other fitting call: glm() warns about numerically zero
   # fitted rates, and that belongs in $notes rather than on the console.
-  got <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, stats::poisson(link = "log"), weights),
+  fit_pois <- function(dd) .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, dd, stats::poisson(link = "log"), weights),
     type = type))
+  got <- fit_pois(d)
+  # Grouping columns whose names and levels paste to the same coefficient
+  # name would make the rate ratios and marginal means read the wrong column.
+  # The bracketed contrasts stay on `d`, so every later fit inherits them.
+  uc <- .unclash_group_coefs(got, fit_pois, d, groups, type)
+  got <- uc$fitted
+  d <- uc$data
+  notes <- c(notes, uc$note)
   pois <- got$value
   if (inherits(pois, "error")) {
     .stopf("The Poisson model could not be fitted: %s", conditionMessage(pois))
@@ -267,11 +332,42 @@ anova_count <- function(data, response, groups,
   # With frequency weights the residual degrees of freedom are counted in
   # observations, not rows (see .count_dispersion()).
   n_obs <- if (freq_w) sum(d[[weights]]) else NULL
-  dispersion <- .count_dispersion(pois, n_obs)
+  # Weights that are not frequencies have an arbitrary scale, which the
+  # dispersion (and so the model choice) must not depend on.
+  w_mean <- if (!is.null(weights) && !freq_w) mean(d[[weights]]) else 1
+  dispersion <- .count_dispersion(pois, n_obs, w_mean)
+  # How far weights used as given inflate the model-based tests, from the
+  # sandwich covariance (.weight_inflation()): it depends on where the heavy
+  # rows fall, not only on the weights, and scales with the dispersion.
+  wi_at <- if (!is.null(weights) && !freq_w) {
+    function(phi) .weight_inflation(pois, phi, type)
+  } else NULL
+  w_infl <- 1
+  if (!is.null(wi_at)) {
+    wi1 <- wi_at(1)
+    if (is.null(wi1)) wi_at <- NULL else w_infl <- max(wi1$factor)
+  }
+  notes <- c(notes, .weight_scale_note(d, weights))
+  if (!isTRUE(all.equal(w_mean, 1))) {
+    notes <- c(notes, sprintf(
+      "The Pearson dispersion in $dispersion and $model_dispersion is computed with the weights in `%s` rescaled to average 1, so the choice of model does not depend on their scale.",
+      weights))
+  }
 
+  # What a dispersion above 1 does to a kept Poisson fit depends on what the
+  # results rest on: with a robust covariance (when it can be used: see
+  # .robust_vcov(), which decides that from the fitted values alone, so the
+  # Poisson fit answers for the model kept) only an omnibus likelihood-ratio
+  # test assumes a dispersion of 1.
+  robust_pois <- !identical(vcov_type, "model") &&
+    !is.null(.robust_vcov(pois, vcov_type, freq_weights = freq_w)$matrix)
   chosen <- .choose_count_model(model, dispersion, overdispersion_threshold,
                                 df = if (freq_w) n_obs - pois$rank else
-                                  stats::df.residual(pois))
+                                  stats::df.residual(pois),
+                                term_df = .largest_term_df(pois),
+                                robust = if (robust_pois) vcov_type,
+                                test_statistic = test_statistic,
+                                w_mean = w_infl, wi_at = wi_at)
   notes <- c(notes, chosen$notes)
   if (freq_w) {
     notes <- c(notes, sprintf(
@@ -288,15 +384,40 @@ anova_count <- function(data, response, groups,
       function() .fit_glm(fml, d, NULL, weights),
       type = type))
     nb <- nbg$value
+    # Counts no more variable than Poisson put the negative binomial's
+    # maximum at theta = Inf. glm.nb() usually stops theta at its iteration
+    # limit there, but where long double is no wider than double (ARM macOS)
+    # theta.ml() can return NaN and glm.nb() fails. That is the Poisson limit,
+    # not a failed model: it is fitted at a theta of 1e8 (within mu / 1e8 of
+    # Poisson) and reported as theta at its limit, as glm.nb() would.
+    if (inherits(nb, "error") && isTRUE(dispersion <= 1) &&
+        isTRUE(stats::df.residual(pois) >= 1)) {
+      lim <- .collect_conditions(.fit_with_contrasts(
+        function() .fit_glm(fml, d, MASS::negative.binomial(1e8), weights),
+        type = type))
+      if (!inherits(lim$value, "error")) {
+        nb <- lim$value
+        nb$theta <- 1e8
+        nb$SE.theta <- NA_real_
+        nb$twologlik <- 2 * as.numeric(stats::logLik(nb))
+        nb$th.warn <- "iteration limit reached"
+        class(nb) <- c("negbin", class(nb))
+        nbg$said <- character(0)
+      }
+    }
     if (inherits(nb, "error")) {
       if (model == "negbin") {
         # Asked for by name: substituting another model would contradict the
         # request, so say what failed instead.
         .stopf("The negative binomial model could not be fitted: %s%s. Use model = \"poisson\" or model = \"quasipoisson\" instead.",
                conditionMessage(nb),
-               if (!isTRUE(stats::df.residual(pois) >= 1))
-                 " (theta cannot be estimated when the model has no residual degrees of freedom)"
-               else "")
+               if (!isTRUE(stats::df.residual(pois) >= 1)) {
+                 if (freq_w) {
+                   " (glm.nb() counts residual degrees of freedom in rows, and there are none, although the frequency weights represent more observations; expanding the data to one row per observation would let theta be estimated)"
+                 } else {
+                   " (theta cannot be estimated when the model has no residual degrees of freedom)"
+                 }
+               } else "")
       }
       notes <- c(notes, sprintf(
         "The negative binomial fit failed (%s); a quasi-Poisson model was used instead.",
@@ -347,29 +468,91 @@ anova_count <- function(data, response, groups,
     test_statistic <- "F"
     notes <- c(notes, "A quasi-Poisson model has no likelihood, so the analysis of deviance uses an F test rather than a likelihood ratio test.")
   }
+  # An estimated dispersion of an exact fit is rounding error, and so is
+  # every F statistic divided by it (a constant count gives F = 1e12). The
+  # degrees of freedom are those of the tests (`fit`, in observations under
+  # frequency weights): one row per group, saturated in rows, stands for a
+  # count constant within every group, which the expanded data fit exactly.
+  if ((model_type == "quasipoisson" || test_statistic == "F") &&
+      isTRUE(stats::df.residual(fit) >= 1)) {
+    exact <- .glm_exact_fit_message(row_fit, response)
+    if (!is.null(exact)) .stopf("%s", exact)
+  }
   notes <- c(notes, .check_model_size(fit))
   tt <- .type_for_model(fit, type)
   type <- tt$type
   notes <- c(notes, tt$note)
-  sep_note <- .check_separation(fit)
+  sep_note <- .check_separation(fit, test_statistic)
   notes <- c(notes, sep_note)
 
   ## Analysis of deviance -----------------------------------------------------
   rv <- .robust_vcov(fit, vcov_type, freq_weights = freq_w)
   notes <- c(notes, rv$note)
   robust_wald <- !is.null(rv$matrix) && identical(test_statistic, "Wald")
-  av <- .car_anova(row_fit, type = type, test_statistic = test_statistic,
+  # car's likelihood-ratio and F tests refit the model with theta fixed and
+  # compare deviances. Once glm.nb() has driven theta past about 1e6 the
+  # negative binomial deviance (a difference of terms of order theta) loses
+  # its digits -- at theta = 1e28 a clear group difference gets a statistic
+  # of 1e-13 -- while the model is the Poisson one to within mu / theta. The
+  # tests are then those of the Poisson fit, the limit they converge to.
+  nb_limit <- model_type == "negbin" && test_statistic %in% c("LR", "F") &&
+    (!is.finite(fit$theta) || fit$theta > 1e6)
+  av <- .car_anova(if (nb_limit) pois else row_fit, type = type,
+                   test_statistic = test_statistic,
                    vcov_matrix = if (robust_wald) rv$matrix else NULL)
+  av <- .deviance_precision(av, if (nb_limit) pois else row_fit,
+                            model_type == "quasipoisson",
+                            k = if (freq_w && !robust_wald &&
+                                    (model_type == "quasipoisson" || test_statistic == "F") &&
+                                    isTRUE(stats::df.residual(row_fit) >= 1)) {
+                              stats::df.residual(fit) / stats::df.residual(row_fit)
+                            } else 1)
+  if (nb_limit) {
+    notes <- c(notes, sprintf(
+      "Theta is so large (%.3g) that the negative binomial deviance cannot be computed accurately, so the analysis of deviance is that of the Poisson fit, which is the limit of the negative binomial as theta grows and agrees with it to within about mu / theta.",
+      fit$theta))
+  }
   if (freq_w && !robust_wald) {
     av <- .freq_weight_anova(av, stats::df.residual(row_fit), stats::df.residual(fit),
                              model_type == "quasipoisson" || test_statistic == "F")
   }
   notes <- c(notes, av$note)
-  if (!is.null(rv$matrix) && !is.null(av$table)) {
-    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+  # An F test on a Poisson or negative binomial fit gets its own note below,
+  # which also says which covariance it uses.
+  f_note <- test_statistic == "F" && model_type != "quasipoisson"
+  if (!is.null(rv$matrix) && !is.null(av$table) && !f_note) {
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald,
+                                         table = "$effect_sizes"))
   }
-  if (test_statistic == "F" && model_type != "quasipoisson") {
-    notes <- c(notes, .f_test_note(model_type, .dispersion(fit)))
+  if (f_note) {
+    notes <- c(notes, .f_test_note(model_type, .dispersion(fit),
+                                   robust = if (!is.null(rv$matrix)) vcov_type))
+  }
+  # Unequal weights that are not frequencies also inflate the tests of a
+  # negative binomial fit, and of any F test (a quasi-Poisson one included):
+  # an F test divides by the Pearson dispersion of the weighted fit, which
+  # absorbs the average inflation but not the unevenness. The kept Poisson
+  # model's likelihood-ratio and Wald tests get this from
+  # .choose_count_model() above.
+  robust_omnibus <- !is.null(rv$matrix) && test_statistic == "Wald"
+  if (!is.null(wi_at) && !robust_omnibus &&
+      (model_type != "poisson" || test_statistic == "F")) {
+    phi_x <- if (model_type == "negbin") 1 else dispersion
+    if (test_statistic == "F" || model_type == "quasipoisson") {
+      phi_x <- phi_x / .dispersion(fit)
+    }
+    wi_x <- if (is.finite(phi_x) && phi_x > 0) .weight_inflation(fit, phi_x, type) else NULL
+    if (!is.null(wi_x) && isTRUE(max(wi_x$size) >= 0.075)) {
+      wt <- .weight_inflation_text(wi_x)
+      notes <- c(notes, sprintf(
+        "The weights in `%s` are unequal, so the %s tests are inflated %s: %s.%s",
+        weights,
+        switch(model_type, negbin = "negative binomial", quasipoisson = "quasi-Poisson",
+               "Poisson F"),
+        wt$by, wt$size,
+        if (test_statistic == "F" || model_type == "quasipoisson")
+          " The F test's estimated dispersion removes the average inflation, not that of unequal weights." else ""))
+    }
   }
   if (freq_w && (model_type == "quasipoisson" || test_statistic == "F")) {
     notes <- c(notes, sprintf(
@@ -391,6 +574,12 @@ anova_count <- function(data, response, groups,
   if (!posthoc) {
     notes <- c(notes, "$effect_sizes still reports the incidence rate ratios from the model.")
   }
+  if (posthoc && NROW(emm$table) == 2L && !isTRUE(emm$per_factor) &&
+      !is.null(emm$posthoc)) {
+    notes <- c(notes, .two_cell_note(fit, av$table, test_statistic,
+                                     robust = !is.null(rv$matrix),
+                                     vcov_type = vcov_type))
+  }
   if (!is.null(emm$posthoc) && "ratio" %in% names(emm$posthoc)) {
     names(emm$posthoc)[names(emm$posthoc) == "ratio"] <- "IRR"
   }
@@ -399,16 +588,23 @@ anova_count <- function(data, response, groups,
   irr <- .irr_table(fit, groups, rv$matrix, conf_level,
                     separated = length(sep_note) > 0L)
   notes <- c(notes, irr$note)
+  if (isTRUE(irr$bracketed) && !uc$bracketed) {
+    notes <- c(notes, .bracketed_terms_note(irr$table$term))
+  }
 
   ## Plots --------------------------------------------------------------------
+  # The observed counts need no marginal means, so only the emmeans plot
+  # depends on them, as in the other anova_* functions.
   plot_list <- list()
-  if (plots && !is.null(emm$table)) {
+  if (plots) {
     .say(verbose, "Building plots.")
-    plot_list$emmeans <- .plot_emmeans(
-      emm$table, groups, estimate = "estimate",
-      lower = "conf_low", upper = "conf_high", conf_level = conf_level,
-      title = sprintf("Estimated %s rate by group", response),
-      ylab = sprintf("Estimated %s", response))
+    if (!is.null(emm$table)) {
+      plot_list$emmeans <- .plot_emmeans(
+        emm$table, groups, estimate = "estimate",
+        lower = "conf_low", upper = "conf_high", conf_level = conf_level,
+        title = sprintf("Estimated %s rate by group", response),
+        ylab = sprintf("Estimated %s", response))
+    }
     added <- .add_cell(d, groups)
     obs <- added$data
     # With an exposure the comparable quantity is the rate, not the count: a
@@ -434,14 +630,29 @@ anova_count <- function(data, response, groups,
       p_obs <- p_obs + ggplot2::labs(y = sprintf("%s / %s", response, offset))
     }
     plot_list$observed <- p_obs
-  } else if (plots) {
-    notes <- c(notes, "Plots were skipped because the estimated marginal means could not be computed.")
+    if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
 
-  model_dispersion <- .count_dispersion(fit, n_obs)
+  # A saturated fit that estimates a dispersion has none to estimate: its
+  # tests are NA, not car's 0 or NaN (see .saturated_na()).
+  if ((model_type == "quasipoisson" || test_statistic == "F") &&
+      isTRUE(stats::df.residual(fit) < 1)) {
+    sat <- .saturated_na(list(anova = av$table, effect_sizes = irr$table,
+                              emmeans = emm$table, posthoc = emm$posthoc,
+                              notes = notes))
+    av$table <- sat$anova
+    irr$table <- sat$effect_sizes
+    emm$table <- sat$emmeans
+    emm$posthoc <- sat$posthoc
+    notes <- sat$notes
+  }
+  model_dispersion <- .count_dispersion(fit, n_obs, w_mean)
   .new_fit(
-    method       = sprintf("Analysis of deviance for a count response (%s regression)",
-                           model_type),
+    method       = sprintf(
+      "Analysis of deviance for a count response (%s regression, Type %s%s)",
+      model_type, type,
+      if (test_statistic == "F" && model_type != "quasipoisson")
+        ", quasi-likelihood F test" else ""),
     call         = cl,
     model        = fit,
     anova        = av$table,
@@ -497,6 +708,35 @@ anova_count <- function(data, response, groups,
   invisible(TRUE)
 }
 
+#' Refuse a rate that is the same in every row, where the model cannot be fitted
+#'
+#' A count (or, with an exposure, a rate count / exposure) that is the same in
+#' every row has no variation to compare. A Poisson fit is still well defined
+#' -- it fits every row exactly, and its likelihood-ratio statistic is 0 with
+#' p = 1, as \code{anova_glm(family = "poisson")} reports -- but a negative
+#' binomial theta cannot be estimated (glm.nb() fails with a base-R error),
+#' and a quasi-Poisson dispersion of zero makes identical groups look
+#' infinitely significant. The models that need a dispersion are refused.
+#' @param model the model requested; \code{"auto"} keeps the Poisson fit here,
+#'   since its dispersion is 0.
+#' @noRd
+.check_constant_rate <- function(d, response, offset, model) {
+  if (!model %in% c("negbin", "quasipoisson")) return(invisible(TRUE))
+  y <- as.numeric(d[[response]])
+  r <- if (is.null(offset)) y else y / as.numeric(d[[offset]])
+  if (length(r) == 0L || any(!is.finite(r))) return(invisible(TRUE))
+  # Equal to within a few hundred units in the last place (1e-13 of their
+  # size), as .constant_within_cells() reads it: whole-number counts of 1e12
+  # that differ by 5 are not the same value.
+  if (all(abs(r - r[1L]) <= 1e-13 * max(abs(r)))) {
+    .stopf("%s takes the same value (%s) in every one of its %d rows, so there is no variation to model: model = \"%s\" needs a dispersion, which cannot be estimated. model = \"poisson\" fits such data exactly (likelihood-ratio statistic 0, p = 1).",
+           if (is.null(offset)) sprintf("Response `%s`", response) else
+             sprintf("The rate `%s` / `%s`", response, offset),
+           format(signif(r[1L], 6)), length(r), model)
+  }
+  invisible(TRUE)
+}
+
 #' Are the prior weights frequencies?
 #'
 #' Whole-number weights of which some exceed 1 are read as a frequency table:
@@ -516,12 +756,20 @@ anova_count <- function(data, response, groups,
 #' the expanded data, but \code{df.residual()} counts rows. Dividing by rows
 #' inflates the statistic by (observations - p) / (rows - p), which can switch
 #' Poisson data to a negative binomial model.
+#'
+#' Weights that are not frequencies have an arbitrary scale, and the Pearson
+#' sum of squares is proportional to it while the residual degrees of freedom
+#' are not: weights averaging 100 would make Poisson data look a hundred times
+#' overdispersed. Dividing by their mean puts the statistic on weights that
+#' average 1, which is (to within the number of parameters) what the
+#' frequency-weight denominator, the sum of the weights minus p, gives.
 #' @param fit a fitted count GLM.
 #' @param n_obs the number of observations the weights represent, or
 #'   \code{NULL} when the weights are not frequencies.
+#' @param w_mean the mean of weights that are not frequencies (1 otherwise).
 #' @noRd
-.count_dispersion <- function(fit, n_obs = NULL) {
-  if (is.null(n_obs)) return(.dispersion(fit))
+.count_dispersion <- function(fit, n_obs = NULL, w_mean = 1) {
+  if (is.null(n_obs)) return(.dispersion(fit) / w_mean)
   dfr <- n_obs - fit$rank
   if (!is.finite(dfr) || dfr <= 0) return(NA_real_)
   sum(stats::residuals(fit, type = "pearson")^2, na.rm = TRUE) / dfr
@@ -531,23 +779,207 @@ anova_count <- function(data, response, groups,
 #'
 #' Under a true dispersion phi a Poisson likelihood-ratio or Wald statistic is
 #' about phi times its nominal chi-square, so the size of a nominal 5\% test
-#' on 1 degree of freedom is P(chisq_1 > qchisq(0.95, 1) / phi).
+#' on k degrees of freedom is P(chisq_k > qchisq(0.95, k) / phi): about 11\%
+#' on 1 and 13\% on 2 at phi = 1.46.
+#'
+#' With a robust covariance (\code{robust}, its HC type) the coefficient
+#' table, the marginal means and the comparisons do not assume a dispersion
+#' of 1, and only an omnibus likelihood-ratio test does.
+#'
+#' \code{hedged} is for a dispersion the Pearson test cannot tell from 1.
+#' With few residual degrees of freedom that test has little power: at 10
+#' observations in each of 3 groups and a true dispersion of 1.4 it rejects in
+#' only about a third of samples (simulation, means 2 to 20), while the Poisson
+#' tests reject about 10\% of true null hypotheses. \code{phi} is then the
+#' upper 95\% confidence bound of the dispersion, and the note says what a
+#' dispersion that large, which the data cannot rule out, would cost.
+#'
+#' \code{phi} is the dispersion with weights that are not frequencies
+#' rescaled to average 1 (\code{.count_dispersion()}), which chooses the
+#' model. The tests, standard errors and intervals use the weights as given,
+#' so they are inflated by \code{phi * w_mean}, where \code{w_mean} is
+#' sum(w^2) / sum(w) (the weight itself, when all weights are equal): with
+#' weights averaging 2.5 on Poisson data a nominal 5\% test on 5 degrees of
+#' freedom rejects about half of true nulls (simulation). The note says so and
+#' gives the sizes at that factor.
+#' @param term_df the largest number of degrees of freedom of a model term.
+#' @param df the residual degrees of freedom of the Pearson statistic.
+#' @param w_mean sum(w^2) / sum(w) for weights that are not frequencies (1
+#'   otherwise): the factor by which they inflate the tests.
 #' @noRd
-.inflation_note <- function(phi, p_over = NA_real_) {
-  size <- stats::pchisq(stats::qchisq(0.95, 1) / phi, 1, lower.tail = FALSE)
-  sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated by about that factor and its standard errors are about %.2f times too small, so its intervals are too narrow and a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
-          phi,
-          if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else "",
-          sqrt(phi), 100 * size)
+.inflation_note <- function(phi, p_over = NA_real_, term_df = 1L, robust = NULL,
+                            test_statistic = "LR", hedged = FALSE,
+                            df = NA_real_, w_mean = 1, wi_at = NULL) {
+  # With a robust covariance in every test there is nothing to caveat.
+  if (hedged && !is.null(robust) && test_statistic %in% c("Wald", "F")) {
+    return(character(0))
+  }
+  wi <- if (!is.null(wi_at)) wi_at(phi) else NULL
+  phi_t <- if (!is.null(wi)) max(wi$factor) else phi
+  if (!is.null(wi) && max(wi$size) < 0.05) {
+    return(sprintf(
+      "With the weights as given, which the tests and standard errors use, and %s, the tests are not anti-conservative on that account (a nominal 5%% test rejects at most %.0f%% of true null hypotheses, from the sandwich covariance; this assumes the weights are not inverse variances).",
+      sprintf(if (hedged) "the upper 95%% confidence bound of the dispersion (%.2f)" else
+        "the dispersion (%.2f)", phi), 100 * max(wi$size)))
+  }
+  wt <- if (!is.null(wi)) .weight_inflation_text(wi) else NULL
+  by <- if (!is.null(wt)) wt$by else "by about that factor"
+  size_text <- if (!is.null(wt)) wt$size else .inflated_size_text(phi_t, term_df)
+  ptxt <- if (is.finite(p_over)) sprintf(" (Pearson test of overdispersion: %s)", .fmt_p(p_over)) else ""
+  if (hedged) {
+    size_text <- sub("rejects roughly", "would reject roughly", size_text, fixed = TRUE)
+    # "Little power" only when the Pearson test would usually miss a
+    # dispersion large enough to matter: the one at which a nominal 5% test on
+    # the largest term rejects 7.5% (with the weights as given). With many
+    # residual degrees of freedom it would not, and the note says only what
+    # the upper bound would cost.
+    phi_c <- .count_phi_mattering(term_df, w_mean)
+    pw <- if (is.finite(df) && df > 0 && is.finite(phi_c) && phi_c > 1)
+      stats::pchisq(stats::qchisq(0.95, df) / phi_c, df, lower.tail = FALSE) else NA_real_
+    lead <- if (isTRUE(pw < 0.5)) {
+      sprintf("The Pearson test of overdispersion (%s) cannot tell the dispersion from 1, but with %s residual degrees of freedom it has little power: the data are consistent with a dispersion of up to %.2f (its upper 95%% confidence bound), and at that dispersion ",
+              .fmt_p(p_over), format(round(df)), phi)
+    } else {
+      sprintf("The Pearson test of overdispersion (%s) cannot tell the dispersion from 1, but the data are consistent with a dispersion of up to %.2f (its upper 95%% confidence bound), and at that dispersion ",
+              .fmt_p(p_over), phi)
+    }
+    return(paste0(
+      lead,
+      if (is.null(robust)) {
+        sprintf("the Poisson likelihood-ratio and Wald statistics would be inflated %s and the standard errors would be %s too small: %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
+                by, if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else
+                  "correspondingly", size_text)
+      } else {
+        sprintf("the omnibus likelihood-ratio test would be inflated %s: %s. The robust (%s) standard errors, intervals and comparisons do not assume a dispersion of 1.",
+                by, size_text, robust)
+      }))
+  }
+  if (!is.null(robust)) {
+    return(sprintf("A Poisson model assumes a dispersion of 1, and this one is %.2f%s. %s",
+                   phi, ptxt,
+                   sub("inflated by about that factor", paste("inflated", by),
+                       .robust_overdispersion_text(test_statistic, robust, size_text,
+                                                   "model = \"quasipoisson\"",
+                                                   table = "$effect_sizes"),
+                       fixed = TRUE)))
+  }
+  sprintf("A Poisson model assumes a dispersion of 1; at %.2f%s its likelihood-ratio and Wald statistics are inflated %s and its standard errors are %s too small, so its intervals are too narrow and %s. Use model = \"quasipoisson\" or \"negbin\" when that matters.",
+          phi, ptxt, by, if (is.null(wt)) sprintf("about %.2f times", sqrt(phi_t)) else
+            "correspondingly", size_text)
+}
+
+#' The dispersion at which kept Poisson tests start to matter
+#'
+#' The dispersion phi at which a nominal 5\% test on \code{term_df} degrees
+#' of freedom, with its statistic inflated by \code{phi * w_mean}, rejects
+#' 7.5\% of true null hypotheses (1.5 times nominal): the threshold that
+#' \code{.choose_count_model()} uses for its notes.
+#' @noRd
+.count_phi_mattering <- function(term_df = 1L, w_mean = 1) {
+  k <- max(1L, as.integer(term_df))
+  stats::qchisq(0.95, k) / stats::qchisq(0.925, k) / w_mean
+}
+
+#' The size of nominal 5\% tests at dispersion phi, as a clause
+#'
+#' Under a true dispersion phi a statistic of a fixed-dispersion family is
+#' about phi times its nominal chi-square, so a nominal 5\% test on k degrees
+#' of freedom rejects P(chisq_k > qchisq(0.95, k) / phi) of true nulls. Given
+#' for 1 degree of freedom and, when larger, for the largest term's. Shared by
+#' \code{anova_count()} and \code{anova_glm()}, so they describe one fit alike.
+#' @noRd
+.inflated_size_text <- function(phi, term_df = 1L) {
+  size <- function(k) stats::pchisq(stats::qchisq(0.95, k) / phi, k,
+                                    lower.tail = FALSE)
+  sprintf(
+    "a nominal 5%% test on 1 degree of freedom rejects roughly %.0f%% of true null hypotheses%s",
+    100 * size(1),
+    if (isTRUE(term_df > 1)) sprintf(", and one on %d (the largest term here) roughly %.0f%%",
+                                     as.integer(term_df), 100 * size(term_df)) else "")
+}
+
+#' The largest number of degrees of freedom of any term of a fitted model
+#' @noRd
+.largest_term_df <- function(fit) {
+  asg <- attr(stats::model.matrix(fit), "assign")
+  asg <- asg[!is.na(stats::coef(fit)) & asg > 0L]
+  if (length(asg) == 0L) 1L else max(tabulate(asg))
+}
+
+#' How much a negative binomial likelihood gains over the Poisson limit
+#'
+#' The largest log-likelihood over theta of a negative binomial with the means
+#' held at \code{mu}, minus the Poisson log-likelihood at the same means (the
+#' limit as theta grows). Holding the means fixed makes it a lower bound on
+#' the gain of the full fit.
+#' @noRd
+.nb_gain_over_poisson <- function(y, mu, w) {
+  ok <- w > 0 & is.finite(mu) & mu > 0
+  y <- y[ok]; mu <- mu[ok]; w <- w[ok]
+  if (length(y) == 0L) return(0)
+  ll0 <- sum(w * stats::dpois(y, mu, log = TRUE))
+  ll <- function(lt) sum(w * stats::dnbinom(y, size = exp(lt), mu = mu, log = TRUE))
+  best <- tryCatch(stats::optimize(ll, c(log(1e-4), log(1e8)), maximum = TRUE)$objective,
+                   error = function(e) NA_real_)
+  if (!is.finite(best)) return(0)
+  max(best - ll0, 0)
 }
 
 #' Decide which count model to fit
+#' @param term_df,robust,test_statistic,w_mean passed to .inflation_note().
+#'   The model is chosen on \code{dispersion} (weights rescaled to average 1);
+#'   what the kept Poisson tests cost is judged at \code{dispersion * w_mean},
+#'   since they use the weights as given.
 #' @noRd
-.choose_count_model <- function(model, dispersion, threshold, df = NA_real_) {
-  # A dispersion a little above 1 arises by chance half the time; only one the
-  # Pearson test cannot put down to chance is worth a note.
+.choose_count_model <- function(model, dispersion, threshold, df = NA_real_,
+                                term_df = 1L, robust = NULL,
+                                test_statistic = "LR", w_mean = 1,
+                                wi_at = NULL) {
+  # A dispersion a little above 1 arises by chance half the time; one the
+  # Pearson test cannot put down to chance gets the full note. Otherwise the
+  # Pearson test, with few residual degrees of freedom, often passes a real
+  # dispersion (a third of the time at 1.4 with 27 of them), and the kept
+  # Poisson tests are then anti-conservative whatever the sample dispersion
+  # happened to be: selecting on it does not make them less so. The upper 95%
+  # confidence bound of the dispersion, X^2 / qchisq(0.05, df), says how large
+  # a dispersion the data cannot rule out; when a nominal 5% test on the
+  # largest term would reject 7.5% or more (1.5 times nominal) at that bound,
+  # the note says what it would cost. With many degrees of freedom the bound
+  # is close to the estimate and the note fades.
   p_over <- .overdispersion_p(dispersion, df)
   beyond_chance <- is.finite(p_over) && p_over < 0.05
+  phi_hi <- if (is.finite(dispersion) && is.finite(df) && df > 0)
+    dispersion * df / stats::qchisq(0.05, df) else NA_real_
+  k <- max(1L, as.integer(term_df))
+  # The size of the worst-affected kept test at dispersion phi: from the
+  # sandwich covariance when weights that are not frequencies are used as
+  # given (.weight_inflation()), otherwise at phi on the largest term.
+  size_at <- function(phi) {
+    if (!is.finite(phi) || phi <= 0) return(NA_real_)
+    if (!is.null(wi_at)) {
+      wi <- wi_at(phi)
+      return(if (is.null(wi)) NA_real_ else max(wi$size))
+    }
+    stats::pchisq(stats::qchisq(0.95, k) / (phi * w_mean), k, lower.tail = FALSE)
+  }
+  size_hi <- size_at(phi_hi)
+  # Weights that are not frequencies and average more than 1 inflate the
+  # kept tests by dispersion * w_mean. When the weights alone do it -- a
+  # nominal 5% test rejects 7.5% or more even at a dispersion of 1 (or at the
+  # estimate, if smaller) -- the inflation is not a possibility the data
+  # cannot rule out but the state of the reported tests, however many
+  # residual degrees of freedom there are, and the plain note says so at the
+  # estimate.
+  scaled <- !is.null(wi_at) || !isTRUE(all.equal(w_mean, 1))
+  size_est <- size_at(min(dispersion, 1))
+  weight_inflated <- scaled && isTRUE(size_est >= 0.075)
+  mild <- is.finite(p_over) && !beyond_chance && is.finite(size_hi) &&
+    size_hi >= 0.075 && !weight_inflated
+  infl <- function(hedged = FALSE)
+    .inflation_note(if (hedged) phi_hi else dispersion, p_over,
+                    term_df = term_df, robust = robust,
+                    test_statistic = test_statistic, hedged = hedged, df = df,
+                    w_mean = w_mean, wi_at = wi_at)
   if (model == "negbin" && !requireNamespace("MASS", quietly = TRUE)) {
     .stopf("model = \"negbin\" requires the {MASS} package. Install it, or use model = \"quasipoisson\".")
   }
@@ -560,9 +992,11 @@ anova_count <- function(data, response, groups,
     # Poisson family belongs here too.
     notes <- if (finite && dispersion > threshold) {
       sprintf("Pearson dispersion is %.2f, above the threshold of %.2f: the counts are overdispersed relative to Poisson. model = \"poisson\" was requested, so the Poisson model was kept. %s",
-              dispersion, threshold, .inflation_note(dispersion, p_over))
-    } else if (finite && dispersion > 1 && beyond_chance) {
-      sprintf("Pearson dispersion is %.2f. %s", dispersion, .inflation_note(dispersion, p_over))
+              dispersion, threshold, infl())
+    } else if (finite && ((dispersion > 1 && beyond_chance) || weight_inflated)) {
+      sprintf("Pearson dispersion is %.2f. %s", dispersion, infl())
+    } else if (mild) {
+      sprintf("Pearson dispersion is %.2f. %s", dispersion, infl(hedged = TRUE))
     } else character(0)
     return(list(model = "poisson", notes = notes))
   }
@@ -574,8 +1008,10 @@ anova_count <- function(data, response, groups,
     note <- sprintf(
       "Pearson dispersion is %.2f, at or below the threshold of %.2f, so a Poisson model was kept.",
       dispersion, threshold)
-    if (dispersion > 1 && beyond_chance) {
-      note <- paste(note, .inflation_note(dispersion, p_over))
+    if ((dispersion > 1 && beyond_chance) || weight_inflated) {
+      note <- paste(note, infl())
+    } else if (mild) {
+      note <- paste(c(note, infl(hedged = TRUE)), collapse = " ")
     }
     return(list(model = "poisson", notes = note))
   }
@@ -594,14 +1030,23 @@ anova_count <- function(data, response, groups,
 #' car::Anova() computes its F test for any glm with the Pearson dispersion
 #' estimated from the residuals, which turns a Poisson or negative binomial
 #' analysis of deviance into a quasi-likelihood test, while the coefficient
-#' table and the emmeans comparisons keep the dispersion at 1.
+#' table and the emmeans comparisons keep the dispersion at 1 -- unless they
+#' use a robust covariance, which assumes no dispersion at all. The F test
+#' itself never uses the robust covariance; with one in use this note says so
+#' in place of \code{.omnibus_vcov_note()}.
+#' @param robust the HC type of the robust covariance in use, or \code{NULL}.
 #' @noRd
-.f_test_note <- function(model_type, dispersion) {
+.f_test_note <- function(model_type, dispersion, robust = NULL) {
   what <- if (model_type == "negbin") "negative binomial" else "Poisson"
   disp <- if (is.finite(dispersion)) sprintf("%.2f", dispersion) else
     "which cannot be estimated here, as there are no residual degrees of freedom"
-  sprintf("test_statistic = \"F\" was requested for a %s model, so car::Anova() estimated a dispersion from the Pearson residuals (%s) and divided the deviance by it: the analysis of deviance is a quasi-likelihood F test. $effect_sizes and $posthoc still assume a dispersion of 1, so they can disagree with it. Use model = \"quasipoisson\" for quasi-likelihood inference throughout.",
-          what, disp)
+  sprintf("test_statistic = \"F\" was requested for a %s model, so car::Anova() estimated a dispersion from the Pearson residuals (%s) and divided the deviance by it: the analysis of deviance is a quasi-likelihood F test. %s",
+          what, disp,
+          if (is.null(robust)) {
+            "$effect_sizes and $posthoc still assume a dispersion of 1, so they can disagree with it. Use model = \"quasipoisson\" for quasi-likelihood inference throughout."
+          } else {
+            sprintf("It uses the model's variance function scaled by that dispersion, not the robust (%s) covariance, which $effect_sizes, $emmeans and $posthoc use and which does not assume a dispersion of 1 either. For an omnibus test that uses the robust covariance, set test_statistic = \"Wald\".", robust)
+          })
 }
 
 #' Note sparse or empty cells
@@ -611,32 +1056,15 @@ anova_count <- function(data, response, groups,
 #' rows holding two events do not. Sparse cells are therefore judged on the
 #' events they hold (weighted by frequency weights when there are some).
 #'
-#' Whether an empty combination of levels is estimable depends on the model:
-#' the full factorial cannot estimate it, an additive model extrapolates it
-#' from the main effects.
+#' Empty combinations of levels are not noted here: the notes every
+#' model-based function shares name them once, with what they mean under the
+#' model fitted (\code{.check_model_size()} for the aliased coefficients,
+#' \code{.emm_block()} for the marginal means).
 #' @noRd
 .sparse_cell_note <- function(d, groups, response, interaction = FALSE,
                               weights = NULL) {
-  levs <- lapply(groups, function(g) levels(droplevels(as.factor(d[[g]]))))
-  n_possible <- prod(lengths(levs))
   cell <- .cell_vector(d, groups)
-  n_observed <- nlevels(cell)
   notes <- character(0)
-  empty <- n_possible - n_observed
-  if (empty > 0L) {
-    full <- isTRUE(interaction) ||
-      (is.numeric(interaction) && interaction >= length(groups))
-    notes <- c(notes, sprintf(
-      "%d of the %d possible group combination(s) contain no observations; %s",
-      empty, n_possible,
-      if (.is_additive(interaction)) {
-        "the additive model still estimates them from the main effects, so marginal means that average over them rely on there being no interaction."
-      } else if (full) {
-        "contrasts involving them are not estimable."
-      } else {
-        "they are estimable only where the lower-order terms determine them (see the notes on the marginal means)."
-      }))
-  }
   w <- if (is.null(weights)) 1 else d[[weights]]
   events <- tapply(w * d[[response]], cell, sum)
   small <- sum(events < 5)
@@ -673,7 +1101,16 @@ anova_count <- function(data, response, groups,
 #'
 #' A theta in the hundreds or thousands is not an estimate of overdispersion, it
 #' is the fit telling you there is none: the negative binomial has collapsed
-#' towards the Poisson it generalises. A small theta is strong overdispersion
+#' towards the Poisson it generalises. That is checked before non-convergence:
+#' on data that are not overdispersed glm.nb() usually gets there by stopping
+#' theta at its iteration limit (setting \code{th.warn}) with the regression
+#' converged, and its coefficients are then those of the Poisson fit, which is
+#' the maximum likelihood at the theta = Inf boundary; calling that fit
+#' unreliable would be false. But glm.nb() can also stop a runaway theta at
+#' its limit on sparse, overdispersed data, so a theta stopped there counts as
+#' a collapse only when the likelihood does not rise away from the Poisson
+#' boundary (see the score below); otherwise the fit is reported as not
+#' converged. A small theta is strong overdispersion
 #' (variance mu + mu^2 / theta) and is imprecise in small samples for that very
 #' reason, so an imprecise theta is not evidence of weak overdispersion.
 #'
@@ -687,6 +1124,45 @@ anova_count <- function(data, response, groups,
 #' @noRd
 .theta_note <- function(nb, n_min = NA_real_) {
   th <- nb$theta; se <- nb$SE.theta
+  # On data that are not overdispersed the likelihood rises all the way to the
+  # Poisson boundary (theta = Inf), so glm.nb() usually stops theta at its
+  # iteration limit (and sets th.warn) while the regression itself has
+  # converged: the fit is then the Poisson fit, not an unreliable one.
+  # That reading is only right when the Poisson limit really is the maximum.
+  # glm.nb() can also run theta away on sparse, overdispersed data, where the
+  # likelihood is far higher at a small theta. That only matters when theta
+  # stopped at a limit (th.warn): a theta that converged, however large, is a
+  # stationary point of the likelihood. The fit then counts as a runaway only
+  # when moving away from the boundary gains materially -- the boundary
+  # likelihood-ratio test of the negative binomial against the Poisson limit
+  # rejects at 5%, with the means held at their fit (a lower bound on the
+  # gain) -- and the counts are overdispersed (Pearson dispersion above 1). A
+  # positive score alone is not enough: on near-Poisson data it can be
+  # positive while the likelihood gains 1e-5.
+  large <- !is.finite(th) || th > 1000
+  away <- FALSE
+  if (large && !is.null(nb$th.warn)) {
+    mu <- stats::fitted(nb)
+    w <- if (is.null(nb$prior.weights)) rep(1, length(mu)) else nb$prior.weights
+    y <- nb$y
+    gain <- .nb_gain_over_poisson(y, mu, w)
+    pearson <- sum(w * (y - mu)^2 / mu) / max(stats::df.residual(nb), 1)
+    p_lr <- 0.5 * stats::pchisq(2 * gain, 1, lower.tail = FALSE)
+    away <- is.finite(p_lr) && p_lr < 0.05 && is.finite(pearson) && pearson > 1
+  }
+  collapsed <- isTRUE(nb$converged) && large && !away
+  if (away) {
+    return(sprintf(
+      "The negative binomial fit did not converge: MASS::glm.nb() drove theta to %.3g, the Poisson limit, but the likelihood there is not at its maximum -- it rises towards smaller theta (likelihood-ratio test of the negative binomial against the Poisson limit: %s), because the counts are overdispersed (Pearson dispersion %.2f). Treat the model as unreliable, and do not read the large theta as evidence against overdispersion; compare it with model = \"quasipoisson\".",
+      th, .fmt_p(p_lr), pearson))
+  }
+  if (collapsed) {
+    return(sprintf(
+      "The negative binomial dispersion parameter is very large (theta = %.3g%s), which means the data are not meaningfully overdispersed relative to Poisson and the negative binomial has collapsed towards it. model = \"poisson\" would give essentially the same answer more simply.",
+      th, if (!is.null(nb$th.warn)) {
+        sprintf("; MASS::glm.nb() stopped with \"%s\" as theta grew without bound, which is what it does when the likelihood is highest at the Poisson limit or gains nothing material away from it", nb$th.warn[1L])
+      } else ""))
+  }
   if (!is.null(nb$th.warn) || !isTRUE(nb$converged)) {
     why <- if (!is.null(nb$th.warn)) {
       sprintf("MASS::glm.nb() stopped with \"%s\"", nb$th.warn[1L])
@@ -696,11 +1172,6 @@ anova_count <- function(data, response, groups,
     return(sprintf(
       "The negative binomial fit did not converge (%s; theta reached %.3g). Treat the model as unreliable and compare it with model = \"poisson\" or model = \"quasipoisson\".",
       why, th))
-  }
-  if (!is.finite(th) || th > 1000) {
-    return(sprintf(
-      "The negative binomial dispersion parameter is very large (theta = %.3g), which means the data are not meaningfully overdispersed relative to Poisson and the negative binomial has collapsed towards it. model = \"poisson\" would give essentially the same answer more simply.",
-      th))
   }
   out <- sprintf(
     "Negative binomial dispersion parameter theta = %.3f (SE %.3f), so the variance is about mu + mu^2/%.3g.",
@@ -787,8 +1258,10 @@ anova_count <- function(data, response, groups,
       hi[k] <- ends[2L]
     }
     note <- sprintf(
-      "The rate ratio(s) for %s involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf%s.",
+      "The rate ratio(s) for %s involve a cell with no events, so the interval is open on that side (0 or Inf). The finite end was found by profiling the likelihood directly, where a Wald interval would run from 0 to Inf%s%s.",
       paste(got$term[diverged], collapse = ", "),
+      .unidentified_clause(got$term[diverged], lo[diverged], hi[diverged],
+                           "rate ratio"),
       if (anyNA(c(lo[diverged], hi[diverged]))) "; it is NA where that search failed" else "")
   }
   tab <- data.frame(
@@ -799,7 +1272,7 @@ anova_count <- function(data, response, groups,
     p_value = p, stringsAsFactors = FALSE)
   tab <- tab[tab$term != "(Intercept)", , drop = FALSE]
   row.names(tab) <- NULL
-  list(table = tab, note = note)
+  list(table = tab, note = note, bracketed = isTRUE(got$bracketed))
 }
 
 #' Map a fitted model's coefficients onto treatment coding
@@ -819,6 +1292,18 @@ anova_count <- function(data, response, groups,
   mf[facs] <- lapply(mf[facs], function(x) factor(x, levels = levels(x), ordered = FALSE))
   ca <- stats::setNames(rep(list("contr.treatment"), length(facs)), facs)
   Xt <- stats::model.matrix(tt, mf, contrasts.arg = ca)
+  # Grouping columns whose names and levels paste to the same column name
+  # (see .unclash_group_coefs()) get bracketed treatment labels, as the fit did.
+  bracketed <- anyDuplicated(colnames(Xt)) > 0L
+  if (bracketed) {
+    ca <- lapply(facs, function(f) {
+      M <- stats::contr.treatment(levels(mf[[f]]))
+      colnames(M) <- paste0("[", colnames(M), "]")
+      M
+    })
+    names(ca) <- facs
+    Xt <- stats::model.matrix(tt, mf, contrasts.arg = ca)
+  }
 
   # The treatment-coded columns that are estimable, in the order glm() would
   # keep them when some are aliased (empty cells of a factorial).
@@ -839,7 +1324,7 @@ anova_count <- function(data, response, groups,
   lab <- .treatment_labels(Xt, tt, mf, facs)
   list(term = gsub("`", "", colnames(Xt), fixed = TRUE),
        factor = lab$factor, comparison = lab$comparison,
-       estimate = estimate, se = se, X = Xt)
+       estimate = estimate, se = se, X = Xt, bracketed = bracketed)
 }
 
 #' Say what each treatment-coded coefficient compares

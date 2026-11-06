@@ -109,7 +109,9 @@
 #'   table: \code{"GG"} (default), \code{"HF"} or \code{"none"}. The
 #'   correction actually applied is recorded in
 #'   \code{attr(fit$anova, "correction")} and printed: \code{"none"} when every
-#'   within-subject factor has two levels, where there is nothing to correct.
+#'   within-subject factor has two levels, where there is nothing to correct,
+#'   and also when sphericity could not be assessed (for instance, the design
+#'   leaves no error degrees of freedom); \code{$notes} then says why.
 #' @param posthoc Logical. Compute pairwise comparisons. There are
 #'   \code{choose(k, 2)} of them, so this is worth turning off when the number
 #'   of cells is large; \code{$notes} records that they were skipped. Default
@@ -128,7 +130,10 @@
 #'       rather than manipulated. Generalised eta squared depends on this
 #'       (Olejnik and Algina, 2003).}
 #'     \item{\code{type}}{Sums of squares: \code{3} (or \code{"III"}, the
-#'       default) or \code{2} (\code{"II"}).}
+#'       default) or \code{2} (\code{"II"}). With no between-subject
+#'       factor the two are identical, since the only between-subject term is
+#'       the intercept; the table keeps the label asked for, and car's message
+#'       that it substituted the equivalent Type III tests is not relayed.}
 #'     \item{\code{anova_table}}{A list holding only \code{p_adjust_method},
 #'       one of \code{\link[stats]{p.adjust.methods}}, which adjusts the
 #'       p-values of \code{$anova} across its terms. The \code{p_gg} and
@@ -220,7 +225,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                      plots = TRUE,
                      verbose = FALSE,
                      ...) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_rm")
   correction <- match.arg(correction)
   .check_adjust(adjust, .adjust_choices(), "adjust")
   if (!requireNamespace("afex", quietly = TRUE)) {
@@ -239,6 +244,10 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   .check_columns(data, subject, "Subject column")
   .check_columns(data, within, "Within-subject factor(s)")
   if (!is.null(between)) .check_columns(data, between, "Between-subject factor(s)")
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Subject column` = subject,
+                                       `Within-subject factor` = within,
+                                       `Between-subject factor` = between))
   .check_conf_level(conf_level)
   .check_flag(factorize, "factorize")
   .check_flag(posthoc, "posthoc")
@@ -296,10 +305,19 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   }
   for (w in within) d[[w]] <- droplevels(d[[w]])
   for (b in between) {
+    lv_before <- levels(d[[b]])
     d[[b]] <- droplevels(d[[b]])
     if (nlevels(d[[b]]) < 2L) {
       .stopf("Between-subject factor `%s` has %d level(s) among the subjects with a complete set of within-subject cells; at least 2 are required.",
              b, nlevels(d[[b]]))
+    }
+    # The removed-subjects note lists only IDs; a whole group vanishing changes
+    # the comparison the between term makes, so it is named.
+    gone <- setdiff(lv_before, levels(d[[b]]))
+    if (length(gone) > 0L) {
+      notes <- c(notes, sprintf(
+        "Level(s) %s of between-subject factor `%s` have no subject with a complete set of within-subject cells and were removed; the analysis compares %d of its %d levels.",
+        paste(gone, collapse = ", "), b, nlevels(d[[b]]), length(lv_before)))
     }
   }
   n_after_balance <- nrow(d)
@@ -335,7 +353,15 @@ anova_rm <- function(data, response, subject, within, between = NULL,
     .stopf("afex::aov_ez() failed: %s",
            .rm_unmap_text(conditionMessage(fit), map$to_user))
   }
-  notes <- c(notes, .said_note(.rm_unmap_text(got$said, map$to_user),
+  said <- got$said
+  if (length(between) == 0L && opts$type == "II") {
+    # car's "equivalent type-III tests substituted": within-only, Type II and
+    # III coincide, so relaying it would contradict the Type II label for no
+    # difference in the numbers.
+    said <- said[!grepl("only an intercept; equivalent type-III tests substituted",
+                        said, fixed = TRUE)]
+  }
+  notes <- c(notes, .said_note(.rm_unmap_text(said, map$to_user),
                                "afex::aov_ez()"))
 
   ## ANOVA table and sphericity ----------------------------------------------
@@ -832,6 +858,27 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                     p_value = tab[["Pr(>F)"]],
                     term_int = rownames(tab),
                     stringsAsFactors = FALSE, row.names = NULL)
+  # Zero error variance computed in floating point is rounding error, not
+  # exactly 0, and is read as zero error variance, the case
+  # .rm_degenerate_notes() reports.
+  # The error sum of squares is computed as a difference of sums of squares
+  # of the data, so its rounding error is of order eps * sum(y^2), not 0: on
+  # ARM macOS a design with no error variance gives an MSE of 4.4e-16 and F of
+  # 1e16 for data of order 5. An error sum of squares within 8 eps sum(y^2)
+  # is that rounding; real variation of even 1e-7 of the data's level is
+  # above it.
+  Y <- tryCatch(as.matrix(fit$lm$fitted.values + fit$lm$residuals),
+                error = function(e) NULL)
+  ss_scale <- if (is.null(Y)) NA_real_ else sum(Y^2)
+  err_ss <- out$mse * out$den_df
+  rz <- is.finite(out$statistic) & is.finite(err_ss) &
+    ((is.finite(ss_scale) & err_ss <= 8 * .Machine$double.eps * ss_scale) |
+       out$statistic > 1e24)
+  if (any(rz)) {
+    out$mse[rz] <- 0
+    out$statistic[rz] <- Inf
+    out$p_value[rz] <- NA_real_
+  }
   attr(out, "note") <- .said_note(.rm_unmap_text(got$said, to_user),
                                   "afex's anova() method")
   out
@@ -999,10 +1046,20 @@ anova_rm <- function(data, response, subject, within, between = NULL,
     out$p_value[i] <- .rm_pf(base$statistic[i], out$num_df[i], out$den_df[i])
     out$p_value[idx[!ok]] <- NA_real_
   }
+  # Zero error variance (the case .rm_degenerate_notes() reports as "no test
+  # is possible"): F is infinite or undefined, so the p-value is NA whatever
+  # the correction, not the 0 that afex passes through when no epsilon is
+  # applied.
+  zero <- !(is.finite(base$den_df) & base$den_df < 1) &
+    (is.na(base$statistic) | !is.finite(base$statistic) |
+       (!is.na(base$mse) & base$mse == 0))
+  out$p_value[zero] <- NA_real_
   row.names(out) <- NULL
   # What was applied, not what was asked for: with no sphericity table (every
-  # within-subject factor has two levels) nothing is corrected, and a
-  # "GG-corrected" heading would describe degrees of freedom that are not.
+  # within-subject factor has two levels, the design leaves no error degrees
+  # of freedom, or car's result is not a repeated-measures one) nothing is
+  # corrected, and a "GG-corrected" heading would describe degrees of freedom
+  # that are not.
   attr(out, "correction") <- if (is.null(sph_tab)) "none" else correction
   attr(out, "statistic") <- "F"
   out
@@ -1022,7 +1079,7 @@ anova_rm <- function(data, response, subject, within, between = NULL,
                       (!is.na(base$mse) & base$mse == 0))
   if (any(zero)) {
     notes <- c(notes, sprintf(
-      "The error variance is zero for %s: every subject shows exactly the same pattern across the cells, so the F statistic is infinite or undefined and no test is possible. The pairwise comparisons have zero standard errors for the same reason.",
+      "The error variance is zero for %s: every subject shows exactly the same pattern across the cells, so the F statistic is infinite or undefined and no test is possible (its p-value is NA). The pairwise comparisons have zero standard errors for the same reason.",
       paste(base$term[zero], collapse = ", ")))
   }
   notes
@@ -1046,12 +1103,19 @@ anova_rm <- function(data, response, subject, within, between = NULL,
   } else rep("", nrow(d))
   wcodes <- lapply(within, function(w) as.integer(d[[w]]))
   wkey <- do.call(paste, c(wcodes, list(sep = "\r")))
-  e <- y - stats::ave(y, d[[subject]]) - stats::ave(y, grp, wkey) +
-    stats::ave(y, grp)
+  # Computed from the centred response: the residuals do not depend on the
+  # response's level, and a large constant offset would otherwise cost
+  # precision in every mean.
+  yc <- y - mean(y)
+  e <- yc - stats::ave(yc, d[[subject]]) - stats::ave(yc, grp, wkey) +
+    stats::ave(yc, grp)
   # Residuals at the level of rounding error are zero: testing them would
-  # test the arithmetic.
-  scale <- max(abs(y))
-  if (is.finite(scale) && all(abs(e) <= 1e-11 * scale)) e[] <- 0
+  # test the arithmetic. That level is set by the response's spread (yc) and,
+  # through the centring itself, by machine precision at the response's
+  # magnitude (y); it is not a fixed fraction of the magnitude, which for a
+  # response with a large offset (timestamps, say) exceeds real residuals.
+  tol <- 1e-11 * max(abs(yc)) + 64 * .Machine$double.eps * max(abs(y))
+  if (is.finite(tol) && all(abs(e) <= tol)) e[] <- 0
 
   ord <- do.call(order, wcodes)
   keys <- unique(wkey[ord])

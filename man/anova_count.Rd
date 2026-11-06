@@ -28,7 +28,9 @@ anova_count(
 \code{data.table} or a tibble.}
 
 \item{response}{Character. Name of the count column. Must be non-negative
-whole numbers, not all zero.}
+whole numbers, not all zero, and, for \code{model = "negbin"} or
+\code{"quasipoisson"}, not all equal (as a rate, with an
+\code{offset}).}
 
 \item{groups}{Character vector. One or more grouping columns.}
 
@@ -59,8 +61,9 @@ choice for a quasi-Poisson model, which has no likelihood and is given it
 in place of \code{"LR"}. For a Poisson or negative binomial model,
 \code{"F"} makes \code{car::Anova()} estimate a dispersion from the Pearson
 residuals, so the table becomes a quasi-likelihood F test while
-\code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1;
-\code{$notes} gives the dispersion the F test used. Use
+\code{$effect_sizes} and \code{$posthoc} still assume a dispersion of 1
+(unless \code{vcov_type} gives them a robust covariance, which assumes
+none); \code{$notes} gives the dispersion the F test used. Use
 \code{model = "quasipoisson"} for quasi-likelihood inference throughout.}
 
 \item{conf_level}{Numeric in (0, 1). Level for every interval returned.
@@ -68,9 +71,9 @@ Default \code{0.95}.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
 (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-the \pkg{sandwich} package. They reach the coefficient table, the
+the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 marginal means and the comparisons; the omnibus table uses them only with
-\code{test_statistic = "Wald"}, since a likelihood-ratio test compares
+\code{test_statistic = "Wald"}, since likelihood-ratio and F tests compare
 deviances. \code{$notes} says which applies.}
 
 \item{adjust}{Character. Multiplicity adjustment for the pairwise
@@ -104,7 +107,8 @@ An \code{\link{anovakit_fit}} object, with \code{$model_type}
   naming the model actually fitted, \code{$dispersion} the Pearson dispersion
   of the \emph{Poisson} fit (the statistic the model choice was made on) and
   \code{$model_dispersion} that of the model actually returned (both with
-  the frequency-weight denominator when the weights are frequencies).
+  the frequency-weight denominator when the weights are frequencies, and
+  with weights that are not whole numbers rescaled to average 1).
   \code{$effect_sizes} holds incidence rate ratios against the reference
   level, with columns \code{term} (the treatment-coded coefficient),
   \code{factor} and \code{comparison} (what it compares), \code{IRR},
@@ -114,10 +118,10 @@ An \code{\link{anovakit_fit}} object, with \code{$model_type}
   \code{model_dispersion} (as above) and \code{cell_counts}, the number of
   observations in each cell (with frequency weights, \code{n} counts the
   observations and \code{rows} the rows of the table). \code{$plots} holds
-  \code{emmeans}, the marginal rates with their intervals, and
-  \code{observed}, box plots of the observed counts by cell -- of the
-  observed rates, count divided by exposure, when there is an
-  \code{offset}.
+  \code{emmeans}, the marginal rates with their intervals (when the
+  marginal means could be computed), and \code{observed}, box plots of the
+  observed counts by cell -- of the observed rates, count divided by
+  exposure, when there is an \code{offset}.
 }
 \description{
 Fits a Poisson, quasi-Poisson or negative binomial regression for a count
@@ -135,10 +139,23 @@ and a Poisson model kept below it is still affected by a dispersion
 \eqn{\phi} above 1: its likelihood-ratio and Wald statistics are inflated by
 about \eqn{\phi} and its intervals are too narrow, so at \eqn{\phi = 1.5} a
 nominal 5\% test on 1 degree of freedom rejects about 11\% of true null
-hypotheses, however large the sample. \code{$notes} then gives the
-dispersion and the size of the effect; use \code{model = "quasipoisson"} or
-\code{"negbin"} when that matters. When the Poisson model has no residual
-degrees of freedom the dispersion cannot be computed, and \code{$notes} says
+hypotheses (and one on 2 degrees of freedom about 14\%), however large the
+sample. \code{$notes} then gives the dispersion and the size of the effect
+when the Pearson test of overdispersion is significant. When it is not,
+that test may simply lack power -- at 10 per group a true dispersion of 1.4
+passes it about two times in three, while the Poisson tests reject about
+10\% of true null hypotheses -- so \code{$notes} gives the upper 95\%
+confidence bound of the dispersion and what a dispersion that large would
+cost, whenever a nominal 5\% test would then reject 7.5\% or more of true
+null hypotheses. With small samples that is most Poisson fits; with large
+ones the bound is close to the estimate and the note is rare. The
+inference itself is not corrected;
+use \code{model = "quasipoisson"} or \code{"negbin"} when that matters.
+With a robust covariance (\code{vcov_type}) the intervals and comparisons
+do not assume a dispersion of 1, and the note says that only a
+likelihood-ratio omnibus test still does. When the Poisson model has no
+residual degrees of freedom the dispersion cannot be computed, and
+\code{$notes} says
 that overdispersion was not checked. Which model was used, and why, is
 always recorded in \code{$notes} and in \code{$model_type}. Set \code{model}
 explicitly to take the decision out of the function's hands: an explicit
@@ -154,6 +171,14 @@ per group a nominal 5\% test rejects roughly 10-15\% of true null hypotheses
 and 95\% intervals cover about 90\%; the excess fades by about 30 per group.
 The note on theta states the size of the problem for the smallest group in
 the data, whether theta is well determined, and whether the fit converged.
+A very large theta means the negative binomial has collapsed to the
+Poisson model, and the note says so, but only when the likelihood really
+is highest at that Poisson limit; on sparse, overdispersed data
+\code{MASS::glm.nb()} can drive theta up although a small theta fits far
+better, and that fit is reported as not converged. Above a theta of about
+\eqn{10^6} the negative binomial deviance cannot be computed accurately, so
+the likelihood-ratio and F tests are those of the Poisson fit, the limit
+they converge to, and \code{$notes} says so.
 Convergence is read from the fitted object, so the note is the same in
 every session language.
 
@@ -173,9 +198,37 @@ number and some exceed 1, the weights are taken to be frequencies and the
 Pearson dispersion (the one the model choice is made on, reported in
 \code{$dispersion}) divides by the number of observations they represent
 minus the number of parameters rather than by the number of rows, which
-would inflate it by up to the ratio of the two. A quasi-Poisson fit and an
-F test estimate their dispersion from the rows all the same, so for those
-expand a frequency table to one row per observation; \code{$notes} says so.
+would inflate it by up to the ratio of the two. The model's residual
+degrees of freedom are counted in observations too, so a quasi-Poisson fit
+or an F test on a frequency table gives the same dispersion, tests and
+intervals as the data expanded to one row per observation; there is no need
+to expand it, and \code{$notes} says so.
+
+Weights that are not whole numbers are used as given in the fit, the tests
+and the intervals, as \code{glm()} uses prior weights: their scale matters
+(multiplying every weight by 10 multiplies each likelihood-ratio and Wald
+statistic by about 10), and \code{$notes} says so when they do not average
+1. Sampling weights should therefore be rescaled to average 1, or analysed
+with a design-based method such as \code{survey::svyglm()}. The Pearson
+dispersion the model choice is made on is computed with such weights
+rescaled to average 1, so the choice between Poisson and negative binomial
+does not depend on their arbitrary scale. With the weights as given the
+tests are inflated by that dispersion times the weight when the weights
+are equal; when they are unequal, by an amount that depends on where the
+heavy rows fall, which \code{$notes} gives from the sandwich covariance
+for each term (assuming the weights are not inverse variances, which
+would not inflate the tests), for a kept Poisson model, a negative
+binomial one and any F test.
+
+Counts on a large level with little variation (1e9 varying by a few
+units) are beyond what the Poisson and negative binomial deviances can
+resolve in double precision. A likelihood-ratio or F test that rounding
+could move by more than a fifth of its size or of its size under the
+null hypothesis (its degrees of freedom for a chi-square, 1 for an F),
+whichever is larger, is then NA, and one it could move by more than 2\%
+of that gets a note (a negative statistic within its rounding error is
+shown as 0, with p = 1); \code{test_statistic = "Wald"}, which does not use
+the deviance, can still test them.
 
 \strong{Incidence rate ratios.} \code{$effect_sizes} is computed from a
 treatment-coded parameterisation of the fitted model, whatever \code{type}

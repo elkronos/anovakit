@@ -207,7 +207,8 @@ print.anovakit_fit <- function(x, digits = 4L, ...) {
 #' Everything \code{print} shows, plus assumption checks, effect sizes,
 #' marginal means, post-hoc comparisons and whatever further tables the method
 #' produces (simple slopes, sphericity, the multivariate tests and univariate
-#' follow-ups, the canonical axes).
+#' follow-ups, the canonical axes, and the model fit statistics in
+#' \code{$model_stats}, including \code{anova_bin}'s model-versus-null test).
 #'
 #' @param object An \code{\link{anovakit_fit}} object.
 #' @param digits Number of significant digits for the printed tables. Default
@@ -271,14 +272,36 @@ print.summary.anovakit_fit <- function(x, digits = x$digits, ...) {
   extra <- c(sphericity = "Sphericity", slopes_test = "Homogeneity of slopes",
              simple_slopes = "Covariate slopes by group",
              multivariate = "Multivariate tests", canonical = "Canonical axes")
+  # The name each of these goes by in $assumptions, where it may already have
+  # been printed.
+  in_assumptions <- c(sphericity = "sphericity", slopes_test = "slopes")
   for (nm in names(extra)) {
     el <- object[[nm]]
+    # anova_rm() keeps its sphericity table in $assumptions as well, and
+    # anova_ancova() its homogeneity-of-slopes test (as $assumptions$slopes).
+    if (!is.null(el) && nm %in% names(in_assumptions) &&
+        identical(el, object$assumptions[[in_assumptions[[nm]]]])) next
     if (is.data.frame(el) && NROW(el) > 0L) {
       cat("\n", extra[[nm]], "\n", sep = "")
       .print_df(el, digits, row.names = FALSE)
     } else if (is.list(el) && is.data.frame(el$table) && NROW(el$table) > 0L) {
       cat("\n", extra[[nm]], "\n", sep = "")
       .print_df(el$table, digits, row.names = FALSE)
+    }
+  }
+  # anova_bin and anova_glm: the information criteria, deviances and (in
+  # anova_bin) the model-versus-null likelihood-ratio test.
+  ms <- object$model_stats
+  if (is.list(ms) && length(ms) > 0L) {
+    scalar <- vapply(ms, function(el) is.atomic(el) && length(el) == 1L, logical(1))
+    if (any(scalar)) {
+      cat("\nModel fit\n")
+      .print_df(as.data.frame(ms[scalar], stringsAsFactors = FALSE), digits,
+                row.names = FALSE)
+    }
+    if (is.data.frame(ms$lr_vs_null) && NROW(ms$lr_vs_null) > 0L) {
+      cat("\nModel versus the null model (likelihood-ratio chi-square)\n")
+      .print_df(ms$lr_vs_null, digits, row.names = FALSE)
     }
   }
   if (is.list(object$univariate) && length(object$univariate) > 0L) {
@@ -352,8 +375,10 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
 #'
 #' Counts and degrees of freedom are whole numbers; rounding them to
 #' significant digits would print n = 12345 as 12340, so whole-number columns
-#' are left alone. p-value columns are formatted with \code{format.pval()},
-#' which prints a p-value below machine precision as "< 2.2e-16" rather than as
+#' are left alone. Other numeric columns become character, each value rounded
+#' to \code{digits} significant digits on its own, so that printing cannot pad
+#' them with places they do not have. p-value columns are formatted with \code{format.pval()},
+#' also one value at a time, which prints a p-value below machine precision as "< 2.2e-16" rather than as
 #' zero.
 #' @noRd
 .round_df <- function(df, digits = 4L) {
@@ -376,13 +401,24 @@ plot.anovakit_fit <- function(x, which = 1L, ...) {
       out <- rep("NA", length(v))
       for (e in unique(eps)) {
         i <- !is.na(v) & eps == e
-        if (any(i)) out[i] <- format.pval(v[i], digits = digits, eps = e)
+        # One value at a time, like the other columns: format.pval() on a
+        # vector gives every value at or above 1e-3 the decimals of the
+        # smallest, padding the larger ones (1 printed as 1.0000000).
+        if (any(i)) {
+          out[i] <- vapply(v[i], function(p) format.pval(p, digits = digits, eps = e),
+                           character(1), USE.NAMES = FALSE)
+        }
       }
       df[[nm]] <- out
       next
     }
     if (is.integer(v) || all(is.na(v) | !is.finite(v) | v == round(v))) next
-    df[[nm]] <- signif(v, digits)
+    # Each value is formatted on its own. Left numeric, the column would be
+    # formatted jointly by print.data.frame, which gives its smallest value
+    # `digits` significant digits and pads the larger, already rounded ones
+    # with zeros that are not in the data (122.408 printed as 122.40000).
+    df[[nm]] <- vapply(unname(v), function(z) format(signif(z, digits), digits = digits),
+                       character(1))
   }
   df
 }

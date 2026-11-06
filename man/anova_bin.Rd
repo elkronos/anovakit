@@ -60,11 +60,19 @@ passed to \code{\link[car]{Anova}}.}
 Default \code{0.95}.}
 
 \item{ci_method}{Character. \code{"profile"} (default) for
-profile-likelihood intervals, or \code{"wald"}.}
+profile-likelihood intervals, or \code{"wald"}. Profile intervals are
+slow with many coefficients; left at the default, a model with more
+than 50 coefficients gets Wald intervals instead, with a note, except
+for odds ratios that separation drives to infinity or zero (see
+Details). The p-values in \code{$effect_sizes} are Wald p-values, so in
+small or sparse samples a profile interval can exclude an odds ratio of 1
+while the p-value beside it is above \code{1 - conf_level}, or the
+reverse; \code{$notes} names such rows, and \code{"wald"} intervals
+always agree with the p-values.}
 
 \item{vcov_type}{Character. \code{"model"} (default) or an HC type
 (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-the \pkg{sandwich} package. They reach the coefficient table, the
+the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 marginal means and the comparisons; the omnibus table uses them only with
 \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
 deviances. \code{$notes} says which applies.}
@@ -88,8 +96,16 @@ against the original frame and silently misaligns as soon as one row is
 dropped for missing values. Whole-number weights (some above 1) are read
 as frequency weights, each row standing for that many identical
 observations, and the robust covariance (\code{vcov_type}) is then that
-of the data expanded to one row per observation; other weights are
-treated as sampling weights, with each row as one unit.}
+of the data expanded to one row per observation. Other weights are used
+as given, as \code{glm()} uses prior weights: the fit, the tests, the
+intervals and the marginal means treat them as multipliers of each row,
+like frequencies, so their scale matters (weights averaging 0.01 make
+300 rows count as 3 observations), and \code{$notes} says so when they
+do not average 1. Only the robust covariance, and the sparse-data check
+(which rescales them to average 1), treat each row as one unit. Sampling
+weights should therefore
+be rescaled to average 1, or analysed with a design-based method such as
+\code{survey::svyglm()}.}
 
 \item{verbose}{Logical. Emit progress through \code{\link[base]{message}}.
 Default \code{FALSE}.}
@@ -107,8 +123,10 @@ An \code{\link{anovakit_fit}} object. Besides the standard
       weights. When any weight is not a whole number, \code{AIC},
       \code{BIC} and \code{logLik} are \code{NA} with a note, because R's
       binomial log-likelihood rounds the weights; the deviance-based
-      statistics are unaffected. \code{BIC} uses \code{nobs()}, the number
-      of rows with a non-zero weight.}
+      statistics are unaffected. \code{BIC} uses \code{log(nobs())}, the
+      number of rows with a non-zero weight, or, with frequency weights,
+      the number of observations they represent (their sum), so that it
+      equals the BIC of the expanded data.}
     \item{\code{$effect_sizes}}{One row per coefficient of the
       reference-coded model (see Details): \code{term} (the coefficient),
       \code{factor} (the grouping variable, or \code{"g1:g2"} for an
@@ -119,7 +137,8 @@ An \code{\link{anovakit_fit}} object. Besides the standard
       \code{"(b vs a) x (south vs north)"} is a ratio of odds ratios),
       \code{odds_ratio}, \code{conf_low}, \code{conf_high},
       \code{se_log_or}, \code{statistic}, \code{p_value} and
-      \code{ci_method}.}
+      \code{ci_method} (\code{"profile"} or \code{"wald"}, row by row:
+      see Details).}
     \item{\code{$assumptions}}{\code{dispersion}, which is \code{NA}: the
       Pearson dispersion of a 0/1 response carries no information about
       overdispersion, so it is not reported (a note says why); and
@@ -168,8 +187,28 @@ intervals are meaningless even though \code{glm()} reports convergence, so
 of an odds ratio that separation drives to infinity (or to zero) is open on
 that side, and is reported with \code{conf_high = Inf} (or
 \code{conf_low = 0}); its finite end is found by profiling the likelihood
-directly, since \code{stats::confint()} cannot step from a diverged estimate,
-and is \code{NA} when the likelihood rules out no value on that side either.
+directly, since \code{stats::confint()} cannot step from a diverged estimate.
+When the likelihood rules out no value on that side either (for example an
+interaction whose cells are all separated) the interval is \code{(0, Inf)}:
+the data do not identify that odds ratio at all, its point estimate is
+arbitrary, and \code{$notes} says so. An end the search cannot find is
+\code{NA}.
+
+\strong{Interval cost.} A profile-likelihood interval refits the model
+several times for each coefficient. The model has only grouping factors,
+so the refits run over the data collapsed to one weighted row per cell and
+outcome, which has the same likelihood: the number of rows does not add to
+the cost, and individual rows and the same data aggregated with counts as
+weights get the same intervals. The number of coefficients does: a factor
+with 200 levels can take minutes where Wald intervals take about a second.
+Left at its default, \code{ci_method} therefore gives Wald intervals, with
+a note, when the model has more than 50 coefficients, as
+\code{\link{anova_glm}} does. An odds ratio that separation drives to
+infinity or to zero still gets its profile-likelihood interval then, since
+a Wald interval means nothing there. Wald and profile intervals are close
+when every cell has many events and non-events, and can differ noticeably
+when events are rare. Give \code{ci_method = "profile"} explicitly to
+profile every coefficient.
 
 \strong{Sparse data.} When fewer than about 5 events or non-events are
 expected in a cell under the null hypothesis, the likelihood-ratio omnibus
@@ -181,7 +220,8 @@ remedy; an exact test, or the score test, holds its level better.
 the observed proportions alike. A row with weight \code{w} counts as
 \code{w} identical observations, so data aggregated to one row per cell and
 outcome, with the count as the weight, give the same results as the
-individual rows (apart from BIC, which R bases on the number of rows).
+individual rows, BIC included: with frequency weights its penalty uses the
+number of observations they represent, not the number of rows.
 }
 \examples{
 set.seed(1)

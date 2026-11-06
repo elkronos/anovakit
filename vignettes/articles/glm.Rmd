@@ -382,10 +382,14 @@ for (ts in c("LR", "Wald")) {
 }
 ```
 
-The likelihood-ratio statistic is the deviance drop divided by the estimated
-dispersion, referred to a chi-squared distribution. That ignores the
+For a family that estimates its dispersion, the "LR" statistic is not a true
+likelihood ratio: it is the deviance drop divided by the estimated dispersion,
+referred to a chi-squared distribution as though the dispersion were known,
+and the table heading calls it a scaled-deviance chi-square. That ignores the
 uncertainty in the dispersion estimate, which the F test allows for, so for a
-family that estimates its dispersion F is the better default. The Wald test is
+family that estimates its dispersion F is the better default. A quasi family
+has no likelihood at all, so there `test_statistic = "LR"` gives the F test,
+with a note, as `anova_count()` does. The Wald test is
 built from the coefficients and their covariance matrix. It is the only one of
 the three that can use a robust covariance (see
 [`vcov_type`](#vcov_type-robust-standard-errors)). Here all three agree that
@@ -419,8 +423,11 @@ of a ratio to it: small cars cost exp(`r f3(co$estimate[4])`) =
 estimated.
 
 `ci_method = "profile"` (the default) gives profile-likelihood intervals, cut
-at t quantiles so that they agree with the t tests beside them.
-`ci_method = "wald"` gives estimate ± t × SE:
+at the t quantiles the tests beside them use. The p-values are Wald p-values,
+though, so in a small sample a profile interval can exclude 0 while its
+p-value is above 0.05, or the reverse; `$notes` names any such row.
+`ci_method = "wald"` gives estimate ± t × SE, which always agrees with the
+p-value:
 
 ```{r ci-method}
 wald <- anova_glm(cars, "Price", "Type", family = Gamma(link = "log"),

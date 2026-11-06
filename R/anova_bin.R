@@ -33,8 +33,28 @@
 #' of an odds ratio that separation drives to infinity (or to zero) is open on
 #' that side, and is reported with \code{conf_high = Inf} (or
 #' \code{conf_low = 0}); its finite end is found by profiling the likelihood
-#' directly, since \code{stats::confint()} cannot step from a diverged estimate,
-#' and is \code{NA} when the likelihood rules out no value on that side either.
+#' directly, since \code{stats::confint()} cannot step from a diverged estimate.
+#' When the likelihood rules out no value on that side either (for example an
+#' interaction whose cells are all separated) the interval is \code{(0, Inf)}:
+#' the data do not identify that odds ratio at all, its point estimate is
+#' arbitrary, and \code{$notes} says so. An end the search cannot find is
+#' \code{NA}.
+#'
+#' \strong{Interval cost.} A profile-likelihood interval refits the model
+#' several times for each coefficient. The model has only grouping factors,
+#' so the refits run over the data collapsed to one weighted row per cell and
+#' outcome, which has the same likelihood: the number of rows does not add to
+#' the cost, and individual rows and the same data aggregated with counts as
+#' weights get the same intervals. The number of coefficients does: a factor
+#' with 200 levels can take minutes where Wald intervals take about a second.
+#' Left at its default, \code{ci_method} therefore gives Wald intervals, with
+#' a note, when the model has more than 50 coefficients, as
+#' \code{\link{anova_glm}} does. An odds ratio that separation drives to
+#' infinity or to zero still gets its profile-likelihood interval then, since
+#' a Wald interval means nothing there. Wald and profile intervals are close
+#' when every cell has many events and non-events, and can differ noticeably
+#' when events are rare. Give \code{ci_method = "profile"} explicitly to
+#' profile every coefficient.
 #'
 #' \strong{Sparse data.} When fewer than about 5 events or non-events are
 #' expected in a cell under the null hypothesis, the likelihood-ratio omnibus
@@ -46,7 +66,8 @@
 #' the observed proportions alike. A row with weight \code{w} counts as
 #' \code{w} identical observations, so data aggregated to one row per cell and
 #' outcome, with the count as the weight, give the same results as the
-#' individual rows (apart from BIC, which R bases on the number of rows).
+#' individual rows, BIC included: with frequency weights its penalty uses the
+#' number of observations they represent, not the number of rows.
 #'
 #' @param data A data frame, or anything inheriting from one, such as a
 #'   \code{data.table} or a tibble.
@@ -75,10 +96,18 @@
 #' @param conf_level Numeric in (0, 1). Level for every interval returned.
 #'   Default \code{0.95}.
 #' @param ci_method Character. \code{"profile"} (default) for
-#'   profile-likelihood intervals, or \code{"wald"}.
+#'   profile-likelihood intervals, or \code{"wald"}. Profile intervals are
+#'   slow with many coefficients; left at the default, a model with more
+#'   than 50 coefficients gets Wald intervals instead, with a note, except
+#'   for odds ratios that separation drives to infinity or zero (see
+#'   Details). The p-values in \code{$effect_sizes} are Wald p-values, so in
+#'   small or sparse samples a profile interval can exclude an odds ratio of 1
+#'   while the p-value beside it is above \code{1 - conf_level}, or the
+#'   reverse; \code{$notes} names such rows, and \code{"wald"} intervals
+#'   always agree with the p-values.
 #' @param vcov_type Character. \code{"model"} (default) or an HC type
 #'   (\code{"HC0"} to \code{"HC4"}) for robust standard errors, which requires
-#'   the \pkg{sandwich} package. They reach the coefficient table, the
+#'   the \pkg{sandwich} package. They reach \code{$effect_sizes}, the
 #'   marginal means and the comparisons; the omnibus table uses them only with
 #'   \code{test_statistic = "Wald"}, since a likelihood-ratio test compares
 #'   deviances. \code{$notes} says which applies.
@@ -100,8 +129,16 @@
 #'   dropped for missing values. Whole-number weights (some above 1) are read
 #'   as frequency weights, each row standing for that many identical
 #'   observations, and the robust covariance (\code{vcov_type}) is then that
-#'   of the data expanded to one row per observation; other weights are
-#'   treated as sampling weights, with each row as one unit.
+#'   of the data expanded to one row per observation. Other weights are used
+#'   as given, as \code{glm()} uses prior weights: the fit, the tests, the
+#'   intervals and the marginal means treat them as multipliers of each row,
+#'   like frequencies, so their scale matters (weights averaging 0.01 make
+#'   300 rows count as 3 observations), and \code{$notes} says so when they
+#'   do not average 1. Only the robust covariance, and the sparse-data check
+#'   (which rescales them to average 1), treat each row as one unit. Sampling
+#'   weights should therefore
+#'   be rescaled to average 1, or analysed with a design-based method such as
+#'   \code{survey::svyglm()}.
 #'
 #' @return An \code{\link{anovakit_fit}} object. Besides the standard
 #'   components:
@@ -115,8 +152,10 @@
 #'       weights. When any weight is not a whole number, \code{AIC},
 #'       \code{BIC} and \code{logLik} are \code{NA} with a note, because R's
 #'       binomial log-likelihood rounds the weights; the deviance-based
-#'       statistics are unaffected. \code{BIC} uses \code{nobs()}, the number
-#'       of rows with a non-zero weight.}
+#'       statistics are unaffected. \code{BIC} uses \code{log(nobs())}, the
+#'       number of rows with a non-zero weight, or, with frequency weights,
+#'       the number of observations they represent (their sum), so that it
+#'       equals the BIC of the expanded data.}
 #'     \item{\code{$effect_sizes}}{One row per coefficient of the
 #'       reference-coded model (see Details): \code{term} (the coefficient),
 #'       \code{factor} (the grouping variable, or \code{"g1:g2"} for an
@@ -127,7 +166,8 @@
 #'       \code{"(b vs a) x (south vs north)"} is a ratio of odds ratios),
 #'       \code{odds_ratio}, \code{conf_low}, \code{conf_high},
 #'       \code{se_log_or}, \code{statistic}, \code{p_value} and
-#'       \code{ci_method}.}
+#'       \code{ci_method} (\code{"profile"} or \code{"wald"}, row by row:
+#'       see Details).}
 #'     \item{\code{$assumptions}}{\code{dispersion}, which is \code{NA}: the
 #'       Pearson dispersion of a 0/1 response carries no information about
 #'       overdispersion, so it is not reported (a note says why); and
@@ -178,9 +218,10 @@ anova_bin <- function(data, response, groups,
                       plots = TRUE,
                       weights = NULL,
                       verbose = FALSE) {
-  cl <- match.call()
+  cl <- .compact_call(match.call(), "anova_bin")
   type <- match.arg(type)
   test_statistic <- match.arg(test_statistic)
+  ci_default <- missing(ci_method)
   ci_method <- match.arg(ci_method)
   .check_adjust(vcov_type, .vcov_choices(), "vcov_type")
   .check_adjust(adjust, .adjust_choices(), "adjust")
@@ -193,6 +234,9 @@ anova_bin <- function(data, response, groups,
   .check_interaction(interaction, length(groups))
   .check_roles(list(`the response` = response, `a grouping variable` = groups,
                     `the weights` = weights))
+  data <- .as_plain_columns(data, list(Response = response,
+                                       `Grouping column` = groups,
+                                       `Weights column` = weights))
   .check_flag(posthoc, "posthoc")
   .check_flag(plots, "plots")
   .check_flag(verbose, "verbose")
@@ -205,10 +249,10 @@ anova_bin <- function(data, response, groups,
                          keep_all = FALSE)
   d <- prep$data
   notes <- prep$notes
-  zw <- .drop_zero_weights(d, weights)
+  zw <- .drop_zero_weights(d, weights, groups)
   d <- zw$data
   n_removed <- prep$n_removed + zw$n_removed
-  notes <- c(notes, zw$notes)
+  notes <- c(notes, zw$notes, .weight_scale_note(d, weights))
   .check_groups(d, groups, min_levels = 2L, min_n = 1L)
 
   resp <- .prep_binary(d[[response]], response, success)
@@ -227,9 +271,16 @@ anova_bin <- function(data, response, groups,
   terms_rhs <- .group_terms(groups, interaction)
   fml <- stats::reformulate(terms_rhs, response = .bq(response))
   .say(verbose, "Fitting %s", paste(deparse(fml), collapse = " "))
-  fitted <- .collect_conditions(.fit_with_contrasts(
-    function() .fit_glm(fml, d, stats::binomial(), weights),
+  fit_on <- function(dd) .collect_conditions(.fit_with_contrasts(
+    function() .fit_glm(fml, dd, stats::binomial(), weights),
     type = type))
+  fitted <- fit_on(d)
+  # Grouping columns whose names and levels paste to the same coefficient
+  # name would make the odds ratios and marginal means read the wrong column.
+  uc <- .unclash_group_coefs(fitted, fit_on, d, groups, type)
+  fitted <- uc$fitted
+  d <- uc$data
+  notes <- c(notes, uc$note)
   model <- fitted$value
   if (inherits(model, "error")) {
     .stopf("The logistic regression could not be fitted: %s",
@@ -254,7 +305,10 @@ anova_bin <- function(data, response, groups,
   # it names are the ones in $effect_sizes.
   tf <- .treatment_fit(model, fml, d, groups, weights)
   trt <- tf$model
-  sep_note <- .check_separation(trt)
+  if (isTRUE(tf$bracketed) && !uc$bracketed) {
+    notes <- c(notes, .bracketed_terms_note(names(stats::coef(trt))))
+  }
+  sep_note <- .check_separation(trt, test_statistic)
   notes <- c(notes, sep_note)
 
   ## Analysis of deviance ----------------------------------------------------
@@ -268,17 +322,45 @@ anova_bin <- function(data, response, groups,
                    vcov_matrix = if (robust_wald) rv$matrix else NULL)
   notes <- c(notes, av$note)
   if (!is.null(rv$matrix) && !is.null(av$table)) {
-    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald))
+    notes <- c(notes, .omnibus_vcov_note(test_statistic, vcov_type, robust_wald,
+                                         table = "$effect_sizes"))
+  }
+  # Unequal weights that are not whole numbers are sampling weights, used as
+  # given: the model-based tests are inflated by an amount that depends on
+  # where the heavy rows fall (.weight_note()). Rescaling them to average 1
+  # removes only their scale, not this.
+  if (!is.null(weights) && !freq_rows &&
+      any(abs(d[[weights]] - round(d[[weights]])) > sqrt(.Machine$double.eps))) {
+    notes <- c(notes, .weight_note(model, d[[weights]], weights, TRUE,
+                                   test_statistic,
+                                   if (!is.null(rv$matrix)) vcov_type, type)$note)
   }
 
   ## Model versus null, from the model's own (weighted) deviances -------------
-  ms <- .bin_model_stats(model, success)
+  ms <- .bin_model_stats(model, success,
+                         freq_n = if (freq_rows) sum(d[[weights]]) else NULL)
   notes <- c(notes, ms$note)
 
   ## Odds ratios -------------------------------------------------------------
   if (!is.null(rv$matrix) && ci_method == "profile") {
     ci_method <- "wald"
     notes <- c(notes, "Robust standard errors were requested, so the odds-ratio intervals are Wald intervals built from them; profile-likelihood intervals cannot use a sandwich covariance.")
+  }
+  # Profiling refits the model several times per coefficient. The refits run
+  # over the data collapsed to one row per cell and outcome (see
+  # .collapsed_bin_fit()), so the number of rows does not add to the cost,
+  # but the number of coefficients does. Left at the default, a model with
+  # many coefficients gets Wald intervals instead, as in anova_glm(), except
+  # for the coefficients separation diverges, whose Wald intervals mean
+  # nothing; asked for by name, profiling is honoured. The note comes before
+  # the cost would have been incurred.
+  n_or <- sum(!is.na(stats::coef(trt)))
+  if (ci_default && ci_method == "profile" &&
+      n_or > .max_profiled_coefficients) {
+    ci_method <- if (length(sep_note) == 0L) "wald" else "separated"
+    notes <- c(notes, sprintf(
+      "The model has %d coefficients, and profiling the likelihood of each refits the model many times, so the odds-ratio intervals are Wald intervals%s; give ci_method = \"profile\" explicitly to profile them all.",
+      n_or, if (ci_method == "separated") ", except for any odds ratio that separation drives to infinity or zero, whose profile-likelihood interval is computed directly (a Wald interval means nothing there)" else ""))
   }
   rv_trt <- if (is.null(rv$matrix) || !tf$refit) rv$matrix else
     .robust_vcov(trt, vcov_type, freq_weights = freq_rows)$matrix
@@ -295,12 +377,19 @@ anova_bin <- function(data, response, groups,
   if (!posthoc) {
     notes <- c(notes, "$effect_sizes still reports the odds ratios from the model.")
   }
+  if (posthoc && NROW(emm$table) == 2L && !isTRUE(emm$per_factor) &&
+      !is.null(emm$posthoc)) {
+    notes <- c(notes, .two_cell_note(model, av$table, test_statistic,
+                                     robust = !is.null(rv$matrix),
+                                     vcov_type = vcov_type))
+  }
 
   ## Proportions, sparse cells and plot ---------------------------------------
   added <- .add_cell(d, groups)
   prop <- .proportion_table(added$data, response, added$cell, weights)
   notes <- c(notes, .sparse_bin_note(d, response, groups, weights,
-                                     additive = .is_additive(interaction)))
+                                     additive = .is_additive(interaction),
+                                     frequencies = freq_rows))
   # The Pearson X^2 / df of ungrouped 0/1 data is not a diagnostic: in a model
   # saturated in the cells it equals N / (N - k) whatever the data, and it
   # changes when the same trials are aggregated into weighted rows.
@@ -322,7 +411,9 @@ anova_bin <- function(data, response, groups,
   }
 
   .new_fit(
-    method       = "Analysis of deviance for a binary response (logistic regression)",
+    method       = sprintf(
+      "Analysis of deviance for a binary response (logistic regression, Type %s)",
+      type),
     call         = cl,
     model        = model,
     anova        = av$table,
@@ -456,8 +547,11 @@ anova_bin <- function(data, response, groups,
 #' Every grouping factor is made unordered and fitted under
 #' \code{contr.treatment}, so each coefficient is a level against the first
 #' (reference) level. When the model already is coded that way it is returned
-#' as it is.
-#' @return list with \code{model} and \code{refit} (whether it was refitted).
+#' as it is. When grouping columns' coefficient names collide under treatment
+#' coding (see \code{.unclash_group_coefs()}) the refit's contrasts get
+#' bracketed labels, so its coefficient names stay distinct.
+#' @return list with \code{model}, \code{refit} (whether it was refitted) and
+#'   \code{bracketed} (whether its labels were bracketed).
 #' @noRd
 .treatment_fit <- function(model, fml, d, groups, weights) {
   ctr <- model$contrasts
@@ -470,9 +564,16 @@ anova_bin <- function(data, response, groups,
   old <- options(contrasts = c("contr.treatment", "contr.poly"))
   on.exit(options(old), add = TRUE)
   # Any warning repeats one the main fit has already reported.
-  refit <- .collect_conditions(.fit_glm(fml, dt, stats::binomial(), weights))$value
+  refit_on <- function(dd)
+    .collect_conditions(.fit_glm(fml, dd, stats::binomial(), weights))$value
+  refit <- refit_on(dt)
+  # Grouping columns whose names and levels paste to the same coefficient
+  # name under treatment coding (which a sum-to-zero main fit can avoid)
+  # get bracketed labels, as in .unclash_group_coefs().
+  bracketed <- !inherits(refit, "error") && length(.dup_coef_names(refit)) > 0L
+  if (bracketed) refit <- refit_on(.bracket_group_contrasts(dt, groups, "II"))
   if (inherits(refit, "error")) list(model = model, refit = FALSE) else
-    list(model = refit, refit = TRUE)
+    list(model = refit, refit = TRUE, bracketed = bracketed)
 }
 
 #' Model-versus-null statistics from the fitted model's own deviances
@@ -482,8 +583,15 @@ anova_bin <- function(data, response, groups,
 #' deviances keeps the prior weights -- aggregated counts, sampling weights --
 #' exactly as the fit used them. R's binomial log-likelihood, and hence AIC and
 #' BIC, rounds non-integer weights, so those are NA then.
+#'
+#' \code{stats::BIC()} takes \code{log(nobs())}, and \code{nobs()} of a
+#' weighted glm counts rows. With frequency weights the penalty is that of the
+#' observations they represent (\code{freq_n}), as on the expanded data and as
+#' in \code{anova_glm()}; the log-likelihood, and so AIC, already is.
+#' @param freq_n the number of observations frequency weights represent, or
+#'   \code{NULL} when the weights are not frequencies.
 #' @noRd
-.bin_model_stats <- function(model, success) {
+.bin_model_stats <- function(model, success, freq_n = NULL) {
   w <- model$prior.weights
   whole <- is.null(w) || all(abs(w - round(w)) < 1e-8)
   dev <- model$deviance
@@ -492,7 +600,10 @@ anova_bin <- function(data, response, groups,
   lr_df <- as.integer(model$df.null - model$df.residual)
   out <- list(
     AIC = if (whole) stats::AIC(model) else NA_real_,
-    BIC = if (whole) stats::BIC(model) else NA_real_,
+    BIC = if (!whole) NA_real_ else if (is.null(freq_n)) stats::BIC(model) else {
+      ll <- stats::logLik(model)
+      -2 * as.numeric(ll) + log(freq_n) * attr(ll, "df")
+    },
     logLik = if (whole) as.numeric(stats::logLik(model)) else NA_real_,
     mcfadden_r2 = if (is.finite(dev0) && dev0 > 0) 1 - dev / dev0 else NA_real_,
     success_level = success,
@@ -537,11 +648,13 @@ anova_bin <- function(data, response, groups,
     combos <- expand.grid(lv, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
     idx <- which(asg == a)
     if (nrow(combos) != length(idx)) next
-    # model.matrix() names a column by pasting variable and level; check that
-    # the combinations line up with the columns before labelling them.
-    expect <- do.call(paste, c(lapply(seq_along(vars), function(i)
-      paste0(unq(vars[i]), combos[[i]])), list(sep = ":")))
-    if (!identical(expect, unq(colnames(X)[idx]))) next
+    # model.matrix() names a column by pasting variable and level (inside
+    # brackets when the labels were bracketed to keep them distinct); check
+    # that the combinations line up with the columns before labelling them.
+    expect <- function(open, close) do.call(paste, c(lapply(seq_along(vars),
+      function(i) paste0(unq(vars[i]), open, combos[[i]], close)), list(sep = ":")))
+    got <- unq(colnames(X)[idx])
+    if (!identical(expect("", ""), got) && !identical(expect("[", "]"), got)) next
     # Factors this term interacts with elsewhere in the model are held at
     # their reference level.
     higher <- unique(unlist(term_vars[vapply(term_vars, function(v)
@@ -568,6 +681,9 @@ anova_bin <- function(data, response, groups,
 #' Odds ratios with profile-likelihood or Wald intervals
 #'
 #' @param model a reference-coded binomial GLM.
+#' @param ci_method \code{"profile"}, \code{"wald"}, or \code{"separated"}:
+#'   Wald intervals except for the coefficients separation diverges, which
+#'   get their profile intervals computed directly.
 #' @param separated whether separation was detected. A coefficient it drives
 #'   to infinity then gets its profile interval computed directly.
 #' @noRd
@@ -575,10 +691,14 @@ anova_bin <- function(data, response, groups,
                          vcov_matrix = NULL, separated = FALSE) {
   ct <- .coef_table(model, vcov_matrix)
   notes <- character(0)
+  # Profiles are computed on the same model fitted to the data collapsed to
+  # one row per cell and outcome: the likelihood, and so every profile, is
+  # the same, and the refits no longer run over every row.
+  pm <- if (ci_method %in% c("profile", "separated")) .collapsed_bin_fit(model)
   if (ci_method == "profile") {
     ci <- tryCatch(
       suppressWarnings(suppressMessages(
-        stats::confint(model, level = conf_level))),
+        stats::confint(pm, level = conf_level))),
       error = function(e) e)
     if (inherits(ci, "error")) {
       notes <- c(notes, sprintf(
@@ -600,6 +720,15 @@ anova_bin <- function(data, response, groups,
     method_used <- "wald"
   } else {
     method_used <- "profile"
+    # Each profile refits the model several times, so the cost grows with
+    # the number of coefficients times the cost of a fit; past about 30 that
+    # is seconds to minutes, which the caller should know is avoidable.
+    n_prof <- sum(ct$term != "(Intercept)")
+    if (n_prof > 30L) {
+      notes <- c(notes, sprintf(
+        "Profile-likelihood intervals were computed for %d odds ratios. Each refits the model several times, which is slow with this many coefficients; ci_method = \"wald\" is much faster, and adequate when there is no separation.",
+        n_prof))
+    }
   }
   idx <- match(ct$term, rownames(ci))
   lo <- ci[idx, 1L]
@@ -609,19 +738,31 @@ anova_bin <- function(data, response, groups,
   # steps scaled by its enormous standard error, and returns bounds that are
   # meaningless on both sides. A standard error above 10 on the log-odds scale
   # does not occur for a coefficient the data identify.
-  if (method_used == "profile" && separated) {
+  method <- rep(method_used, nrow(ct))
+  if ((method_used == "profile" || ci_method == "separated") && separated) {
     flag <- which(ct$term != "(Intercept)" & is.finite(ct$estimate) &
                     is.finite(ct$se) & ct$se > 10)
+    method[flag] <- "profile"
     for (k in flag) {
-      b <- .separated_profile(model, ct$term[k], conf_level)
+      b <- .separated_profile(pm, ct$term[k], conf_level)
       lo[k] <- b[1L]
       hi[k] <- b[2L]
     }
     if (length(flag) > 0L) {
       notes <- c(notes, sprintf(
-        "Separation drives the odds ratio(s) for %s to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate; it is NA where the likelihood rules out no value on that side either.",
-        paste(gsub("`", "", ct$term[flag], fixed = TRUE), collapse = ", ")))
+        "Separation drives the odds ratio(s) for %s to infinity or to zero, so the profile-likelihood interval is open on that side and is reported as conf_high = Inf (or conf_low = 0). Its finite end was found by profiling the likelihood directly, as stats::confint() cannot step from a diverged estimate%s%s.",
+        paste(gsub("`", "", ct$term[flag], fixed = TRUE), collapse = ", "),
+        .unidentified_clause(ct$term[flag], lo[flag], hi[flag], "odds ratio"),
+        if (anyNA(c(lo[flag], hi[flag]))) "; it is NA where that search failed" else ""))
     }
+  }
+
+  if (method_used == "profile") {
+    # A diverged odds ratio has its own separation note.
+    keep <- !(separated & is.finite(ct$se) & ct$se > 10)
+    notes <- c(notes, .profile_wald_note(ct$term[keep], lo[keep], hi[keep],
+                                         ct$p_value[keep], conf_level,
+                                         "odds ratio of 1"))
   }
 
   lab <- .or_labels(model)
@@ -636,12 +777,69 @@ anova_bin <- function(data, response, groups,
     se_log_or  = ct$se,
     statistic  = ct$statistic,
     p_value    = ct$p_value,
-    ci_method  = method_used,
+    ci_method  = method,
     stringsAsFactors = FALSE, row.names = NULL
   )
   out <- out[out$term != "(Intercept)", , drop = FALSE]
   row.names(out) <- NULL
   list(table = out, note = notes)
+}
+
+#' The same logistic model fitted to its data collapsed by cell and outcome
+#'
+#' The model has only grouping factors, so rows with the same cell and the
+#' same outcome differ in nothing but their weight, and the binomial
+#' log-likelihood sum(w * log p) is unchanged when they are merged into one
+#' row carrying the sum of their weights (whole or not). The collapsed fit
+#' therefore has the same coefficients, standard errors, deviance and profile
+#' likelihoods, at a cost set by the number of cells rather than of rows. The
+#' model itself is returned when collapsing would not save much, when it has
+#' an offset, or when the refit does not reproduce it.
+#' @noRd
+.collapsed_bin_fit <- function(model) {
+  mf <- model$model
+  if (is.null(mf) || !is.null(stats::model.offset(mf))) return(model)
+  w <- stats::model.weights(mf)
+  if (is.null(w)) w <- rep(1, nrow(mf))
+  keep <- setdiff(names(mf), "(weights)")
+  key <- do.call(paste, c(lapply(mf[keep], function(x) as.integer(factor(x))),
+                          sep = "\r"))
+  first <- !duplicated(key)
+  if (sum(first) > 0.5 * nrow(mf)) return(model)
+  agg <- mf[first, keep, drop = FALSE]
+  wsum <- rowsum(as.numeric(w), key, reorder = FALSE)
+  fit <- tryCatch(suppressWarnings(do.call(stats::glm, list(
+    formula = stats::formula(model), family = stats::family(model),
+    data = agg, weights = as.numeric(wsum[key[first], 1L]),
+    contrasts = model$contrasts, control = model$control))),
+    error = function(e) NULL)
+  if (is.null(fit)) return(model)
+  b0 <- stats::coef(model)
+  b1 <- stats::coef(fit)
+  se0 <- sqrt(pmax(diag(stats::vcov(model)), 0))
+  ok <- identical(names(b0), names(b1)) && identical(is.na(b0), is.na(b1)) &&
+    abs(fit$deviance - model$deviance) <= 1e-6 * max(1, model$deviance)
+  if (ok) {
+    # Coefficients that separation diverges stop wherever the iterations did;
+    # the others are the same estimates.
+    id <- !is.na(b0) & is.finite(se0[names(b0)]) & se0[names(b0)] <= 10
+    ok <- isTRUE(all.equal(unname(b0[id]), unname(b1[id]), tolerance = 1e-6))
+  }
+  if (ok) fit else model
+}
+
+#' The part of a separation note about intervals open on both sides
+#'
+#' A coefficient whose profile likelihood rules out no value in either
+#' direction is not identified at all: its interval is (0, Inf) and its point
+#' estimate is wherever the fit happened to stop.
+#' @param lo,hi the interval ends on the linear-predictor scale.
+#' @noRd
+.unidentified_clause <- function(terms, lo, hi, what) {
+  both <- !is.na(lo) & !is.na(hi) & lo == -Inf & hi == Inf
+  if (!any(both)) return("")
+  sprintf("; the interval for %s is open on both sides (0 to Inf), because the likelihood rules out no value either way: the data do not identify that %s at all, and its point estimate is arbitrary",
+          paste(gsub("`", "", terms[both], fixed = TRUE), collapse = ", "), what)
 }
 
 #' Profile-likelihood interval of a coefficient that separation has diverged
@@ -665,7 +863,11 @@ anova_bin <- function(data, response, groups,
 #' @param design optional list with \code{X} and \code{coef}: the same fit on
 #'   another coding (see the code).
 #' @return the two ends on the linear-predictor scale: +/-Inf for an open end,
-#'   NA for a finite end that cannot be found.
+#'   NA for a finite end that cannot be found. The far end is open too when
+#'   the profile stays below the cut-off on that side as well (a coefficient
+#'   the data do not identify at all). The \code{"flat"} attribute (lower end,
+#'   upper end) marks an end that is open because the profile stayed flat out
+#'   to the search limit, rather than because the estimate diverged that way.
 #' @noRd
 .separated_profile <- function(model, term, conf_level,
                                cutoff = stats::qchisq(conf_level, 1),
@@ -700,27 +902,42 @@ anova_bin <- function(data, response, groups,
     }
   }
   gap <- function(b) (dev_at(off0 + b * X[, j]) - dmin) / dispersion - cutoff
+  # A profile that stays below the cut-off out to 32 or more units from the
+  # estimate on the linear-predictor scale (a ratio of e^32, about 1e14) rules
+  # out no value on that side: the end is open, not missing, whichever way
+  # the arbitrary estimate of an unidentified coefficient happens to point.
+  # NA is kept for a search that failed (no finite profile that far out).
   find_end <- function(dir) {
     prev <- est
     step <- 0.5
+    reached <- 0
     while (step <= 128) {
       b <- est + dir * step
       g <- gap(b)
       if (is.finite(g) && g > 0) {
-        r <- tryCatch(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8)$root,
+        r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
                       error = function(e) NA_real_)
-        return(r)
+        return(structure(r, flat = FALSE))
       }
+      if (is.finite(g)) reached <- step
       prev <- b
       step <- step * 2
     }
-    NA_real_
+    if (reached >= 32) structure(dir * Inf, flat = TRUE) else
+      structure(NA_real_, flat = FALSE)
   }
   up <- if (est >= 0) 1 else -1           # the direction it diverged in
   open_end <- find_end(up)
   far_end <- find_end(-up)
+  far_flat <- isTRUE(attr(far_end, "flat"))
+  open_end <- as.numeric(open_end)
+  far_end <- as.numeric(far_end)
   if (is.na(open_end)) open_end <- up * Inf
-  if (up > 0) c(far_end, open_end) else c(open_end, far_end)
+  if (up > 0) {
+    structure(c(far_end, open_end), flat = c(far_flat, FALSE))
+  } else {
+    structure(c(open_end, far_end), flat = c(FALSE, far_flat))
+  }
 }
 
 #' Deviance of a logistic model for a 0/1 response, from its linear predictor
@@ -865,10 +1082,17 @@ anova_bin <- function(data, response, groups,
 #' are taken under the null hypothesis (the pooled proportion), as in Cochran's
 #' rule, over the cells of the model: each factor's levels for an additive
 #' model, the combined cells otherwise.
+#'
+#' Frequency weights count observations and are used as they are. Other
+#' weights have an arbitrary scale -- weights averaging 0.01 would make 100
+#' rows look like one expected event -- so they are rescaled to average 1,
+#' which keeps each row one unit, as the dispersion of anova_count() does.
+#' @param frequencies are the weights frequencies (see .frequency_weights())?
 #' @noRd
 .sparse_bin_note <- function(d, response, groups, weights, additive,
-                             threshold = 5) {
+                             threshold = 5, frequencies = FALSE) {
   w <- if (is.null(weights)) rep(1, nrow(d)) else as.numeric(d[[weights]])
+  if (!frequencies) w <- w / mean(w)
   y <- as.integer(d[[response]]) == 2L
   pbar <- sum(w * y) / sum(w)
   sets <- if (additive && length(groups) > 1L) as.list(groups) else list(groups)

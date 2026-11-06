@@ -343,7 +343,7 @@ test_that("printing keeps counts whole and formats tiny p-values", {
   r <- anovakit:::.round_df(df, 4)
   expect_identical(r$df, 12345)
   expect_match(r$p_value, "<")
-  expect_equal(r$statistic, 1.235)
+  expect_identical(r$statistic, "1.235")
 })
 
 test_that("digits is validated", {
@@ -363,7 +363,9 @@ test_that("summary prints the method's own extra tables", {
   skip_if_not_installed("afex")
   fit <- anova_rm(fx_repeated(), "score", "id", "time", plots = FALSE)
   out <- utils::capture.output(print(summary(fit)))
-  expect_true(any(grepl("^Sphericity", out)))
+  # The sphericity table is printed once, under the assumption checks.
+  expect_true(any(grepl("^  sphericity$", out)))
+  expect_false(any(grepl("^Sphericity", out)))
 })
 
 # Plot helpers ----------------------------------------------------------------
@@ -473,7 +475,11 @@ test_that("chance-level dispersion above 1 does not produce an overdispersion no
   p <- stats::pchisq(phi * 87, 87, lower.tail = FALSE)
   expect_gt(phi, 1)
   expect_gt(p, 0.05)
-  expect_false(any(grepl("inflated", fit$notes)))
+  # No claim that the statistics ARE inflated; the hedged caveat about the
+  # dispersion the data cannot rule out (its upper confidence bound) is allowed.
+  expect_false(any(grepl("statistics are inflated", fit$notes, fixed = TRUE)))
+  hedge <- grep("cannot tell the dispersion from 1", fit$notes, value = TRUE)
+  if (length(hedge)) expect_match(hedge, "would be inflated", fixed = TRUE)
   gl <- anova_glm(d, "y", "g", family = "poisson", plots = FALSE)
   expect_false(any(grepl("^Pearson dispersion is", gl$notes)))
 })
