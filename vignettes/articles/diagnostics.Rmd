@@ -3,7 +3,8 @@ title: "Diagnostics: what anovakit checks and what to do about it"
 description: >
   Every assumption check the eight functions run, organised by what is being
   checked: how to read each one, a worked example that makes it fire, and the
-  argument or function that helps when it fails.
+  argument or function that helps when it fails. Also covers exact fits and
+  the limits of numerical precision.
 ---
 
 ```{r setup, include = FALSE}
@@ -25,20 +26,52 @@ note_with <- function(fit, pattern) grep(pattern, fit$notes, value = TRUE)
 ```
 
 Every anovakit function checks the assumptions its method relies on, and only
-those. The results go in `$assumptions`; anything that fails, could not be
-computed, or changed what the function did is explained in `$notes`. This
-article is organised by *what* is being checked rather than by function, so
-that you can see, for example, every way the package looks at normality in one
-place. The per-function walkthroughs ([Welch](welch.html),
-[Kruskal-Wallis](kruskal-wallis.html), [ANCOVA](ancova.html),
-[GLM](glm.html), [repeated measures](repeated-measures.html),
-[MANOVA](manova.html), [binary](binary.html) and [counts](counts.html)) show
-the same checks in the context of a single analysis.
+those. The results go in `$assumptions`. Anything that failed, could not be
+computed, or changed what the function did is explained in `$notes`.
+
+This guide is organised by what is being checked rather than by function, so
+that, for example, every way the package looks at normality is in one place.
+The walkthroughs ([Welch](welch.html), [Kruskal-Wallis](kruskal-wallis.html),
+[ANCOVA](ancova.html), [GLM](glm.html),
+[repeated measures](repeated-measures.html), [MANOVA](manova.html),
+[binary](binary.html) and [counts](counts.html)) show the same checks within
+a single analysis.
+
+Read the tests and the plots together. A p-value says whether a departure is
+detectable, a plot says whether it is large, and neither says whether it
+matters for your inference. Then read `$notes`, which say which check failed
+and what the function did about it.
+
+## Checks at a glance
+
+| Check | Function(s) | Component | When it fails |
+|:------|:------------|:----------|:--------------|
+| [Normality within groups](#within-each-group-anova_welch-and-anova_kw) | `anova_welch()`; `anova_kw()` with `diagnostics = TRUE` (context only) | `$assumptions$normality`, `$plots$qq` | Look at the Q-Q plot; `anova_kw()`; `anova_count()` for counts; transform the response |
+| [Normality of residuals](#on-model-residuals-anova_ancova-and-anova_glm) | `anova_ancova()` (test); `anova_glm()` (Q-Q plot only) | `$assumptions$normality`, `$plots$qq` | Transform the response; a better-matched `family` in `anova_glm()` |
+| [Normality within each within-subject cell](#within-each-within-subject-cell-anova_rm) | `anova_rm()` | `$assumptions$normality`, `$residuals`, `$plots$qq` | Transform the response; judge by the plot when only one cell of many rejects |
+| [Multivariate normality (Mardia)](#multivariate-normality-mardias-tests-in-anova_manova) | `anova_manova()` | `$assumptions$mardia` | `test = "Pillai"` (the default); inspect `$plots$qq_<response>` |
+| [Variance ratio](#the-variance-ratio-anova_welch) | `anova_welch()` | `$assumptions$variance_ratio` | Nothing for Welch; in pooled-variance models use `vcov_type = "HC3"` |
+| [Levene's test](#levenes-test-anova_ancova) | `anova_ancova()` | `$assumptions$levene` | `vcov_type = "HC3"` |
+| [Box's M](#boxs-m-anova_manova) | `anova_manova()` | `$assumptions$box_m` | Inspect group covariances; `test = "Pillai"`, especially with unequal groups |
+| [Homogeneity of regression slopes](#homogeneity-of-regression-slopes) | `anova_ancova()`, `anova_manova()` with covariates | `$slopes_test` (`$assumptions$slopes` in ANCOVA), `$simple_slopes` | `force_interaction = TRUE`; read `$simple_slopes`; `anova_ancova()` per response after a MANCOVA |
+| [Covariate balance and extrapolation](#covariate-balance-and-extrapolation) | `anova_ancova()` | `$notes`, `$covariate_means`, `$plots$covariate` | `force_interaction = TRUE`; restrict to the shared covariate range |
+| [Sphericity](#sphericity) | `anova_rm()` | `$sphericity`, `$assumptions$sphericity` | `correction = "GG"` (default) or `"HF"` |
+| [Overdispersion (counts)](#counts-anova_count) | `anova_count()` | `$dispersion`, `$model_dispersion`, `$assumptions$poisson_dispersion` | `model = "negbin"` or `"quasipoisson"`; `overdispersion_threshold` |
+| [Overdispersion (other families)](#other-families-anova_glm) | `anova_glm()` | `$assumptions$dispersion` | `family = "quasipoisson"` or `"quasibinomial"`; `anova_count(model = "negbin")`; a missing predictor |
+| [Dispersion of 0/1 data](#why-it-is-na-for-01-data) | `anova_bin()`, `anova_glm()` | `$assumptions$dispersion` (`NA`) | Nothing to check; model clustering if there is any |
+| [Separation](#binary-responses) | `anova_bin()`, `anova_glm()` | `$notes`, `$effect_sizes` or `$assumptions$coefficients` (open intervals) | Exact test; one-sided profile intervals; collapse levels; `logistf::logistf()` |
+| [Zero-count cells](#counts) | `anova_count()`, `anova_glm()` | `$notes`, `$effect_sizes`, `$assumptions$coefficients` (one-sided profile intervals) | Report the one-sided interval; collapse levels or drop structural zeros |
+| [Sparse cells](#sparse-cells-and-cell-counts) | `anova_bin()`, `anova_count()`, `anova_manova()`, `anova_welch()`, `anova_kw()`, `anova_rm()` | `$notes`, `$assumptions$cell_counts`, `$assumptions$proportions` | `interaction = FALSE`; collapse levels; exact or score tests |
+| [Leverage of 1](#leverage-and-robust-standard-errors) | `anova_ancova()`, `anova_glm()`, `anova_bin()`, `anova_count()` (with `vcov_type`) | `$notes` | Additive model; collapse levels; `anova_welch()` for one-way |
+| [Aliased coefficients](#aliased-coefficients) | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes`, `attr(fit$anova, "ss_type")` | Type III falls back to Type II by itself; `interaction = FALSE`; analyse populated cells only |
+| [Saturated model](#saturated-models) | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes` | Fewer terms or more data (Gaussian); fine for tests with a fixed dispersion |
+| [Exact fit](#exact-fits) | `anova_glm()`, `anova_count()`, `anova_manova()` | an error | Check the response column; for counts, a fixed-dispersion fit (`family = "poisson"`, `model = "poisson"`) |
+| [Large level, little variation](#a-large-level-with-little-variation) | `anova_glm()` (Gamma, Poisson and negative binomial deviances); `anova_count()` only on far larger levels | `$anova` (`NA`), `$notes` | `test_statistic = "Wald"` |
 
 ## What each function stores
 
 The components of `$assumptions` differ by method. Fitting each function once
-and listing them is the quickest map:
+and listing them gives the map:
 
 ```{r map}
 map <- list(
@@ -62,14 +95,9 @@ data.frame(assumptions = vapply(map, function(f)
 the Kruskal-Wallis test assumes no distribution. `anova_glm()` keeps its
 coefficient table there, since the intervals in it are where separation shows
 up. `anova_rm()` also returns `$sphericity` at the top level, and
-`anova_ancova()` and `anova_manova()` return `$slopes_test`. `summary(fit)`
-prints every element of `$assumptions` together.
-
-Two habits make all of this easier to use. First, read the tests and the
-plots together: a p-value says whether a departure is detectable, a plot says
-whether it is large, and neither says whether it matters for your inference.
-Second, read `$notes`: the package already says there which check failed and
-what it did about it.
+`anova_ancova()`, and `anova_manova()` with covariates, return
+`$slopes_test`. `summary(fit)` prints every element of `$assumptions`
+together.
 
 ## Normality
 
@@ -97,9 +125,9 @@ plot(ins, "qq")
 
 The upper tail rises above the line, the mark of right skew, and the short
 horizontal runs are tied values: several plots in a group hold the same
-number of insects. That is what small counts look like, and it points to the
-remedy. For a count response the better model is `anova_count()` (see the
-[counts article](counts.html)); for any skewed or ordinal response the
+number of insects. Small counts look like this, which points to the remedy.
+For a count response the better model is `anova_count()` (see
+[Counts and rates](counts.html)); for any skewed or ordinal response the
 rank-based `anova_kw()` makes no normality assumption:
 
 ```{r ins-kw}
@@ -116,14 +144,14 @@ map$anova_kw$notes
 ### Why a normality test is a weak guide
 
 A Shapiro-Wilk test answers "is the departure from normality detectable?",
-and detectability depends on the sample size far more than on the size of the
-departure. The simulation below, whose truth is known, draws two data sets. The
-first has 1000 observations per group from a t distribution with 10 degrees of
-freedom, whose tails are only slightly heavier than normal; with groups this
-large the central limit theorem makes the group means very nearly normal, and
-Welch's test keeps its error rate. The second has 8 observations per group from an
-exponential distribution, which is strongly skewed, in samples too small for
-the central limit theorem to help much.
+and detectability depends far more on the sample size than on the size of the
+departure. The simulation below draws two data sets whose truth is known. The
+first has 1000 observations per group from a t distribution with 10 degrees
+of freedom, whose tails are only slightly heavier than normal. With groups
+this large the central limit theorem makes the group means very nearly
+normal, and Welch's test keeps its error rate. The second has 8 observations
+per group from an exponential distribution, which is strongly skewed, in
+samples too small for the central limit theorem to help much.
 
 ```{r sim-normality}
 set.seed(1)
@@ -138,9 +166,9 @@ fit_small$assumptions$normality[, c("group", "n", "statistic", "p_value")]
 
 Every large group rejects, but only
 `r sum(fit_small$assumptions$normality$p_value < 0.05)` of the three small,
-strongly skewed groups does. The Q-Q plots tell the truer story. On the left
+strongly skewed groups does. On the left
 the points follow the line except in the far tails, beyond two standard
-deviations; on the right they bow: the lowest values sit above the line, the
+deviations. On the right they bow: the lowest values sit above the line, the
 middle ones below it and the highest above it again, the shape of right skew.
 
 ```{r sim-qq, fig.show = "hold", out.width = "50%", fig.width = 5, fig.height = 4}
@@ -165,8 +193,8 @@ rates
 
 The test flags the harmless departure `r round(100 * rates[1])`% of the time
 and the serious one `r round(100 * rates[2])`% of the time. Use the p-value as
-a prompt to look at the plot, not as a verdict, and decide by what the plot
-shows and how large the groups are.
+a prompt to look at the plot, and decide by what the plot shows and how large
+the groups are.
 
 ### On model residuals: `anova_ancova()` and `anova_glm()`
 
@@ -185,9 +213,9 @@ plot(anx, "qq")
 ```
 
 Here the test does not reject (p `r fp(anx$assumptions$normality$p.value)`)
-and the points stay close to the line. Shapiro-Wilk is skipped, with a note, when
-there are fewer than 3 or more than 5000 residuals; above 5000, the Q-Q plot is
-all there is, and with that many observations it is also all you need.
+and the points stay close to the line. Shapiro-Wilk is skipped, with a note,
+when there are fewer than 3 or more than 5000 residuals. Above 5000 the Q-Q
+plot is all there is, and with that many observations it is all you need.
 
 `anova_glm()` runs no normality test. For a Gaussian family the residuals are
 approximately normal if the model is right, but for other families they are
@@ -230,13 +258,13 @@ n_rej <- sum(co2_norm$p_value < 0.05)
 at `r co2_norm$cell[co2_norm$p_value < 0.05]`, p
 `r fp(co2_norm$p_value[co2_norm$p_value < 0.05])`). With seven tests, one
 rejection is about what chance alone produces, so on its own it is weak
-evidence; the Q-Q plot, standardised within each cell as the tests are, shows
+evidence. The Q-Q plot, standardised within each cell as the tests are, shows
 no systematic curvature.
 
-With a single two-level within-subject factor the two cells' residuals are
-plus and minus half of each subject's centred difference, so both rows test
-the normality of the differences, which is exactly the assumption of the
-equivalent paired t-test. The `sleep` data make that visible:
+With a single two-level within-subject factor, the two cells' residuals are
+plus and minus half of each subject's centred difference. Both rows then test
+the normality of the differences, which is the assumption of the equivalent
+paired t-test. The `sleep` data show this:
 
 ```{r sleep}
 sl <- anova_rm(sleep, "extra", subject = "ID", within = "group",
@@ -246,13 +274,13 @@ with(sleep, extra[group == "2"] - extra[group == "1"])
 ```
 
 The two rows are identical, and both reject
-(p `r fp(sl$assumptions$normality$p_value[1])`). The differences themselves
-show why: one subject's is
+(p `r fp(sl$assumptions$normality$p_value[1])`). The differences show why:
+one subject's is
 `r with(sleep, max(extra[group == "2"] - extra[group == "1"]))`, far above
 the others. With ten subjects, one unusual one is enough to fail the test;
 whether to keep it is a question about that subject, not about the test.
-Normality of the subject means, which the
-between-subject tests rely on, is not tested.
+Normality of the subject means, which the between-subject tests rely on, is
+not tested.
 
 ### Multivariate normality: Mardia's tests in `anova_manova()`
 
@@ -266,50 +294,56 @@ irm$assumptions$mardia
 note_with(irm, "^Mardia")
 ```
 
-Both reject. The four multivariate statistics differ in how much they suffer
-from non-normality, and Pillai's trace (the default, `test = "Pillai"`) is the
-most robust of them; the note says so, and that it is the statistic in use.
-With another `test`, the note suggests switching to it. Mardia's kurtosis test in particular
-rejects too often when the sample is small relative to the square of the
-number of responses, and both tests are skipped, with a note, unless the
-residual degrees of freedom exceed the number of responses by at least 10
-(see [Sparse cells](#sparse-cells-and-cell-counts)). The per-response Q-Q
-plots in `$plots` (`qq_Sepal.Length` and so on) show which responses are
-responsible; the [plots article](visuals.html) combines them into one figure.
+Both reject. Of the four multivariate statistics, Pillai's trace (the
+default, `test = "Pillai"`) is the least affected by non-normality. The note
+says so and that it is the statistic in use; with another `test`, the note
+suggests switching to it. Mardia's kurtosis test rejects too often when the
+sample is small relative to the square of the number of responses, and both
+tests are skipped, with a note, unless the residual degrees of freedom exceed
+the number of responses by at least 10 (see
+[Small groups for the multivariate checks](#small-groups-for-the-multivariate-checks)).
+The per-response Q-Q plots in `$plots` (`qq_Sepal.Length` and so on) show
+which responses are responsible; [Plots and themes](visuals.html) combines
+them into one figure.
 
 ## Equal variances
 
+The remedy for unequal variances in a model that pools them is a
+heteroscedasticity-consistent ("robust") covariance, set with `vcov_type`.
+[Weights and robust standard errors](weights.html#robust-standard-errors-with-vcov_type)
+covers which HC type to use and which results it reaches.
+
 ### The variance ratio: `anova_welch()`
 
-Welch's test does not assume equal variances, so it does not test them either.
-It reports the ratio of the largest group variance to the smallest in
-`$assumptions$variance_ratio`, and adds a note when it exceeds 4:
+Welch's test does not assume equal variances, so it does not test them
+either. It reports the ratio of the largest group variance to the smallest in
+`$assumptions$variance_ratio`, and adds a note when the ratio exceeds 4:
 
 ```{r ins-ratio}
 ins$assumptions$variance_ratio
 note_with(ins, "variance")
 ```
 
-A ratio of `r f2(ins$assumptions$variance_ratio)` is nothing to act on here:
-it is the reason to use Welch's test. It matters when you fit the same
-comparison with a method that pools the variance. `anova_glm()` with its
-default Gaussian family does, and its model-based standard errors for the six
-spray means are then identical. `vcov_type = "HC3"` gives each mean a
-heteroskedasticity-consistent standard error, and
-`test_statistic = "Wald"` makes the omnibus test use it too:
+A ratio of `r f2(ins$assumptions$variance_ratio)` needs no action here: it is
+the reason to use Welch's test. It matters when you fit the same comparison
+with a method that pools the variance. `anova_glm()` with its default
+Gaussian family does, and its model-based standard errors for the six spray
+means are then identical. `vcov_type = "HC3"` gives each mean a
+heteroscedasticity-consistent standard error, and `test_statistic = "Wald"`
+makes the omnibus test use it too:
 
 ```{r ins-glm}
 pooled <- anova_glm(InsectSprays, "count", "spray", plots = FALSE)
-robust <- anova_glm(InsectSprays, "count", "spray", vcov_type = "HC3",
-                    test_statistic = "Wald", plots = FALSE)
+hc3 <- anova_glm(InsectSprays, "count", "spray", vcov_type = "HC3",
+                 test_statistic = "Wald", plots = FALSE)
 data.frame(spray = pooled$emmeans$spray,
            se_pooled = pooled$emmeans$se,
-           se_HC3 = robust$emmeans$se)
-note_with(robust, "anova_welch")
+           se_HC3 = hc3$emmeans$se)
+note_with(hc3, "anova_welch")
 ```
 
-For a one-way design, `anova_welch()` remains the better calibrated choice,
-as the note says.
+For a one-way design `anova_welch()` remains the better calibrated choice, as
+the note says.
 
 ### Levene's test: `anova_ancova()`
 
@@ -328,10 +362,10 @@ tapply(residuals(cats$model), cats$data_used$Sex, sd)
 Levene's test rejects (p `r fp(cats$assumptions$levene$p_value)`): the
 residual standard deviation of male heart weights is about
 `r f2(tapply(residuals(cats$model), cats$data_used$Sex, sd)[["M"]] / tapply(residuals(cats$model), cats$data_used$Sex, sd)[["F"]])`
-times that of females. The note
-names the remedy: with `vcov_type = "HC3"` the F tests in `$anova` become Wald
-F tests built from a heteroskedasticity-consistent covariance, and the
-marginal means, comparisons and covariate slopes use it too.
+times that of females. The note names the remedy. With `vcov_type = "HC3"`
+the F tests in `$anova` become Wald F tests built from a
+heteroscedasticity-consistent covariance, and the marginal means, comparisons
+and covariate slopes use it too.
 
 ```{r cats-hc3}
 cats_hc3 <- anova_ancova(MASS::cats, "Hwt", "Sex", "Bwt", vcov_type = "HC3",
@@ -345,9 +379,10 @@ data.frame(sex = cats$simple_slopes$Sex,
 The slopes test chose the interaction model here (see
 [Homogeneity of regression slopes](#homogeneity-of-regression-slopes)), so
 each sex has its own slope. With the pooled variance the female slope's
-standard error is overstated and the male one's understated; the robust
-covariance corrects both. The homogeneity-of-slopes test itself stays the
-model-based F test, as the notes say.
+standard error is overstated and the male one's understated; the
+heteroscedasticity-consistent covariance corrects both. The
+homogeneity-of-slopes test itself stays the model-based F test, as the notes
+say.
 
 ### Box's M: `anova_manova()`
 
@@ -359,7 +394,7 @@ irm$assumptions$box_m
 note_with(irm, "^Box")
 ```
 
-It rejects decisively for `iris`. Box's M is notoriously sensitive to
+It rejects decisively for `iris`. Box's M is very sensitive to
 non-normality, which Mardia's tests have already found, so treat the p-value
 as a prompt to look at the group covariances. The standard deviations are a
 good start:
@@ -369,10 +404,10 @@ sapply(split(iris[1:4], iris$Species), function(x) round(apply(x, 2, sd), 2))
 ```
 
 The petal measurements of setosa vary far less than those of the other two
-species. As the note says, with groups of equal size, as here, the
-multivariate tests are fairly robust to unequal covariance matrices, and
-Pillai's trace most of all. With unequal groups as well that robustness is
-weaker: use Pillai's trace and treat a borderline result with caution.
+species. As the note says, with groups of equal size the multivariate tests
+tolerate unequal covariance matrices fairly well, Pillai's trace most of all.
+With unequal groups as well they tolerate it less: use Pillai's trace and
+treat a borderline result with caution.
 
 ## Homogeneity of regression slopes
 
@@ -391,14 +426,14 @@ anx$simple_slopes[, c("Treat", "slope", "conf_low", "conf_high")]
 
 In the control group, weight after treatment barely depends on weight before
 (slope `r f2(anx$simple_slopes$slope[anx$simple_slopes$Treat == "Cont"])`);
-in both treatment groups it does. The covariate plot shows the same thing:
+in both treatment groups it does. The covariate plot shows the same:
 
 ```{r anx-covariate}
 plot(anx, "covariate")
 ```
 
 Because the test rejected at `homogeneity_alpha = 0.05`, the interaction model
-was used and the notes say what that means:
+was used, and the notes say what that means:
 
 ```{r anx-notes}
 anx$notes
@@ -407,18 +442,21 @@ anx$notes
 The group row of `$anova` and the comparisons in `$posthoc` now compare the
 treatments at the mean pre-treatment weight, not by a constant amount. Read
 `$simple_slopes` alongside them. Choosing the model with a test on the same
-data has a cost in both directions (the last note), so if you know the
-design in advance, set `force_interaction = TRUE` (or `FALSE`) instead of
-letting the test decide. When the groups were not randomised,
-`force_interaction = TRUE` is the safer choice.
+data has a cost in both directions (the last note), so if you know the design
+in advance, set `force_interaction = TRUE` (or `FALSE`) instead of letting the
+test decide. When the groups were not randomised, `force_interaction = TRUE`
+is the safer choice.
 
-Two related checks look at where the covariate lies rather than at its slope.
-When the additive model is used and the covariate means differ between groups
-by more than half a pooled within-group standard deviation, a note warns that
-a slope difference the test missed would bias the adjusted comparisons. And
-when the covariate mean lies outside the range a group was observed over, that
-group's adjusted mean is an extrapolation, and a note names it. Cars with more
-cylinders are heavier, so both fire in `mtcars`:
+### Covariate balance and extrapolation
+
+Two related checks in `anova_ancova()` look at where the covariate lies
+rather than at its slope. When the additive model is used and the covariate
+means differ between groups by more than half a pooled within-group standard
+deviation, a note warns that a slope difference the test missed would bias
+the adjusted comparisons. When the covariate mean lies outside the range a
+group was observed over, that group's marginal mean is an extrapolation, and
+a note names it. Cars with more cylinders are heavier, so both fire in
+`mtcars`:
 
 ```{r mt-balance}
 mt <- transform(mtcars, cyl = factor(cyl))
@@ -426,8 +464,8 @@ mt_anc <- anova_ancova(mt, "mpg", "cyl", "wt", plots = FALSE)
 note_with(mt_anc, "covariate means differ|outside the range")
 ```
 
-No argument can repair covariates that barely overlap between groups; the
-adjusted means there rest on the model's straight line rather than on data.
+No argument can repair covariates that barely overlap between groups: the
+marginal means there rest on the model's straight line rather than on data.
 Report them as such, or restrict the comparison to the range the groups share.
 
 ### `anova_manova()` with covariates
@@ -444,7 +482,7 @@ mcv$slopes_test
 note_with(mcv, "^Homogeneity")
 ```
 
-The common-slope adjusted means then describe the groups at the covariate
+The common-slope marginal means then describe the groups at the covariate
 mean only, and rejections by Mardia's tests or Box's M may be artefacts of the
 misspecified slopes. `anova_manova()` does not fit the covariate-by-group
 model itself; analyse each response with `anova_ancova()`, which does:
@@ -457,8 +495,8 @@ anova_ancova(mt, "mpg", "am", "wt", force_interaction = TRUE,
 
 ## Sphericity
 
-The univariate F tests of a repeated measures ANOVA assume sphericity: that the
-differences between every pair of within-subject levels have the same
+The univariate F tests of a repeated measures ANOVA assume sphericity: that
+the differences between every pair of within-subject levels have the same
 variance. `anova_rm()` reads Mauchly's test and the Greenhouse-Geisser and
 Huynh-Feldt epsilons from the fitted model and stores them in `$sphericity`
 (and `$assumptions$sphericity`), one row per within-subject term with more
@@ -474,7 +512,8 @@ how far the data are from sphericity: 1 means none, and its lower bound is
 estimate of `r f2(co2$sphericity$gg_epsilon[1])` is well below 1; the
 Huynh-Feldt estimate of `r f2(co2$sphericity$hf_epsilon[1])` is less
 conservative. The correction multiplies both degrees of freedom of each
-affected F test by epsilon. `correction` chooses which one `$anova` uses:
+affected F test by epsilon, and `correction` chooses which epsilon `$anova`
+uses:
 
 ```{r co2-corrections}
 by_corr <- lapply(c(GG = "GG", HF = "HF", none = "none"), function(cr) {
@@ -490,14 +529,13 @@ do.call(rbind, lapply(names(by_corr), function(cr) {
 note_with(by_corr$none, "^Mauchly")
 ```
 
-The default, `"GG"`, is the safe choice when epsilon is well below 1; `"HF"`
-is more powerful when it is close to 1; `"none"` is for when you have reason
-to believe sphericity holds, and the note above warns when Mauchly's test
-disagrees.
-Mauchly's test has little power in small samples, so it is better to apply a
-correction routinely than to decide by the test. The marginal means and
-comparisons do not need a correction: they come from afex's multivariate
-model, which gives each within-subject cell its own variance.
+The default, `"GG"`, is the safe choice when epsilon is well below 1. `"HF"`
+has more power when epsilon is close to 1. `"none"` is for when you have
+reason to believe sphericity holds, and the note above warns when Mauchly's
+test disagrees. Mauchly's test has little power in small samples, so apply a
+correction routinely rather than deciding by the test. The marginal means and
+comparisons need no correction: they come from afex's multivariate model,
+which gives each within-subject cell its own variance.
 
 With fewer subjects than contrasts, the error matrix is singular and Mauchly's
 test is undefined. The epsilons are still defined, and `anova_rm()` computes
@@ -550,15 +588,16 @@ size. `$dispersion` (the statistic the choice was made on) and
 `$model_dispersion` (that of the model returned) are also in `$assumptions`,
 as `poisson_dispersion` and `model_dispersion`.
 
-Forcing `model = "poisson"` keeps the Poisson model and says what that costs:
+Forcing `model = "poisson"` keeps the Poisson model, and the note says what
+that costs:
 
 ```{r warp-poisson}
 note_with(anova_count(warpbreaks, "breaks", c("wool", "tension"),
                       model = "poisson", plots = FALSE), "^Pearson")
 ```
 
-The threshold is a fixed cut-off, not a test, and a dispersion near it is
-worth a second look whichever side it falls:
+The threshold is a fixed cut-off, not a test, so look again at a dispersion
+near it, whichever side it falls:
 
 ```{r ins-count}
 ins_nb <- anova_count(InsectSprays, "count", "spray", plots = FALSE)
@@ -569,13 +608,14 @@ ins_p <- anova_count(InsectSprays, "count", "spray",
 note_with(ins_p, "^Pearson")
 ```
 
-A dispersion of `r f2(ins_nb$dispersion)` is just over the default threshold,
-so the default moved to a negative binomial, and the theta note reports that
-theta is poorly determined but large: the data are only weakly overdispersed.
-With the threshold raised to 2 the Poisson model is kept, and the note then
-gives the Pearson test of overdispersion and what a dispersion of that size
-does to the Poisson tests. Set `model` yourself (`"poisson"`, `"negbin"` or
-`"quasipoisson"`) to take the decision out of the function's hands.
+A dispersion of `r f2(ins_nb$dispersion)` is a little over the default
+threshold, so the default moved to a negative binomial, and the theta note
+reports that theta is poorly determined but large: the data are only weakly
+overdispersed. With the threshold raised to 2 the Poisson model is kept, and
+the note gives the Pearson test of overdispersion and what a dispersion of
+that size does to the Poisson tests. Set `model` yourself (`"poisson"`,
+`"negbin"` or `"quasipoisson"`) to take the decision out of the function's
+hands.
 
 ### Other families: `anova_glm()`
 
@@ -597,7 +637,8 @@ variation explicitly.
 
 The same check applies to binomial proportions with several trials per row.
 `esoph` records oesophageal cancer cases and controls by age, alcohol and
-tobacco group; modelled as proportions with the number of subjects as weights:
+tobacco group, modelled here as proportions with the number of subjects as
+weights (see [Trials behind proportions](weights.html#trials-behind-proportions)):
 
 ```{r esoph}
 es <- transform(esoph, n = ncases + ncontrols,
@@ -626,10 +667,10 @@ remedy the note suggests.
 
 For a 0/1 response, `anova_bin()` (and `anova_glm()` with a binomial family)
 reports the dispersion as `NA`. A single Bernoulli trial cannot be
-overdispersed: its variance is fixed by its mean. And the Pearson statistic
-carries no information: in a model with one parameter per cell it equals
-N / (N - k) whatever the data. `MASS::birthwt` shows it, with a real outcome
-and with pure noise:
+overdispersed: its variance is fixed by its mean. The Pearson statistic
+carries no information either: in a model with one parameter per cell it
+equals N / (N - k) whatever the data. `MASS::birthwt` shows it, with a real
+outcome and with pure noise:
 
 ```{r birthwt-disp}
 bw <- transform(MASS::birthwt,
@@ -651,20 +692,20 @@ real$assumptions$dispersion
 
 All three numbers are the same. If your binary data come in clusters
 (patients within clinics, say), the concern is correlation within clusters,
-which no dispersion statistic of 0/1 data can reveal; it needs a model for the
-clustering.
+which no dispersion statistic of 0/1 data can reveal; it needs a model for
+the clustering.
 
 ## Separation and zero-count cells
 
 ### Binary responses
 
-When every observation in a group has the same outcome, the maximum likelihood
-estimate of that group's log-odds is infinite. `glm()` stops at a large
-number and reports convergence anyway; the coefficient's standard error is
-enormous, its Wald p-value is near 1 however strong the effect, and its Wald
-interval covers everything. `anova_bin()`, and `anova_glm()` for binomial,
-Poisson and negative binomial families, check the fitted linear predictor of
-every cell and name the cells that have run away.
+When every observation in a group has the same outcome, the maximum
+likelihood estimate of that group's log-odds is infinite. `glm()` stops at a
+large number and reports convergence anyway. The coefficient's standard error
+is enormous, its Wald p-value is near 1 however strong the effect, and its
+Wald interval covers everything. `anova_bin()`, and `anova_glm()` for
+binomial, Poisson and negative binomial families, check the fitted linear
+predictor of every cell and name the cells that have run away.
 
 Every child in first and second class on the Titanic survived:
 
@@ -683,26 +724,26 @@ tk$notes
 ```
 
 The eight rows with a frequency of zero (the crew's, and those for first- and
-second-class children who died, of whom there were none) are dropped first. The separation note names the
-cells and the coefficients. The next note describes what
-`anova_bin()` does about the odds ratios: their profile-likelihood intervals
-are open on the side the estimate ran off to, and the finite end is found by
-profiling the likelihood directly:
+second-class children who died, of whom there were none) are dropped first.
+The separation note names the cells and the coefficients. The next note
+describes what `anova_bin()` does about the odds ratios: their
+profile-likelihood intervals are open on the side the estimate ran off to,
+and the finite end is found by profiling the likelihood directly:
 
 ```{r titanic-or}
 tk$effect_sizes[, c("comparison", "odds_ratio", "conf_low", "conf_high",
                     "p_value")]
 ```
 
-Read the estimates as "infinite" and the intervals as what the data support:
-by the `r 100 * tk$conf_level`% profile intervals, the odds of survival for a
-first-class child were at least `r f2(tk$effect_sizes$conf_low[1])` times those
-of a third-class child, and for a second-class child at least
-`r f2(tk$effect_sizes$conf_low[2])` times. The
-Wald p-values beside them are useless, as the note warns. The separation note
-also warns that the same goes for the separated cells' marginal
-probabilities and the comparisons involving them: the intervals in `$emmeans`
-and `$posthoc` are Wald intervals and get no profile treatment.
+Read the estimates as infinite and the intervals as what the data support. By
+the `r 100 * tk$conf_level`% profile intervals, the odds of survival for a
+first-class child were at least `r f2(tk$effect_sizes$conf_low[1])` times
+those of a third-class child, and for a second-class child at least
+`r f2(tk$effect_sizes$conf_low[2])` times. The Wald p-values beside them are
+meaningless, as the note warns. The separation note also warns that the same
+goes for the separated cells' marginal probabilities and the comparisons
+involving them: the intervals in `$emmeans` and `$posthoc` are Wald intervals
+and get no profile treatment.
 
 ```{r titanic-emm}
 tk$emmeans[, c("Class", "estimate", "conf_low", "conf_high")]
@@ -720,9 +761,9 @@ What to do:
   quantities.
 - Collapse the offending level into a neighbour if that makes substantive
   sense, or use a penalised fit such as `logistf::logistf()`.
-- Do not ask for robust standard errors as a fix. At the boundary the sandwich
-  covariance collapses towards zero, so `vcov_type` falls back to model-based
-  standard errors there, with a note:
+- Do not ask for robust standard errors as a fix. At the boundary the
+  sandwich covariance collapses towards zero, so `vcov_type` falls back to
+  model-based standard errors there, with a note:
 
 ```{r titanic-hc3}
 note_with(anova_bin(kids, "Survived", "Class", weights = "Freq",
@@ -732,9 +773,8 @@ note_with(anova_bin(kids, "Survived", "Class", weights = "Freq",
 ### Counts
 
 The count version of separation is a group with no events: its log rate is
-minus infinity. The simulation below, whose truth is known, has a third site
-whose true rate is small but not zero, and whose ten traps happened to catch
-nothing:
+minus infinity. In the simulation below, a third site has a true rate that is
+small but not zero, and its ten traps happened to catch nothing:
 
 ```{r traps}
 set.seed(10)
@@ -747,9 +787,9 @@ tr$effect_sizes[, c("comparison", "IRR", "conf_low", "conf_high", "p_value")]
 ```
 
 The rate ratio for site C against A is numerically zero and its Wald p-value
-is near 1, as the note warns. Its interval, though, is one-sided: the lower
-end is 0, and the upper end was found by profiling the likelihood directly,
-where a Wald interval would run from 0 to infinity. So, by the
+is near 1, as the note warns. Its interval is one-sided: the lower end is 0,
+and the upper end was found by profiling the likelihood directly, where a
+Wald interval would run from 0 to infinity. By the
 `r 100 * tr$conf_level`% profile interval, site C's rate is at most
 `r f3(tr$effect_sizes$conf_high[tr$effect_sizes$comparison == "C vs A"])`
 times site A's. `anova_glm()` with a Poisson family profiles the diverged
@@ -764,19 +804,23 @@ exp(co[co$term == "siteC", c("conf_low", "conf_high")])
 The likelihood-ratio omnibus test remains usable. A Wald omnibus test
 (`test_statistic = "Wald"`) does not: it is built from the same diverged
 coefficient, its p-value can be near 1 however large the difference, and the
-note says so when one was asked for. If a zero group is a
-structural zero (a species that cannot occur there), drop it; if not, report
-the one-sided interval, or collapse the level.
+note says so when one was asked for. If a zero group is a structural zero (a
+species that cannot occur there), drop it; if not, report the one-sided
+interval, or collapse the level.
 
 ## Sparse cells and cell counts
 
-Many checks are about how much information each cell holds. The package
-reports it in several ways.
+The checks below flag cells or groups too small for a test to be trusted:
+expected events in `anova_bin()`, events and empty combinations in
+`anova_count()`, and group sizes for the normality tests and the
+multivariate checks.
 
-**Expected events in a binary model.** When fewer than about 5 events or
-non-events are expected in a cell under the null hypothesis, `anova_bin()`
-warns that the likelihood-ratio test is liberal. Low birth weight by race and
-smoking, with the interaction, has three such cells:
+### Expected events in a binary model
+
+When fewer than about 5 events or non-events are expected in a cell under the
+null hypothesis, `anova_bin()` warns that the likelihood-ratio test is
+liberal. Low birth weight by race and smoking, with the interaction, has
+three such cells:
 
 ```{r bw-sparse}
 note_with(real, "^Sparse")
@@ -787,9 +831,10 @@ score test, `anova(fit$model, test = "Rao")`. Fitting the grouping variables
 additively (`interaction = FALSE`, the default) pools information across cells
 and judges sparseness on each factor's levels instead.
 
-**Events and empty combinations in a count model.** `anova_count()` notes
-cells with fewer than 5 events in total (the trap example above has one), and
-combinations of levels with no observations. Its
+### Events and empty combinations in a count model
+
+`anova_count()` notes cells with fewer than 5 events in total (the trap
+example above has one), and combinations of levels with no observations. Its
 `$assumptions$cell_counts` gives the number of rows in each populated cell. In
 `MASS::quine`, which records days absent from school, no slow learner is in
 the oldest age group:
@@ -804,18 +849,20 @@ note_with(qn, "possible group|aliased|contain no data")
 With the interaction, the empty cell's parameter cannot be estimated, it is
 left out of `$emmeans` and `$posthoc`, and the interaction is tested on
 `r qn$anova$df[qn$anova$term == "Age:Lrn"]` degrees of freedom instead of 3.
-The additive model estimates every combination from the main effects, and the
-note it gives instead says what that relies on:
+The additive model estimates every combination from the main effects, and its
+note says what that relies on:
 
 ```{r quine-add}
 note_with(anova_count(MASS::quine, "Days", c("Age", "Lrn"), plots = FALSE),
           "possible group")
 ```
 
-**Small groups for normality tests.** Shapiro-Wilk needs at least 3 values,
-and at least 3 distinct ones to mean anything. `anova_welch()` names any group
-it could not test, with the reason, both in the table's `note` column and in
-`$notes`. In `mtcars`, by cylinders and transmission:
+### Small groups for normality tests
+
+Shapiro-Wilk needs at least 3 values, and at least 3 distinct ones to mean
+anything. `anova_welch()` names any group it could not test, with the reason,
+both in the table's `note` column and in `$notes`. In `mtcars`, by cylinders
+and transmission:
 
 ```{r mt-small}
 mw <- anova_welch(mtcars, "mpg", c("cyl", "am"), plots = FALSE)
@@ -824,8 +871,8 @@ note_with(mw, "^Shapiro")
 ```
 
 The group with two cars is skipped, and so is a group of three cars, two of
-which have the same fuel economy. Run on those three values anyway, the test
-shows why:
+which have the same fuel economy. Running the test on those three values
+anyway shows why:
 
 ```{r mt-small-sw}
 six_manual <- mtcars$mpg[mtcars$cyl == 6 & mtcars$am == 1]
@@ -834,16 +881,18 @@ shapiro.test(six_manual)[c("statistic", "p.value")]
 ```
 
 W takes its smallest possible value for three observations and the p-value is
-exactly `r shapiro.test(six_manual)$p.value`: a "rejection" produced by the tie,
-not by the shape of any distribution. `anova_kw()` with
+exactly `r shapiro.test(six_manual)$p.value`, a rejection produced by the tie
+rather than by the shape of any distribution. `anova_kw()` with
 `diagnostics = TRUE` and `anova_rm()` name the groups and within-subject cells
 they could not test in the same way.
 
-**Small groups for the multivariate checks.** Box's M needs more observations
-in every group than there are responses, and Mardia's tests need the residual
-degrees of freedom to exceed the number of responses by at least 10.
-`anova_manova()` stores `$assumptions$cell_counts` so you can see why. With
-four flowers per species:
+### Small groups for the multivariate checks
+
+Box's M needs more observations in every group than there are responses, and
+Mardia's tests need the residual degrees of freedom to exceed the number of
+responses by at least 10. `anova_manova()` stores
+`$assumptions$cell_counts` so you can see why a check was skipped. With four
+flowers per species:
 
 ```{r iris-small}
 tiny <- iris[c(1:4, 51:54, 101:104), ]
@@ -857,13 +906,13 @@ remedies.
 
 ## Leverage and robust standard errors
 
-A heteroskedasticity-consistent covariance estimates each observation's
+A heteroscedasticity-consistent covariance estimates each observation's
 contribution to the variance from its own residual. An observation that is
 alone in its cell has leverage 1: the model fits it exactly, its residual is
 zero by construction, and the sandwich would give that cell a standard error
-of zero (HC0, HC1) or none at all (HC2 to HC4). `vcov_type` then falls back to
-model-based standard errors, with a note. In `mtcars`, by cylinders and gears
-with their interaction, two cells hold one car each:
+of zero (HC0, HC1) or none at all (HC2 to HC4). `vcov_type` then falls back
+to model-based standard errors, with a note. In `mtcars`, by cylinders and
+gears with their interaction, two cells hold one car each:
 
 ```{r lev}
 mt$gear <- factor(mt$gear)
@@ -876,7 +925,7 @@ note_with(lev, "^Robust")
 To get robust standard errors, give every cell more than one observation: fit
 the grouping variables additively (the default for `anova_glm()`), collapse
 sparse levels, or, for a one-way comparison, use `anova_welch()`. The additive
-fit uses the robust covariance without complaint:
+fit uses the robust covariance without a fallback note:
 
 ```{r lev-add}
 lev_add <- anova_glm(mt, "mpg", c("cyl", "gear"), vcov_type = "HC3",
@@ -885,9 +934,11 @@ any(grepl("were not used", lev_add$notes))
 ```
 
 `vcov_type` also falls back at the boundary of the parameter space
-(separation, or a group with no events, as above), when the sandwich package is
-not installed, and when the robust covariance cannot be computed. In every case
-`$notes` says which standard errors were used.
+(separation, or a group with no events, as above), when the sandwich package
+is not installed, and when the robust covariance cannot be computed. In every
+case `$notes` says which standard errors were used.
+[Weights and robust standard errors](weights.html#when-the-model-based-covariance-is-used-instead)
+lists these cases with examples.
 
 ## Aliased coefficients and saturated models
 
@@ -904,8 +955,8 @@ lev$anova
 
 Under Type II (the default for `anova_glm()`), the table is computed and the
 interaction is tested on
-`r lev$anova$df[lev$anova$term == "cyl:gear"]` degrees of freedom instead of 4.
-Type III tests are not defined when coefficients are aliased, and
+`r lev$anova$df[lev$anova$term == "cyl:gear"]` degrees of freedom instead of
+4. Type III tests are not defined when coefficients are aliased, and
 `car::Anova()` refuses them. Ask for them anyway and the function computes
 Type II tests instead, says so, and labels the result accordingly:
 
@@ -919,7 +970,7 @@ note_with(lev3, "Type III tests are not defined")
 
 `anova_bin()`, `anova_count()` and `anova_ancova()` do the same, and so does
 `anova_manova()`, for its multivariate table and its univariate follow-ups.
-That matters most for `anova_ancova()`, which uses Type III by default: an
+This affects `anova_ancova()` most, because it uses Type III by default: an
 ANCOVA with an empty cell gets Type II tests without being asked.
 
 ```{r alias-ancova}
@@ -976,37 +1027,91 @@ sat_pois$dispersion
 The `Hair:Eye` row is the test of independence. `$dispersion` is `NA`: there
 are no residual degrees of freedom to compute it from.
 
-## Summary
+## Exact fits and numerical precision
 
-| Check | Function(s) | Component | When it fails |
-|:------|:------------|:----------|:--------------|
-| Normality within groups | `anova_welch()`; `anova_kw()` with `diagnostics = TRUE` (context only) | `$assumptions$normality`, `$plots$qq` | Look at the Q-Q plot; `anova_kw()`; `anova_count()` for counts; transform the response |
-| Normality of residuals | `anova_ancova()` (test); `anova_glm()` (Q-Q plot only) | `$assumptions$normality`, `$plots$qq` | Transform the response; a better-matched `family` in `anova_glm()` |
-| Normality within each within-subject cell | `anova_rm()` | `$assumptions$normality`, `$residuals`, `$plots$qq` | Transform the response; judge by the plot when only one cell of many rejects |
-| Multivariate normality (Mardia) | `anova_manova()` | `$assumptions$mardia` | `test = "Pillai"` (the default); inspect `$plots$qq_<response>` |
-| Variance ratio | `anova_welch()` | `$assumptions$variance_ratio` | Nothing for Welch; in pooled-variance models use `vcov_type = "HC3"` |
-| Levene's test | `anova_ancova()` | `$assumptions$levene` | `vcov_type = "HC3"` |
-| Box's M | `anova_manova()` | `$assumptions$box_m` | Inspect group covariances; `test = "Pillai"`, especially with unequal groups |
-| Homogeneity of regression slopes | `anova_ancova()`, `anova_manova()` with covariates | `$slopes_test` (`$assumptions$slopes` in ANCOVA), `$simple_slopes` | `force_interaction = TRUE`; read `$simple_slopes`; `anova_ancova()` per response after a MANCOVA |
-| Covariate balance and extrapolation | `anova_ancova()` | `$notes`, `$covariate_means`, `$plots$covariate` | `force_interaction = TRUE`; restrict to the shared covariate range |
-| Sphericity | `anova_rm()` | `$sphericity`, `$assumptions$sphericity` | `correction = "GG"` (default) or `"HF"` |
-| Overdispersion (counts) | `anova_count()` | `$dispersion`, `$model_dispersion`, `$assumptions$poisson_dispersion` | `model = "negbin"` or `"quasipoisson"`; `overdispersion_threshold` |
-| Overdispersion (other families) | `anova_glm()` | `$assumptions$dispersion` | `family = "quasipoisson"` or `"quasibinomial"`; `anova_count(model = "negbin")`; a missing predictor |
-| Dispersion of 0/1 data | `anova_bin()`, `anova_glm()` | `$assumptions$dispersion` (`NA`) | Nothing to check; model clustering if there is any |
-| Separation | `anova_bin()`, `anova_glm()` | `$notes`, `$effect_sizes` or `$assumptions$coefficients` (open intervals) | Exact test; one-sided profile intervals; collapse levels; `logistf::logistf()` |
-| Zero-count cells | `anova_count()`, `anova_glm()` | `$notes`, `$effect_sizes`, `$assumptions$coefficients` (one-sided profile intervals) | Report the one-sided interval; collapse levels or drop structural zeros |
-| Sparse cells | `anova_bin()`, `anova_count()`, `anova_manova()`, `anova_welch()`, `anova_kw()`, `anova_rm()` | `$notes`, `$assumptions$cell_counts`, `$assumptions$proportions` | `interaction = FALSE`; collapse levels; exact or score tests |
-| Leverage 1 | `anova_ancova()`, `anova_glm()`, `anova_bin()`, `anova_count()` (with `vcov_type`) | `$notes` | Additive model; collapse levels; `anova_welch()` for one-way |
-| Aliased coefficients | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes`, `attr(fit$anova, "ss_type")` | Type III falls back to Type II by itself; `interaction = FALSE`; analyse populated cells only |
-| Saturated model | `anova_glm()`, `anova_ancova()`, `anova_bin()`, `anova_count()`, `anova_manova()` | `$notes` | Fewer terms or more data (Gaussian); fine for tests with a fixed dispersion |
+### Exact fits
+
+When `anova_glm()` estimates the dispersion (Gaussian, Gamma and the quasi
+families, or any family with `test_statistic = "F"`), it divides every test
+statistic by the residual variation. When the response is constant, or constant within
+every group, there is none, and the function stops with an error rather than
+report F statistics that are ratios of rounding errors:
+
+```{r exact-fit, error = TRUE}
+same_within <- data.frame(g = rep(c("a", "b", "c"), each = 4),
+                          y = rep(c(10, 12, 15), each = 4))
+anova_glm(same_within, "y", "g")
+```
+
+Where whole-number weights are read as
+[frequency weights](weights.html#frequency-weights) (counts in quasi-Poisson
+or negative binomial fits, 0/1 responses in quasi-binomial ones), a frequency
+table with one row per group stands for a response constant within every
+group and is refused the same way. A Gaussian or Gamma fit reads such weights
+as precision weights, so one row per group is a saturated model instead (see
+[Saturated models](#saturated-models)).
+
+`anova_count()` with `model = "quasipoisson"` refuses an exact fit too, and
+with `model = "negbin"` refuses a response that takes the same value in every
+row. `anova_manova()` refuses any response the model fits exactly.
+
+A family with a fixed dispersion can still test these data: the Poisson
+likelihood-ratio statistic is
+`r f2(anova_glm(same_within, "y", "g", family = "poisson", plots = FALSE)$anova$statistic)`
+on 2 degrees of freedom.
+
+### A large level with little variation
+
+A response with a large level and small but real variation (epoch seconds
+varying by minutes, pressures in pascals) is not an exact fit, and the
+Gaussian family resolves it. The Poisson, Gamma and negative binomial
+deviances, however, are differences of nearly equal terms, and on such a
+level rounding can swamp the change in deviance a test is built on. The
+response below is 10^9^ plus a few units, with group means that differ by
+about 5:
+
+```{r precision}
+set.seed(4)
+level <- data.frame(g = rep(c("a", "b", "c"), each = 10))
+level$y <- 1e9 + rpois(30, c(a = 3, b = 4, c = 8)[level$g])
+gam <- anova_glm(level, "y", "g", family = "Gamma", plots = FALSE)
+gam$anova
+note_with(gam, "are NA")
+```
+
+The test is `NA` because rounding could move it by more than a fifth of its
+size, or of its size under the null hypothesis (its degrees of freedom for a
+likelihood-ratio test, 1 for an F), whichever is larger. One that rounding
+could move by more than 2% of that is reported with a note, and a negative
+statistic within its rounding error is shown as 0, with p = 1. The
+deviance explained in `$effect_sizes` is `NA` for the same reason. The
+"NaNs produced" lines that `glm()` and car report in `$notes` on these data
+come from the same rounding.
+
+A Wald test uses the estimates and their covariance rather than the deviance,
+so it can still test the term:
+
+```{r precision-wald}
+anova_glm(level, "y", "g", family = "Gamma", test_statistic = "Wald",
+          plots = FALSE)$anova
+```
+
+`anova_count()` makes the same check on Poisson and negative binomial
+deviances. Their deviance tracks the counts' own variance, so a test becomes
+`NA` only on far larger levels (around 10^14^). At 10^9^ plus a few units the
+Poisson test is computable. On the data above it comes out as 0, with p = 1.
 
 ## See also
 
-- [Which function?](choosing.html) for choosing a method in the first place.
+- [Choose an analysis](choosing.html) for choosing a method in the first
+  place.
 - [Working with results](results.html) for `$notes` and the rest of the
   returned object.
-- [Plots](visuals.html) for every diagnostic plot and how to customise it.
-- The per-function articles: [Welch](welch.html),
+- [Weights and robust standard errors](weights.html) for `vcov_type`, the HC
+  types and when the model-based covariance is used instead.
+- [Plots and themes](visuals.html) for every diagnostic plot and how to
+  customise it.
+- The walkthroughs: [Welch](welch.html),
   [Kruskal-Wallis](kruskal-wallis.html), [ANCOVA](ancova.html),
   [GLM](glm.html), [repeated measures](repeated-measures.html),
   [MANOVA](manova.html), [binary](binary.html), [counts](counts.html).

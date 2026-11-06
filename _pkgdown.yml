@@ -21,46 +21,58 @@ home:
 
 navbar:
   structure:
-    left: [intro, walkthroughs, topics, reference, news]
+    left: [intro, choosing, walkthroughs, guides, reference, news]
     right: [search, github]
   components:
+    intro:
+      text: Get started
+      href: articles/anovakit.html
+    choosing:
+      text: Choose an analysis
+      href: articles/choosing.html
     walkthroughs:
       text: Walkthroughs
       menu:
-      - text: "Which function?"
-        href: articles/choosing.html
-      - text: -------
-      - text: "Comparing means"
+      - text: "One outcome, independent groups"
       - text: "Welch's ANOVA: anova_welch()"
         href: articles/welch.html
       - text: "Kruskal-Wallis: anova_kw()"
         href: articles/kruskal-wallis.html
       - text: "ANCOVA: anova_ancova()"
         href: articles/ancova.html
+      - text: -------
+      - text: "Repeated measures and several outcomes"
       - text: "Repeated measures: anova_rm()"
         href: articles/repeated-measures.html
       - text: "MANOVA: anova_manova()"
         href: articles/manova.html
       - text: -------
-      - text: "Other outcomes"
+      - text: "Binary, count and other outcomes"
       - text: "Binary outcomes: anova_bin()"
         href: articles/binary.html
       - text: "Counts and rates: anova_count()"
         href: articles/counts.html
       - text: "Any GLM family: anova_glm()"
         href: articles/glm.html
-    topics:
+    guides:
       text: Guides
       menu:
-      - text: "Diagnostics"
-        href: articles/diagnostics.html
-      - text: "Plots and customisation"
-        href: articles/visuals.html
       - text: "Working with results"
         href: articles/results.html
+      - text: "Diagnostics"
+        href: articles/diagnostics.html
+      - text: "Plots and themes"
+        href: articles/visuals.html
+      - text: "Weights and robust standard errors"
+        href: articles/weights.html
+      - text: "Design choices"
+        href: articles/design.html
       - text: -------
       - text: "All articles"
         href: articles/index.html
+    news:
+      text: Changelog
+      href: news/index.html
 
 articles:
 - title: Start here
@@ -68,25 +80,28 @@ articles:
   contents:
   - anovakit
   - articles/choosing
-  - articles/results
-- title: Walkthroughs
-  desc: >
-    One article per function: the data, the fit, the output, effect sizes,
-    comparisons, diagnostics, plots, options and a model write-up.
+- title: "One outcome, independent groups"
   contents:
   - articles/welch
   - articles/kruskal-wallis
   - articles/ancova
+- title: "Repeated measures and several outcomes"
+  contents:
   - articles/repeated-measures
   - articles/manova
+- title: "Binary, count and other outcomes"
+  contents:
   - articles/binary
   - articles/counts
   - articles/glm
 - title: Guides
-  desc: Topics that cut across every function.
+  desc: Topics that cut across the functions.
   contents:
+  - articles/results
   - articles/diagnostics
   - articles/visuals
+  - articles/weights
+  - articles/design
 
 reference:
 - title: Analysis functions

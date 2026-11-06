@@ -283,7 +283,7 @@ bin <- anova_glm(d, "hit", "A", family = "binomial", plots = FALSE)
 bin$anova
 bin$effect_sizes
 
-# Heteroskedasticity-consistent standard errors, which flow through to the
+# Heteroscedasticity-consistent standard errors, which flow through to the
 # marginal means and the comparisons
 anova_glm(d, "y", "A", vcov_type = "HC3", plots = FALSE)$emmeans
 

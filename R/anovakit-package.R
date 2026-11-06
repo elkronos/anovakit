@@ -38,8 +38,8 @@
 #'   \item \code{verbose = FALSE} by default; progress goes through
 #'     \code{\link[base]{message}}, never \code{\link[base]{cat}}. No analysis
 #'     function writes to the console: warnings and messages raised by
-#'     \pkg{car}, \code{\link[stats]{glm}} and \pkg{afex} are captured into
-#'     \code{$notes} instead.
+#'     \pkg{car}, \pkg{emmeans}, \pkg{sandwich}, \pkg{afex} and the
+#'     \pkg{stats} model fits are captured into \code{$notes} instead.
 #'   \item Rows with missing or infinite values in the analysed columns are
 #'     dropped. The exception is the response of \code{\link{anova_kw}}: a rank
 #'     test can use infinite values (as the best or worst possible outcome), so

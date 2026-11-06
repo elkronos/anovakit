@@ -247,7 +247,7 @@
 #' bin$anova
 #' bin$effect_sizes
 #'
-#' # Heteroskedasticity-consistent standard errors, which flow through to the
+#' # Heteroscedasticity-consistent standard errors, which flow through to the
 #' # marginal means and the comparisons
 #' anova_glm(d, "y", "A", vcov_type = "HC3", plots = FALSE)$emmeans
 #'
@@ -731,7 +731,8 @@ anova_glm <- function(data, response, groups,
         emm$table, groups, estimate = "estimate",
         lower = "conf_low", upper = "conf_high", conf_level = conf_level,
         title = "Estimated marginal means",
-        ylab = sprintf("Estimated %s", response))
+        ylab = sprintf("Estimated %s", response),
+        ordered = is.ordered(data[[groups[1L]]]))
     }
     if (is.null(plot_list$emmeans)) notes <- c(notes, .no_emm_plot_note())
   }
