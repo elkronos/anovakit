@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the third review of anova_glm() (and the parts of
 # anova_bin() and anova_count() the same items touch). Each is checked against
 # an independent reference: base R, car, emmeans, or a hand computation.

@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Fixes to anova_bin() from the adversarial review. Every expectation is
 # checked against something computed independently of the package: stats::glm
 # fits, car, sandwich, statsmodels (numbers quoted), or a hand computation from

@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the second review's ANCOVA findings. Each result is
 # checked against an independent reference: emmeans on a model fitted here
 # with lm(), base R's anova(), car::Anova(), or the function's own arguments.

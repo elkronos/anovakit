@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the issues a second, independent verification pass
 # found in the first round of fixes. Each is checked against an independent
 # computation: the expanded data, a direct root-find, or base R.

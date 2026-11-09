@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the anova_manova() findings of the second review
 # (R2-MANOVA-*). Each expectation is checked against an independent reference:
 # stats (lm, anova.mlm, summary.manova), car or emmeans, or a hand count.

@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Round-5 review fixes: count and GLM functions (exact-fit rule, frequency
 # weights, weight-scaled overdispersion notes, saturated Wald tests).
 

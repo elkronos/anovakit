@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # anova_ancova(): regression tests for the adversarial-review findings.
 #
 # Every expectation is checked against an independent computation -- lm(),

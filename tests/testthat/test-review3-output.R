@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the third review round, output area. Each test checks
 # the package against an independent reference: base R, emmeans on an
 # equivalent model, or a hand computation.

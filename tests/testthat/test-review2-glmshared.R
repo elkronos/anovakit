@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Review 2, area glmshared: anova_glm() and the helpers it shares.
 # Every expectation is checked against base R, car, emmeans, sandwich or a
 # hand computation, not against the package's own code.
