@@ -1367,7 +1367,7 @@ sat$anova
 #> 1         wool 5.007407e+01  1        NA      NA
 #> 2      tension 2.260288e+02  2        NA      NA
 #> 3 wool:tension 1.114198e+02  2        NA      NA
-#> 4    Residuals 9.971202e-28  0        NA      NA
+#> 4    Residuals 4.720544e-27  0        NA      NA
 ```
 
 Analyse the individual observations instead, or fit fewer terms.
