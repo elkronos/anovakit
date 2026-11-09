@@ -898,7 +898,8 @@ anova_bin <- function(data, response, groups,
     refit <- function(off, s) {
       f <- tryCatch(suppressWarnings(stats::glm.fit(
         Xo, y, weights = w, offset = off, family = fam, start = s,
-        control = stats::glm.control(maxit = 100L))), error = function(e) NULL)
+        control = stats::glm.control(epsilon = 1e-10, maxit = 100L))),
+        error = function(e) NULL)
       if (is.null(f) || !isTRUE(f$converged) || !is.finite(f$deviance)) return(NULL)
       # glm.fit()'s convergence flag says only that the deviance stopped
       # changing. Far from the estimate, started from the data, it can stop at
@@ -942,26 +943,53 @@ anova_bin <- function(data, response, groups,
   # the arbitrary estimate of an unidentified coefficient happens to point.
   # NA is kept for a search that failed (no finite profile that far out).
   find_end <- function(dir) {
-    prev <- est
-    s_prev <- start
-    step <- 0.5
+    prev <- est          # the furthest point verified below the cut-off
+    s_prev <- start      # and the refit there, to continue from
     reached <- 0
+    # The crossing between `lo` (below the cut-off) and `hi` (above), found by
+    # bisection that continues from the latest point below the cut-off, so
+    # that every refit starts near a verified solution.
+    solve_between <- function(lo, hi, s_lo) {
+      r <- tryCatch(suppressWarnings(stats::uniroot(
+        function(x) fit_at(x, s_lo)$gap, sort(c(lo, hi)), tol = 1e-8))$root,
+        error = function(e) NA_real_)
+      if (is.finite(r)) return(r)
+      for (k in seq_len(60L)) {
+        if (abs(hi - lo) <= 1e-8 * (1 + abs(lo))) break
+        mid <- (lo + hi) / 2
+        at <- fit_at(mid, s_lo)
+        if (!is.finite(at$gap)) return(NA_real_)
+        if (at$gap > 0) hi <- mid else { lo <- mid; s_lo <- at$coef }
+      }
+      (lo + hi) / 2
+    }
+    step <- 0.5
     while (step <= 128) {
       b <- est + dir * step
       at <- fit_at(b, s_prev)
-      g <- at$gap
-      if (is.finite(g) && g > 0) {
-        s0 <- s_prev
-        r <- tryCatch(suppressWarnings(stats::uniroot(
-          function(x) fit_at(x, s0)$gap, sort(c(prev, b)), tol = 1e-8))$root,
-          error = function(e) NA_real_)
+      if (!is.finite(at$gap)) {
+        # No refit there reached its minimum: step back towards the last
+        # verified point until one does, rather than leap past a crossing.
+        hi <- b
+        for (k in seq_len(12L)) {
+          mid <- (prev + hi) / 2
+          am <- fit_at(mid, s_prev)
+          if (!is.finite(am$gap)) { hi <- mid; next }
+          if (am$gap > 0) { at <- am; b <- mid; break }
+          prev <- mid
+          s_prev <- am$coef
+          reached <- abs(mid - est)
+        }
+      }
+      if (is.finite(at$gap) && at$gap > 0) {
+        r <- solve_between(prev, b, s_prev)
         return(structure(r, flat = FALSE))
       }
-      if (is.finite(g)) {
-        reached <- step
+      if (is.finite(at$gap)) {
+        prev <- b
         s_prev <- at$coef
+        reached <- step
       }
-      prev <- b
       step <- step * 2
     }
     if (reached >= 32) structure(dir * Inf, flat = TRUE) else
