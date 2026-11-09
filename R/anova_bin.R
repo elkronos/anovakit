@@ -895,22 +895,47 @@ anova_bin <- function(data, response, groups,
     dev_at <- function(off) .logit_profile_deviance(Xo, y, w, off, start)
   } else {
     dmin <- stats::deviance(model)
-    # glm.fit() can report convergence at a deviance far above the profile
-    # minimum when the offset is large (it starts from the data, not from the
-    # fit), and how far above depends on the platform. A monotone descent from
-    # the fitted coefficients can only lower the deviance; both are deviances
-    # of actual coefficient vectors, so the smaller is the better estimate of
-    # the profile and never falls below it.
-    dev_at <- function(off) {
+    refit <- function(off, s) {
       f <- tryCatch(suppressWarnings(stats::glm.fit(
-        Xo, y, weights = w, offset = off, family = fam,
+        Xo, y, weights = w, offset = off, family = fam, start = s,
         control = stats::glm.control(maxit = 100L))), error = function(e) NULL)
-      d1 <- if (is.null(f) || !isTRUE(f$converged)) NA_real_ else f$deviance
-      d2 <- .glm_profile_deviance(Xo, y, w, off, start, fam)
-      if (!is.finite(d2)) d1 else if (!is.finite(d1)) d2 else min(d1, d2)
+      if (is.null(f) || !isTRUE(f$converged) || !is.finite(f$deviance)) return(NULL)
+      # glm.fit()'s convergence flag says only that the deviance stopped
+      # changing. Far from the estimate, started from the data, it can stop at
+      # a deviance hundreds of units above the minimum, and whether it does
+      # depends on the platform. The likelihood is concave, so a refit is at
+      # the minimum exactly when its Newton decrement (in deviance units) is
+      # zero; one that is not cannot mark where the profile crosses.
+      mu <- f$fitted.values
+      me <- fam$mu.eta(f$linear.predictors)
+      va <- fam$variance(mu)
+      if (!all(is.finite(c(me, va))) || any(va <= 0)) return(NULL)
+      score <- crossprod(Xo, w * (y - mu) * me / va)
+      info <- crossprod(Xo, Xo * (w * me^2 / va))
+      dec <- tryCatch(drop(crossprod(score, solve(
+        info + diag(1e-10 * max(1, diag(info)), ncol(Xo)), score))),
+        error = function(e) Inf)
+      if (!is.finite(dec) || dec > 1e-3) NULL else f
     }
   }
-  gap <- function(b) (dev_at(off0 + b * X[, j]) - dmin) / dispersion - cutoff
+  # The search moves out from the estimate in steps. Each refit is tried from
+  # the solution at the previous point (continuation, as profile.glm() does),
+  # from the fitted coefficients and from the data, and the lowest deviance
+  # of the refits that reached their minimum is the profile there.
+  fit_at <- function(b, s) {
+    off <- off0 + b * X[, j]
+    if (logit) {
+      return(list(gap = (dev_at(off) - dmin) / dispersion - cutoff, coef = s))
+    }
+    fits <- list(refit(off, s), if (!identical(s, start)) refit(off, start),
+                 refit(off, NULL))
+    fits <- Filter(Negate(is.null), fits)
+    if (length(fits) == 0L) return(list(gap = NA_real_, coef = s))
+    f <- fits[[which.min(vapply(fits, `[[`, numeric(1), "deviance"))]]
+    cf <- unname(f$coefficients)
+    list(gap = (f$deviance - dmin) / dispersion - cutoff,
+         coef = if (anyNA(cf)) s else cf)
+  }
   # A profile that stays below the cut-off out to 32 or more units from the
   # estimate on the linear-predictor scale (a ratio of e^32, about 1e14) rules
   # out no value on that side: the end is open, not missing, whichever way
@@ -918,21 +943,24 @@ anova_bin <- function(data, response, groups,
   # NA is kept for a search that failed (no finite profile that far out).
   find_end <- function(dir) {
     prev <- est
+    s_prev <- start
     step <- 0.5
     reached <- 0
     while (step <= 128) {
       b <- est + dir * step
-      g <- gap(b)
+      at <- fit_at(b, s_prev)
+      g <- at$gap
       if (is.finite(g) && g > 0) {
-        # A profile already flat 32 units out has ruled out no value on this
-        # side; a rise further out comes from the refit losing its way with
-        # so large an offset (as glm.fit() can), not from the likelihood.
-        if (reached >= 32) return(structure(dir * Inf, flat = TRUE))
-        r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
-                      error = function(e) NA_real_)
+        s0 <- s_prev
+        r <- tryCatch(suppressWarnings(stats::uniroot(
+          function(x) fit_at(x, s0)$gap, sort(c(prev, b)), tol = 1e-8))$root,
+          error = function(e) NA_real_)
         return(structure(r, flat = FALSE))
       }
-      if (is.finite(g)) reached <- step
+      if (is.finite(g)) {
+        reached <- step
+        s_prev <- at$coef
+      }
       prev <- b
       step <- step * 2
     }
@@ -940,13 +968,12 @@ anova_bin <- function(data, response, groups,
       structure(NA_real_, flat = FALSE)
   }
   up <- if (est >= 0) 1 else -1           # the direction it diverged in
-  # The profile deviance of a log-concave GLM is convex, and the estimate
-  # diverged because the deviance keeps falling that way: that side is open.
-  # Searching it could only add a spurious finite end where a refit fails.
-  open_end <- up * Inf
+  open_end <- find_end(up)
   far_end <- find_end(-up)
   far_flat <- isTRUE(attr(far_end, "flat"))
+  open_end <- as.numeric(open_end)
   far_end <- as.numeric(far_end)
+  if (is.na(open_end)) open_end <- up * Inf
   if (up > 0) {
     structure(c(far_end, open_end), flat = c(far_flat, FALSE))
   } else {
@@ -1129,54 +1156,4 @@ anova_bin <- function(data, response, groups,
   sprintf(
     "Sparse data: fewer than %g events or non-events are expected under the null hypothesis in %s (smallest %s). With data this sparse the likelihood-ratio omnibus test is liberal, rejecting a true null more often than its nominal level. test_statistic = \"Wald\" is not a remedy: Wald tests are less reliable still here. An exact test (for one grouping variable, fisher.test() on the group-by-outcome table) or the score test, anova(fit$model, test = \"Rao\"), holds its level better.",
     threshold, .abbrev(unique(where), 5L), format(signif(smallest, 3)))
-}
-
-#' Minimum deviance of a GLM with a fixed offset, by monotone Fisher scoring
-#'
-#' The counterpart of \code{.logit_profile_deviance()} for any family and
-#' link: Fisher scoring from \code{start}, halving each step until the
-#' deviance does not increase. It never returns more than the deviance at
-#' \code{start}, whatever the offset, which \code{glm.fit()} (started from
-#' the data) does not guarantee.
-#' @return the deviance reached, or \code{NA} if none could be computed.
-#' @noRd
-.glm_profile_deviance <- function(X, y, w, offset, start, fam, maxit = 200L) {
-  dev_of <- function(eta) {
-    mu <- fam$linkinv(eta)
-    if (!all(is.finite(mu)) || !isTRUE(all(fam$validmu(mu)))) return(Inf)
-    d <- sum(fam$dev.resids(y, mu, w))
-    if (is.finite(d)) d else Inf
-  }
-  beta <- start
-  eta <- offset + drop(X %*% beta)
-  dev <- dev_of(eta)
-  if (!is.finite(dev)) return(NA_real_)
-  p <- ncol(X)
-  for (it in seq_len(maxit)) {
-    mu <- fam$linkinv(eta)
-    me <- fam$mu.eta(eta)
-    va <- fam$variance(mu)
-    ok <- is.finite(me) & is.finite(va) & va > 0
-    if (!any(ok)) break
-    wt <- ifelse(ok, w * me^2 / va, 0)
-    score <- crossprod(X, ifelse(ok, w * (y - mu) * me / va, 0))
-    info <- crossprod(X, X * wt)
-    ridge <- 1e-10 * max(1, diag(info))
-    delta <- tryCatch(drop(solve(info + diag(ridge, p), score)),
-                      error = function(e) NULL)
-    if (is.null(delta) || !all(is.finite(delta))) break
-    step <- 1
-    repeat {
-      nb <- beta + step * delta
-      ne <- offset + drop(X %*% nb)
-      nd <- dev_of(ne)
-      if (nd <= dev || step < 1e-10) break
-      step <- step / 2
-    }
-    if (!(nd <= dev)) break
-    done <- dev - nd < 1e-10 * (abs(dev) + 1)
-    beta <- nb; eta <- ne; dev <- nd
-    if (done) break
-  }
-  dev
 }

@@ -507,17 +507,8 @@
   Xu <- X[first, , drop = FALSE]
   eta <- drop(Xu %*% co[keep])
   se_eta <- sqrt(pmax(rowSums((Xu %*% V) * Xu), 0))
-  # A cell is at the boundary when its fitted probability (or rate) is as
-  # extreme as a logit of +/-10 or a log rate of -10. Judged on the link
-  # scale alone, a probit fit, whose fitted probability is already 1e-9 at
-  # eta = -6, would never be flagged.
-  edge <- if (is_count) {
-    eta < -10
-  } else if (fam %in% c("binomial", "quasibinomial")) {
-    mu <- tryCatch(stats::family(fit)$linkinv(eta), error = function(e) stats::plogis(eta))
-    mu < stats::plogis(-10) | mu > stats::plogis(10)
-  } else abs(eta) > 10
-  flag <- is.finite(eta) & is.finite(se_eta) & se_eta > 10 & edge
+  flag <- is.finite(eta) & is.finite(se_eta) & se_eta > 10 &
+    (if (is_count) eta < -10 else abs(eta) > 10)
   if (!any(flag)) return(character(0))
 
   mf <- tryCatch(stats::model.frame(fit), error = function(e) NULL)
