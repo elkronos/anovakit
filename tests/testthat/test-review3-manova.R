@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the round-3 review items in the manova area.
 
 test_that("R3-40: Box's M is not computed when a group covariance matrix is singular up to rounding", {

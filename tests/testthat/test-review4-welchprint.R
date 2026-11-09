@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Review round 4, area welchprint: anova_welch() omnibus test at extreme
 # scales, its variance-ratio and bias-correction notes, the formatting of
 # p-value columns in print()/summary(), and matrix or data-frame grouping

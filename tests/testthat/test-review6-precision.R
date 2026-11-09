@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Round-6 review fixes: deviance precision on a large level, the exact-fit
 # guard, the inflation of tests by weights that are not frequencies, and
 # small Welch and count notes.

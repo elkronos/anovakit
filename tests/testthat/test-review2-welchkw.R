@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the second review's anova_welch() / anova_kw()
 # findings (R2-WELCHKW-*). Each is checked against an independent reference:
 # base R (t.test, oneway.test, kruskal.test), a hand computation from the

@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the fifth review's anova_welch() findings
 # (welchprint-F1, welch-print-groups-F1, welch-print-groups-F2). Each is
 # checked against an independent reference: base R's oneway.test() and

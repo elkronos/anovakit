@@ -912,15 +912,26 @@ anova_bin <- function(data, response, groups,
     prev <- est
     step <- 0.5
     reached <- 0
+    flat_far <- FALSE
     while (step <= 128) {
       b <- est + dir * step
       g <- gap(b)
       if (is.finite(g) && g > 0) {
+        # Still exactly flat 64 or more units out (an e^64 ratio), the
+        # profile has ruled out no value on this side: a diverged estimate
+        # stops 20 to 40 units out, so a real crossing begins to rise well
+        # before. A jump past the cut-off within one more step comes from the
+        # refit, which far from the estimate can stop well above the minimum
+        # (how far depends on the platform), not from the likelihood.
+        if (flat_far) return(structure(dir * Inf, flat = TRUE))
         r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
                       error = function(e) NA_real_)
         return(structure(r, flat = FALSE))
       }
-      if (is.finite(g)) reached <- step
+      if (is.finite(g)) {
+        reached <- step
+        flat_far <- step >= 64 && g + cutoff < 1e-3
+      }
       prev <- b
       step <- step * 2
     }

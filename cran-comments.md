@@ -36,6 +36,10 @@ Every use of a suggested package in R/ is behind `requireNamespace()`, and the
 tests that need 'afex', 'bit64', 'data.table', 'effectsize' or 'sandwich' skip
 when it is absent. The suite passes with no suggested package installed.
 
+On CRAN the tests run the core suite, which covers every function. A further
+set of detailed regression tests is skipped there with `skip_on_cran()` to
+keep the check time short; it runs on every push in continuous integration.
+
 Three of the methods cited in the Description are implemented directly rather
 than delegated, so their DOIs point at the papers the code follows: Dunn's test
 with the standard tie correction, Mardia's multivariate skewness and kurtosis,

@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the second review of anova_rm() (R2-RM-*).
 
 test_that("R2-RM-01: residuals survive a large constant offset in the response", {

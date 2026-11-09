@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the round-4 review items in the ANCOVA area. Each is
 # checked against an independent reference (base R, car, emmeans or ggplot2's
 # own layer data).

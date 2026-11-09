@@ -1,3 +1,7 @@
+# Detailed regression tests: run locally and on CI (NOT_CRAN=true), skipped
+# on CRAN to keep its check time short. The core suite runs everywhere.
+skip_on_cran()
+
 # Regression tests for the round-5 review items in the ancova area.
 
 # ancova-levene-plot-F1: a cell with fractional residual df is not "exact" ----
