@@ -895,101 +895,44 @@ anova_bin <- function(data, response, groups,
     dev_at <- function(off) .logit_profile_deviance(Xo, y, w, off, start)
   } else {
     dmin <- stats::deviance(model)
-    refit <- function(off, s) {
+    dev_at <- function(off) {
       f <- tryCatch(suppressWarnings(stats::glm.fit(
-        Xo, y, weights = w, offset = off, family = fam, start = s,
-        control = stats::glm.control(epsilon = 1e-10, maxit = 100L))),
-        error = function(e) NULL)
-      if (is.null(f) || !isTRUE(f$converged) || !is.finite(f$deviance)) return(NULL)
-      # glm.fit()'s convergence flag says only that the deviance stopped
-      # changing. Far from the estimate, started from the data, it can stop at
-      # a deviance hundreds of units above the minimum, and whether it does
-      # depends on the platform. The likelihood is concave, so a refit is at
-      # the minimum exactly when its Newton decrement (in deviance units) is
-      # zero; one that is not cannot mark where the profile crosses.
-      mu <- f$fitted.values
-      me <- fam$mu.eta(f$linear.predictors)
-      va <- fam$variance(mu)
-      if (!all(is.finite(c(me, va))) || any(va <= 0)) return(NULL)
-      score <- crossprod(Xo, w * (y - mu) * me / va)
-      info <- crossprod(Xo, Xo * (w * me^2 / va))
-      dec <- tryCatch(drop(crossprod(score, solve(
-        info + diag(1e-10 * max(1, diag(info)), ncol(Xo)), score))),
-        error = function(e) Inf)
-      if (!is.finite(dec) || dec > 1e-3) NULL else f
+        Xo, y, weights = w, offset = off, family = fam,
+        control = stats::glm.control(maxit = 100L))), error = function(e) NULL)
+      if (is.null(f) || !isTRUE(f$converged)) NA_real_ else f$deviance
     }
   }
-  # The search moves out from the estimate in steps. Each refit is tried from
-  # the solution at the previous point (continuation, as profile.glm() does),
-  # from the fitted coefficients and from the data, and the lowest deviance
-  # of the refits that reached their minimum is the profile there.
-  fit_at <- function(b, s) {
-    off <- off0 + b * X[, j]
-    if (logit) {
-      return(list(gap = (dev_at(off) - dmin) / dispersion - cutoff, coef = s))
-    }
-    fits <- list(refit(off, s), if (!identical(s, start)) refit(off, start),
-                 refit(off, NULL))
-    fits <- Filter(Negate(is.null), fits)
-    if (length(fits) == 0L) return(list(gap = NA_real_, coef = s))
-    f <- fits[[which.min(vapply(fits, `[[`, numeric(1), "deviance"))]]
-    cf <- unname(f$coefficients)
-    list(gap = (f$deviance - dmin) / dispersion - cutoff,
-         coef = if (anyNA(cf)) s else cf)
-  }
+  gap <- function(b) (dev_at(off0 + b * X[, j]) - dmin) / dispersion - cutoff
   # A profile that stays below the cut-off out to 32 or more units from the
   # estimate on the linear-predictor scale (a ratio of e^32, about 1e14) rules
   # out no value on that side: the end is open, not missing, whichever way
   # the arbitrary estimate of an unidentified coefficient happens to point.
   # NA is kept for a search that failed (no finite profile that far out).
   find_end <- function(dir) {
-    prev <- est          # the furthest point verified below the cut-off
-    s_prev <- start      # and the refit there, to continue from
-    reached <- 0
-    # The crossing between `lo` (below the cut-off) and `hi` (above), found by
-    # bisection that continues from the latest point below the cut-off, so
-    # that every refit starts near a verified solution.
-    solve_between <- function(lo, hi, s_lo) {
-      r <- tryCatch(suppressWarnings(stats::uniroot(
-        function(x) fit_at(x, s_lo)$gap, sort(c(lo, hi)), tol = 1e-8))$root,
-        error = function(e) NA_real_)
-      if (is.finite(r)) return(r)
-      for (k in seq_len(60L)) {
-        if (abs(hi - lo) <= 1e-8 * (1 + abs(lo))) break
-        mid <- (lo + hi) / 2
-        at <- fit_at(mid, s_lo)
-        if (!is.finite(at$gap)) return(NA_real_)
-        if (at$gap > 0) hi <- mid else { lo <- mid; s_lo <- at$coef }
-      }
-      (lo + hi) / 2
-    }
+    prev <- est
     step <- 0.5
+    reached <- 0
+    flat_far <- FALSE
     while (step <= 128) {
       b <- est + dir * step
-      at <- fit_at(b, s_prev)
-      if (!is.finite(at$gap)) {
-        # No refit there reached its minimum: step back towards the last
-        # verified point until one does, rather than leap past a crossing.
-        hi <- b
-        for (k in seq_len(12L)) {
-          mid <- (prev + hi) / 2
-          am <- fit_at(mid, s_prev)
-          if (!is.finite(am$gap)) { hi <- mid; next }
-          if (am$gap > 0) { at <- am; b <- mid; break }
-          prev <- mid
-          s_prev <- am$coef
-          reached <- abs(mid - est)
-        }
-      }
-      if (is.finite(at$gap) && at$gap > 0) {
-        r <- solve_between(prev, b, s_prev)
+      g <- gap(b)
+      if (is.finite(g) && g > 0) {
+        # Still exactly flat 64 or more units out (an e^64 ratio), the
+        # profile has ruled out no value on this side: a diverged estimate
+        # stops 20 to 40 units out, so a real crossing begins to rise well
+        # before. A jump past the cut-off within one more step comes from the
+        # refit, which far from the estimate can stop well above the minimum
+        # (how far depends on the platform), not from the likelihood.
+        if (flat_far) return(structure(dir * Inf, flat = TRUE))
+        r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
+                      error = function(e) NA_real_)
         return(structure(r, flat = FALSE))
       }
-      if (is.finite(at$gap)) {
-        prev <- b
-        s_prev <- at$coef
+      if (is.finite(g)) {
         reached <- step
+        flat_far <- step >= 64 && g + cutoff < 1e-3
       }
+      prev <- b
       step <- step * 2
     }
     if (reached >= 32) structure(dir * Inf, flat = TRUE) else
