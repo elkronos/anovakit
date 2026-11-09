@@ -916,6 +916,10 @@ anova_bin <- function(data, response, groups,
       b <- est + dir * step
       g <- gap(b)
       if (is.finite(g) && g > 0) {
+        # A profile already flat 32 units out has ruled out no value on this
+        # side; a rise further out comes from the refit losing its way with
+        # so large an offset (as glm.fit() can), not from the likelihood.
+        if (reached >= 32) return(structure(dir * Inf, flat = TRUE))
         r <- tryCatch(suppressWarnings(stats::uniroot(gap, sort(c(prev, b)), tol = 1e-8))$root,
                       error = function(e) NA_real_)
         return(structure(r, flat = FALSE))
