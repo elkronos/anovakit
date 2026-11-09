@@ -1088,7 +1088,22 @@ anova_glm <- function(data, response, groups,
   if (separated && ci_method == "profile") {
     diverged <- intersect(diverged, rownames(ci))
     both_open <- character(0)
+    # The direct profile assumes a log-concave likelihood whose diverged
+    # coefficients run off on the link scale: the canonical-like links of the
+    # binomial and Poisson families. Under any other link (cauchit, identity,
+    # sqrt) a diverged estimate is wherever the fit stopped, so the finite
+    # end is reported as not found rather than guessed.
+    fam <- stats::family(model)
+    profilable <- (fam$family %in% c("binomial", "quasibinomial") &&
+                     fam$link %in% c("logit", "probit", "cloglog", "log")) ||
+      ((fam$family %in% c("poisson", "quasipoisson") || inherits(model, "negbin") ||
+          grepl("^Negative Binomial", fam$family)) && fam$link == "log")
     for (tm in diverged) {
+      if (!profilable) {
+        ci[tm, ] <- if (stats::coef(model)[[tm]] >= 0) c(NA_real_, Inf) else c(-Inf, NA_real_)
+        row_method[tm] <- "profile"
+        next
+      }
       # A Wald end is as meaningless as the Wald standard error behind it, and
       # confint()'s spline through a diverged profile is junk: both ends come
       # from profiling the likelihood directly, with the cutoff and dispersion

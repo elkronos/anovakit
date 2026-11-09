@@ -895,11 +895,19 @@ anova_bin <- function(data, response, groups,
     dev_at <- function(off) .logit_profile_deviance(Xo, y, w, off, start)
   } else {
     dmin <- stats::deviance(model)
+    # glm.fit() can report convergence at a deviance far above the profile
+    # minimum when the offset is large (it starts from the data, not from the
+    # fit), and how far above depends on the platform. A monotone descent from
+    # the fitted coefficients can only lower the deviance; both are deviances
+    # of actual coefficient vectors, so the smaller is the better estimate of
+    # the profile and never falls below it.
     dev_at <- function(off) {
       f <- tryCatch(suppressWarnings(stats::glm.fit(
         Xo, y, weights = w, offset = off, family = fam,
         control = stats::glm.control(maxit = 100L))), error = function(e) NULL)
-      if (is.null(f) || !isTRUE(f$converged)) NA_real_ else f$deviance
+      d1 <- if (is.null(f) || !isTRUE(f$converged)) NA_real_ else f$deviance
+      d2 <- .glm_profile_deviance(Xo, y, w, off, start, fam)
+      if (!is.finite(d2)) d1 else if (!is.finite(d1)) d2 else min(d1, d2)
     }
   }
   gap <- function(b) (dev_at(off0 + b * X[, j]) - dmin) / dispersion - cutoff
@@ -932,12 +940,13 @@ anova_bin <- function(data, response, groups,
       structure(NA_real_, flat = FALSE)
   }
   up <- if (est >= 0) 1 else -1           # the direction it diverged in
-  open_end <- find_end(up)
+  # The profile deviance of a log-concave GLM is convex, and the estimate
+  # diverged because the deviance keeps falling that way: that side is open.
+  # Searching it could only add a spurious finite end where a refit fails.
+  open_end <- up * Inf
   far_end <- find_end(-up)
   far_flat <- isTRUE(attr(far_end, "flat"))
-  open_end <- as.numeric(open_end)
   far_end <- as.numeric(far_end)
-  if (is.na(open_end)) open_end <- up * Inf
   if (up > 0) {
     structure(c(far_end, open_end), flat = c(far_flat, FALSE))
   } else {
@@ -1120,4 +1129,54 @@ anova_bin <- function(data, response, groups,
   sprintf(
     "Sparse data: fewer than %g events or non-events are expected under the null hypothesis in %s (smallest %s). With data this sparse the likelihood-ratio omnibus test is liberal, rejecting a true null more often than its nominal level. test_statistic = \"Wald\" is not a remedy: Wald tests are less reliable still here. An exact test (for one grouping variable, fisher.test() on the group-by-outcome table) or the score test, anova(fit$model, test = \"Rao\"), holds its level better.",
     threshold, .abbrev(unique(where), 5L), format(signif(smallest, 3)))
+}
+
+#' Minimum deviance of a GLM with a fixed offset, by monotone Fisher scoring
+#'
+#' The counterpart of \code{.logit_profile_deviance()} for any family and
+#' link: Fisher scoring from \code{start}, halving each step until the
+#' deviance does not increase. It never returns more than the deviance at
+#' \code{start}, whatever the offset, which \code{glm.fit()} (started from
+#' the data) does not guarantee.
+#' @return the deviance reached, or \code{NA} if none could be computed.
+#' @noRd
+.glm_profile_deviance <- function(X, y, w, offset, start, fam, maxit = 200L) {
+  dev_of <- function(eta) {
+    mu <- fam$linkinv(eta)
+    if (!all(is.finite(mu)) || !isTRUE(all(fam$validmu(mu)))) return(Inf)
+    d <- sum(fam$dev.resids(y, mu, w))
+    if (is.finite(d)) d else Inf
+  }
+  beta <- start
+  eta <- offset + drop(X %*% beta)
+  dev <- dev_of(eta)
+  if (!is.finite(dev)) return(NA_real_)
+  p <- ncol(X)
+  for (it in seq_len(maxit)) {
+    mu <- fam$linkinv(eta)
+    me <- fam$mu.eta(eta)
+    va <- fam$variance(mu)
+    ok <- is.finite(me) & is.finite(va) & va > 0
+    if (!any(ok)) break
+    wt <- ifelse(ok, w * me^2 / va, 0)
+    score <- crossprod(X, ifelse(ok, w * (y - mu) * me / va, 0))
+    info <- crossprod(X, X * wt)
+    ridge <- 1e-10 * max(1, diag(info))
+    delta <- tryCatch(drop(solve(info + diag(ridge, p), score)),
+                      error = function(e) NULL)
+    if (is.null(delta) || !all(is.finite(delta))) break
+    step <- 1
+    repeat {
+      nb <- beta + step * delta
+      ne <- offset + drop(X %*% nb)
+      nd <- dev_of(ne)
+      if (nd <= dev || step < 1e-10) break
+      step <- step / 2
+    }
+    if (!(nd <= dev)) break
+    done <- dev - nd < 1e-10 * (abs(dev) + 1)
+    beta <- nb; eta <- ne; dev <- nd
+    if (done) break
+  }
+  dev
 }

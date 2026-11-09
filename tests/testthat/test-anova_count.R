@@ -181,15 +181,16 @@ test_that("type and test_statistic are separate arguments", {
 
 test_that("a theta that collapses towards Poisson is reported as such", {
   skip_if_not_installed("MASS")
-  # Converges (no th.warn) to a theta above 1000: essentially Poisson data
+  # Converges to a theta above 1000: essentially Poisson data. Whether
+  # MASS::glm.nb() needs its last allowed iteration here (and so sets th.warn)
+  # depends on rounding, so th.warn is not tested.
   d <- data.frame(g = factor(rep(c("a", "b"), each = 20)),
                   y = c(3, 3, 6, 9, 4, 2, 4, 7, 4, 2, 4, 7, 5, 3, 4, 5, 1, 3, 5, 9,
                         8, 5, 6, 6, 8, 5, 7, 10, 12, 6, 11, 9, 7, 12, 2, 8, 3, 5, 10, 6))
   ref <- MASS::glm.nb(y ~ g, data = d)
-  expect_null(ref$th.warn)
   expect_gt(ref$theta, 1000)
   fit <- anova_count(d, "y", "g", model = "negbin", plots = FALSE)
-  expect_true(any(grepl("very large \\(theta = 1\\.18e\\+03\\)", fit$notes)))
+  expect_true(any(grepl("very large \\(theta = 1\\.18e\\+03", fit$notes)))
   expect_false(any(grepl("did not converge|theta = [0-9.]+ \\(SE", fit$notes)))
 })
 
